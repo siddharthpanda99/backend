@@ -1,9 +1,9 @@
 // const fs = require('fs');
 import fs from 'fs';
 
-import { Room } from "../types/Room";
-import { hotels } from "./Hotels";
-import { amenitiesList } from './Amenities';
+import { Room } from "types/Room";
+import { hotels } from "fake/Hotels";
+import { amenitiesList } from 'fake/Amenities';
 
 function getRandomAmenities(amenitiesList: any) {
     const maxAmenities = 5;

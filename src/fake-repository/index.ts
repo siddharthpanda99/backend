@@ -1,4 +1,4 @@
-import { hotels } from "./Hotels";
-import { users } from "./Users";
+import { hotels } from "fake/Hotels";
+import { users } from "fake/Users";
 
 export {hotels, users}

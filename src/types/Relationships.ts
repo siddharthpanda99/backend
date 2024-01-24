@@ -1,8 +1,8 @@
-import { User } from "./User";
-import { Room } from "./Room";
-import { Hotel } from "./Hotel";
-import { Booking } from "./Booking";
-import { UserRole } from "./UserRole";
+import { User } from "types/User";
+import { Room } from "types/Room";
+import { Hotel } from "types/Hotel";
+import { Booking } from "types/Booking";
+import { UserRole } from "types/UserRole";
 
 export type UserHotelRelationship = {
     user: User;

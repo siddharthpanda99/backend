@@ -1,4 +1,4 @@
-import { Hotel } from "../types/Hotel";
+import { Hotel } from "types/Hotel";
 
 export const hotels: Hotel[] = [
     { id: 1, name: "Luxury Palace Hotel", location: "City Center", rating: "5-star", validate: () => console.log("Validation passed.") },

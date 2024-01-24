@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { hotels } from "../fake-repository";
+import { hotels } from "fake/Hotels";
 
 const getListOfHotels = (req: Request, res: Response) => {
     res.send({ hotels, message: 'Fetched a list of hotels' })
