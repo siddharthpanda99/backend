@@ -4,6 +4,9 @@ import dotenv from "dotenv";
 
 import pool from "./config";
 import { authRouter, hotelsRouter, userRouter } from "./routes";
+import { warn } from "console";
+import { Logger } from "middlewares/Logger";
+// import {appLogger} from "middlewares/Logger";
 // import { notFoundMiddleware, errorHandlerMiddleWare } from "./middleware";
 
 dotenv.config();
@@ -11,6 +14,7 @@ dotenv.config();
 const app: Express = express();
 const port = process.env.PORT || 3000;
 app.use(express.json());
+app.use(Logger);
 
 app.get("/", (req: Request, res: Response) => {
     res.send("Express + TypeScript Server");
