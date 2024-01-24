@@ -1,0 +1,23 @@
+export const amenitiesList = [
+    'Free Wi-Fi',
+    'Complimentary Breakfast',
+    'Room Service',
+    'Free Parking',
+    'On-site Restaurant',
+    'Meeting Facilities',
+    'Swimming Pool',
+    'Fitness Center',
+    'Spa and Wellness Center',
+    'Airport Shuttle',
+    'Business Center',
+    'Concierge Service',
+    'Pet-Friendly',
+    'Valet Parking',
+    'Lounge/Bar Area',
+    '24-Hour Front Desk',
+    'Laundry Service',
+    'Childcare Services',
+    'Outdoor Terrace',
+    'Bicycle Rental',
+    // Add more amenities as needed
+];

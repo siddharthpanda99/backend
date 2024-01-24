@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from "express";
+import { hotels } from "../fake-repository";
 
 const getListOfHotels = (req: Request, res: Response) => {
-    res.send({ message: 'Fetched a list of hotels' })
+    res.send({ hotels, message: 'Fetched a list of hotels' })
 }
 
 const getHotelById = (req: Request, res: Response) => {
@@ -15,4 +16,9 @@ const bookHotel = (req: Request, res: Response) => {
     res.send({message: body})
 }
 
-export { getListOfHotels, getHotelById, bookHotel };
+const checkBookingStatus = (req: Request, res: Response) => {
+    const bookingId = req.params.bookingId;
+    console.log("🚀 ~ bookHotel ~ body:", bookingId)
+    res.send({ message: bookingId })
+}
+export { getListOfHotels, getHotelById, bookHotel, checkBookingStatus };
