@@ -10,7 +10,7 @@ export const isUniqueBooking = (BookingsList: UserHotelRoomBooking[], body: User
     return matchingBookings === 0
 }
 
-const dateRangeOverlap = (booking1, booking2) => {
+const dateRangeOverlap = (booking1: UserHotelRoomBooking, booking2: UserHotelRoomBooking) => {
         const start1 = new Date(booking1.check_in_date)
         const end1 = new Date(booking1.check_out_date)
         const start2 = new Date(booking2.check_in_date)
