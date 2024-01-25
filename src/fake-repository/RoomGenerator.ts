@@ -25,6 +25,7 @@ const generateRoomsForHotel = (hotelId: number): Room[] => {
   return roomTypes.map((type, index) => ({
     id: index + 1,
     type,
+    noOfRooms: Math.ceil(Math.random() * 5),
     price: Math.floor(Math.random() * 200) + 100, // Random price between 100 and 300
       amenities: [...amenitiesList.slice(0, 5), ...getRandomAmenities(amenitiesList.slice(5))], // Sample amenities
     hotel_id: hotelId,
