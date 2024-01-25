@@ -11,7 +11,7 @@ export const getHotelDetailsById = (hotelId: string) => {
         hotelDetail = "No hotel found for the specified id"
     } else {
         const rooms = roomsJson[hotelId]
-        console.log("🚀 ~ getHotelById ~ rooms:", rooms)
+        // console.log("🚀 ~ getHotelById ~ rooms:", rooms)
         hotel['rooms'] = rooms
         hotelDetail = hotel
     }

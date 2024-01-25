@@ -1,9 +1,11 @@
+import fs from 'fs';
 import { Request, Response, NextFunction } from "express";
 import { hotels } from "fake/Hotels";
-import roomsJson from 'fake/hotelsWithRooms.json'
 import { getHotelDetailsById } from "src/utils/getHotelById";
+import { UserHotelRoomBooking } from "types/RoomBooking";
+import { isUniqueBooking } from 'src/utils/Booking';
 
-const getListOfHotels = (req: Request, res: Response) => {
+const getListOfHotels = (res: Response) => {
     res.send({ data: hotels, message: 'Fetched a list of hotels' })
 }
 
@@ -14,14 +16,37 @@ const getHotelById = (req: Request, res: Response) => {
 }
 
 const bookHotel = (req: Request, res: Response) => {
-    const body = req.body;
-    console.log("🚀 ~ bookHotel ~ body:", body)
-    res.send({message: body})
+    // Sample data
+//     {
+//     "room_id": 1,
+//     "check_in_date": "1997-07-16T19:20+01:00",
+//     "check_out_date": "1997-07-16T19:20+01:00",
+//     "total_amount": 1000,
+//     "user_id": 1,
+//     "hotel_id": 1
+// }
+    const body: UserHotelRoomBooking = req.body;
+    const fileBuffer = fs.readFileSync('src/fake-repository/UserHotelRoomBooking.json').toString();
+    const BookingsList = JSON.parse(fileBuffer);
+    console.log("🚀 ~ bookHotel ~ BookingsList:", BookingsList?.slice(-1))
+    body.booking_id = BookingsList[BookingsList?.length - 1]?.booking_id + 1
+    // If combination of room, hotel, user and booking id must be unique 
+    const isUnique = isUniqueBooking(BookingsList, body)
+    console.log("🚀 ~ bookHotel ~ isUniqueBooking:", isUnique)
+    if (isUnique){
+        BookingsList.push(body)
+        fs.writeFileSync('src/fake-repository/UserHotelRoomBooking.json', JSON.stringify(BookingsList, null, 2));
+        res.send({ data: body, message: "Hotel Booked successfully" })
+    } else {
+        res.send({ data: [], message: "You have already booked this room" })
+    }
+
+    // console.log("🚀 ~ bookHotel ~ body:", BookingsList)
 }
 
 const checkBookingStatus = (req: Request, res: Response) => {
     const bookingId = req.params.bookingId;
-    console.log("🚀 ~ bookHotel ~ body:", bookingId)
+    // console.log("🚀 ~ bookHotel ~ body:", bookingId)
     res.send({ message: bookingId })
 }
 export { getListOfHotels, getHotelById, bookHotel, checkBookingStatus };
