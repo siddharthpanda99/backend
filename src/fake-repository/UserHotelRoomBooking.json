@@ -25,5 +25,23 @@
     "total_amount": 1000,
     "user_id": 1,
     "hotel_id": 1
+  },
+  {
+    "room_id": 1,
+    "check_in_date": "1997-07-16T19:20+01:00",
+    "check_out_date": "1997-07-16T19:20+01:00",
+    "total_amount": 1000,
+    "user_id": 2,
+    "hotel_id": 1,
+    "booking_id": 4
+  },
+  {
+    "room_id": 1,
+    "check_in_date": "1997-07-16T19:20+01:00",
+    "check_out_date": "1997-07-16T19:20+01:00",
+    "total_amount": 1000,
+    "user_id": 3,
+    "hotel_id": 1,
+    "booking_id": 5
   }
 ]

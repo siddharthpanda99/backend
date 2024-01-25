@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express'
 const userRouter = Router();
 
-import { updateUser } from "controllers/user";
+import { checkUserBookings } from "controllers/user";
 
-userRouter.route('/update/:userId').patch(updateUser);
+userRouter.route('/bookings/user/:userId').get(checkUserBookings);
 
 export default userRouter;
