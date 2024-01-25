@@ -3,5 +3,6 @@ export type Hotel = {
     name: string;
     location: string;
     rating: string;
+    rooms: [];
     validate: () => any;
 }

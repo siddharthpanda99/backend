@@ -1,13 +1,28 @@
 import { Request, Response, NextFunction } from "express";
 import { hotels } from "fake/Hotels";
+import roomsJson from 'fake/hotelsWithRooms.json'
 
 const getListOfHotels = (req: Request, res: Response) => {
-    res.send({ hotels, message: 'Fetched a list of hotels' })
+    res.send({ data: hotels, message: 'Fetched a list of hotels' })
 }
 
 const getHotelById = (req: Request, res: Response) => {
     const hotelId = req.params.hotelId;
-    res.send({ message: `Fetched hotel by id: ${hotelId}` })
+    const hotel = hotels.find(hotel => {
+        return hotel.id === parseInt(hotelId)
+    })
+    console.log("🚀 ~ hotel ~ hotel:", hotel)
+    let resp;
+    if(!hotel){
+        resp = "No hotel found for the specified id"
+    } else {
+        const rooms = roomsJson[hotelId]
+        console.log("🚀 ~ getHotelById ~ rooms:", rooms)
+        hotel['rooms'] = rooms
+        resp = hotel
+    }
+    // console.log("🚀 ~ getHotelById ~ hotels:", hotels)
+    res.send({ data: resp ,message: `Fetched hotel by id: ${hotelId}` })
 }
 
 const bookHotel = (req: Request, res: Response) => {

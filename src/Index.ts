@@ -14,7 +14,7 @@ dotenv.config();
 const app: Express = express();
 const port = process.env.PORT || 3000;
 app.use(express.json());
-app.use(Logger);
+// app.use(Logger);
 
 app.get("/", (req: Request, res: Response) => {
     res.send("Express + TypeScript Server");

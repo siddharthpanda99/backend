@@ -39,7 +39,7 @@ const hotelIds = hotels.map((hotel) => hotel.id);
 
 // Generating rooms for each hotel
 hotelIds.forEach((hotelId) => {
-  hotelsWithRooms[hotelId.toString()] = generateRoomsForHotel(hotelId);
+  hotelsWithRooms[parseInt(hotelId)] = generateRoomsForHotel(hotelId);
 });
 
 // Creating a JSON file

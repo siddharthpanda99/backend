@@ -3,60 +3,57 @@
     {
       "id": 1,
       "type": "economy",
-      "price": 112,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Airport Shuttle",
-        "Spa and Wellness Center",
-        "Concierge Service",
-        "Business Center",
-        "Fitness Center"
-      ],
-      "hotel_id": 1
-    },
-    {
-      "id": 2,
-      "type": "business",
-      "price": 230,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Lounge/Bar Area",
-        "Spa and Wellness Center"
-      ],
-      "hotel_id": 1
-    },
-    {
-      "id": 3,
-      "type": "premium",
-      "price": 228,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Pet-Friendly"
-      ],
-      "hotel_id": 1
-    },
-    {
-      "id": 4,
-      "type": "luxury",
-      "price": 290,
+      "price": 283,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant"
+      ],
+      "hotel_id": 1
+    },
+    {
+      "id": 2,
+      "type": "business",
+      "price": 200,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Laundry Service",
+        "Childcare Services",
+        "Business Center"
+      ],
+      "hotel_id": 1
+    },
+    {
+      "id": 3,
+      "type": "premium",
+      "price": 279,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant"
+      ],
+      "hotel_id": 1
+    },
+    {
+      "id": 4,
+      "type": "luxury",
+      "price": 191,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Outdoor Terrace",
+        "Spa and Wellness Center"
       ],
       "hotel_id": 1
     }
@@ -65,485 +62,34 @@
     {
       "id": 1,
       "type": "economy",
-      "price": 151,
+      "price": 133,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Spa and Wellness Center",
-        "Meeting Facilities",
         "Business Center",
-        "Lounge/Bar Area",
-        "Laundry Service"
-      ],
-      "hotel_id": 2
-    },
-    {
-      "id": 2,
-      "type": "business",
-      "price": 157,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Meeting Facilities",
-        "Laundry Service"
-      ],
-      "hotel_id": 2
-    },
-    {
-      "id": 3,
-      "type": "premium",
-      "price": 139,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Childcare Services",
-        "Laundry Service",
         "Concierge Service",
-        "Business Center"
-      ],
-      "hotel_id": 2
-    },
-    {
-      "id": 4,
-      "type": "luxury",
-      "price": 123,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Laundry Service",
-        "Pet-Friendly",
-        "24-Hour Front Desk"
-      ],
-      "hotel_id": 2
-    }
-  ],
-  "3": [
-    {
-      "id": 1,
-      "type": "economy",
-      "price": 154,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Swimming Pool",
-        "Spa and Wellness Center",
-        "Outdoor Terrace",
-        "24-Hour Front Desk",
-        "Bicycle Rental"
-      ],
-      "hotel_id": 3
-    },
-    {
-      "id": 2,
-      "type": "business",
-      "price": 115,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant"
-      ],
-      "hotel_id": 3
-    },
-    {
-      "id": 3,
-      "type": "premium",
-      "price": 165,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Fitness Center"
-      ],
-      "hotel_id": 3
-    },
-    {
-      "id": 4,
-      "type": "luxury",
-      "price": 138,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Valet Parking",
-        "Outdoor Terrace",
-        "Childcare Services",
-        "Concierge Service",
-        "Bicycle Rental"
-      ],
-      "hotel_id": 3
-    }
-  ],
-  "4": [
-    {
-      "id": 1,
-      "type": "economy",
-      "price": 140,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Bicycle Rental"
-      ],
-      "hotel_id": 4
-    },
-    {
-      "id": 2,
-      "type": "business",
-      "price": 266,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant"
-      ],
-      "hotel_id": 4
-    },
-    {
-      "id": 3,
-      "type": "premium",
-      "price": 201,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Pet-Friendly",
-        "Business Center",
-        "Bicycle Rental"
-      ],
-      "hotel_id": 4
-    },
-    {
-      "id": 4,
-      "type": "luxury",
-      "price": 138,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Fitness Center",
-        "Business Center",
-        "Meeting Facilities",
-        "Spa and Wellness Center"
-      ],
-      "hotel_id": 4
-    }
-  ],
-  "5": [
-    {
-      "id": 1,
-      "type": "economy",
-      "price": 264,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Concierge Service"
-      ],
-      "hotel_id": 5
-    },
-    {
-      "id": 2,
-      "type": "business",
-      "price": 124,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Spa and Wellness Center"
-      ],
-      "hotel_id": 5
-    },
-    {
-      "id": 3,
-      "type": "premium",
-      "price": 227,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Meeting Facilities",
-        "Childcare Services",
-        "Pet-Friendly"
-      ],
-      "hotel_id": 5
-    },
-    {
-      "id": 4,
-      "type": "luxury",
-      "price": 270,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Childcare Services",
-        "Outdoor Terrace",
-        "Lounge/Bar Area"
-      ],
-      "hotel_id": 5
-    }
-  ],
-  "6": [
-    {
-      "id": 1,
-      "type": "economy",
-      "price": 284,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Concierge Service",
-        "Bicycle Rental",
-        "Business Center",
-        "Airport Shuttle",
-        "Spa and Wellness Center"
-      ],
-      "hotel_id": 6
-    },
-    {
-      "id": 2,
-      "type": "business",
-      "price": 130,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Bicycle Rental",
-        "Swimming Pool",
-        "24-Hour Front Desk",
-        "Laundry Service",
-        "Meeting Facilities"
-      ],
-      "hotel_id": 6
-    },
-    {
-      "id": 3,
-      "type": "premium",
-      "price": 126,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant"
-      ],
-      "hotel_id": 6
-    },
-    {
-      "id": 4,
-      "type": "luxury",
-      "price": 262,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Spa and Wellness Center",
-        "Meeting Facilities",
-        "Pet-Friendly",
-        "Bicycle Rental"
-      ],
-      "hotel_id": 6
-    }
-  ],
-  "7": [
-    {
-      "id": 1,
-      "type": "economy",
-      "price": 105,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Outdoor Terrace",
-        "Swimming Pool",
-        "Spa and Wellness Center"
-      ],
-      "hotel_id": 7
-    },
-    {
-      "id": 2,
-      "type": "business",
-      "price": 226,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Fitness Center",
-        "Meeting Facilities"
-      ],
-      "hotel_id": 7
-    },
-    {
-      "id": 3,
-      "type": "premium",
-      "price": 140,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Meeting Facilities",
-        "Laundry Service"
-      ],
-      "hotel_id": 7
-    },
-    {
-      "id": 4,
-      "type": "luxury",
-      "price": 192,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Airport Shuttle",
-        "Business Center"
-      ],
-      "hotel_id": 7
-    }
-  ],
-  "8": [
-    {
-      "id": 1,
-      "type": "economy",
-      "price": 264,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Airport Shuttle",
-        "Concierge Service"
-      ],
-      "hotel_id": 8
-    },
-    {
-      "id": 2,
-      "type": "business",
-      "price": 203,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Meeting Facilities",
-        "Swimming Pool",
         "Outdoor Terrace"
       ],
-      "hotel_id": 8
-    },
-    {
-      "id": 3,
-      "type": "premium",
-      "price": 114,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Airport Shuttle"
-      ],
-      "hotel_id": 8
-    },
-    {
-      "id": 4,
-      "type": "luxury",
-      "price": 126,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Concierge Service",
-        "Bicycle Rental",
-        "Outdoor Terrace",
-        "Meeting Facilities",
-        "Swimming Pool"
-      ],
-      "hotel_id": 8
-    }
-  ],
-  "9": [
-    {
-      "id": 1,
-      "type": "economy",
-      "price": 263,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant"
-      ],
-      "hotel_id": 9
+      "hotel_id": 2
     },
     {
       "id": 2,
       "type": "business",
-      "price": 150,
+      "price": 193,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Pet-Friendly",
-        "Fitness Center",
+        "24-Hour Front Desk",
         "Swimming Pool",
-        "Business Center"
+        "Laundry Service"
       ],
-      "hotel_id": 9
+      "hotel_id": 2
     },
     {
       "id": 3,
@@ -555,9 +101,529 @@
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
+        "Childcare Services",
+        "Bicycle Rental",
+        "Pet-Friendly",
         "Spa and Wellness Center"
       ],
+      "hotel_id": 2
+    },
+    {
+      "id": 4,
+      "type": "luxury",
+      "price": 164,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Outdoor Terrace",
+        "Business Center"
+      ],
+      "hotel_id": 2
+    }
+  ],
+  "3": [
+    {
+      "id": 1,
+      "type": "economy",
+      "price": 253,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Bicycle Rental",
+        "Laundry Service"
+      ],
+      "hotel_id": 3
+    },
+    {
+      "id": 2,
+      "type": "business",
+      "price": 185,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "24-Hour Front Desk"
+      ],
+      "hotel_id": 3
+    },
+    {
+      "id": 3,
+      "type": "premium",
+      "price": 190,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Concierge Service"
+      ],
+      "hotel_id": 3
+    },
+    {
+      "id": 4,
+      "type": "luxury",
+      "price": 128,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Fitness Center",
+        "Laundry Service",
+        "Outdoor Terrace",
+        "Swimming Pool"
+      ],
+      "hotel_id": 3
+    }
+  ],
+  "4": [
+    {
+      "id": 1,
+      "type": "economy",
+      "price": 165,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Meeting Facilities"
+      ],
+      "hotel_id": 4
+    },
+    {
+      "id": 2,
+      "type": "business",
+      "price": 251,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Concierge Service",
+        "Business Center"
+      ],
+      "hotel_id": 4
+    },
+    {
+      "id": 3,
+      "type": "premium",
+      "price": 296,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant"
+      ],
+      "hotel_id": 4
+    },
+    {
+      "id": 4,
+      "type": "luxury",
+      "price": 122,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Childcare Services",
+        "24-Hour Front Desk",
+        "Concierge Service",
+        "Bicycle Rental",
+        "Meeting Facilities"
+      ],
+      "hotel_id": 4
+    }
+  ],
+  "5": [
+    {
+      "id": 1,
+      "type": "economy",
+      "price": 130,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Bicycle Rental",
+        "Valet Parking",
+        "Meeting Facilities",
+        "Concierge Service",
+        "Airport Shuttle"
+      ],
+      "hotel_id": 5
+    },
+    {
+      "id": 2,
+      "type": "business",
+      "price": 134,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Concierge Service",
+        "Fitness Center",
+        "Childcare Services",
+        "Laundry Service"
+      ],
+      "hotel_id": 5
+    },
+    {
+      "id": 3,
+      "type": "premium",
+      "price": 157,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Lounge/Bar Area"
+      ],
+      "hotel_id": 5
+    },
+    {
+      "id": 4,
+      "type": "luxury",
+      "price": 262,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Business Center",
+        "Outdoor Terrace",
+        "24-Hour Front Desk",
+        "Childcare Services"
+      ],
+      "hotel_id": 5
+    }
+  ],
+  "6": [
+    {
+      "id": 1,
+      "type": "economy",
+      "price": 178,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Fitness Center",
+        "Swimming Pool",
+        "Pet-Friendly",
+        "Laundry Service"
+      ],
+      "hotel_id": 6
+    },
+    {
+      "id": 2,
+      "type": "business",
+      "price": 132,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Laundry Service"
+      ],
+      "hotel_id": 6
+    },
+    {
+      "id": 3,
+      "type": "premium",
+      "price": 114,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Meeting Facilities",
+        "Bicycle Rental",
+        "Airport Shuttle",
+        "Laundry Service",
+        "Pet-Friendly"
+      ],
+      "hotel_id": 6
+    },
+    {
+      "id": 4,
+      "type": "luxury",
+      "price": 244,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Meeting Facilities",
+        "Outdoor Terrace",
+        "Swimming Pool",
+        "Concierge Service",
+        "Laundry Service"
+      ],
+      "hotel_id": 6
+    }
+  ],
+  "7": [
+    {
+      "id": 1,
+      "type": "economy",
+      "price": 293,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Concierge Service",
+        "Business Center",
+        "Airport Shuttle",
+        "Valet Parking"
+      ],
+      "hotel_id": 7
+    },
+    {
+      "id": 2,
+      "type": "business",
+      "price": 102,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Business Center",
+        "Childcare Services"
+      ],
+      "hotel_id": 7
+    },
+    {
+      "id": 3,
+      "type": "premium",
+      "price": 199,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Swimming Pool",
+        "Bicycle Rental",
+        "Spa and Wellness Center",
+        "Childcare Services"
+      ],
+      "hotel_id": 7
+    },
+    {
+      "id": 4,
+      "type": "luxury",
+      "price": 251,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant"
+      ],
+      "hotel_id": 7
+    }
+  ],
+  "8": [
+    {
+      "id": 1,
+      "type": "economy",
+      "price": 235,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Outdoor Terrace",
+        "Pet-Friendly",
+        "Airport Shuttle",
+        "24-Hour Front Desk",
+        "Business Center"
+      ],
+      "hotel_id": 8
+    },
+    {
+      "id": 2,
+      "type": "business",
+      "price": 249,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Airport Shuttle",
+        "Concierge Service",
+        "Bicycle Rental",
+        "Lounge/Bar Area",
+        "Pet-Friendly"
+      ],
+      "hotel_id": 8
+    },
+    {
+      "id": 3,
+      "type": "premium",
+      "price": 252,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Concierge Service",
+        "24-Hour Front Desk",
+        "Bicycle Rental"
+      ],
+      "hotel_id": 8
+    },
+    {
+      "id": 4,
+      "type": "luxury",
+      "price": 241,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Meeting Facilities",
+        "Outdoor Terrace"
+      ],
+      "hotel_id": 8
+    }
+  ],
+  "9": [
+    {
+      "id": 1,
+      "type": "economy",
+      "price": 296,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "24-Hour Front Desk",
+        "Outdoor Terrace",
+        "Spa and Wellness Center",
+        "Laundry Service"
+      ],
       "hotel_id": 9
+    },
+    {
+      "id": 2,
+      "type": "business",
+      "price": 237,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Pet-Friendly",
+        "Spa and Wellness Center",
+        "Fitness Center"
+      ],
+      "hotel_id": 9
+    },
+    {
+      "id": 3,
+      "type": "premium",
+      "price": 241,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Childcare Services",
+        "Pet-Friendly",
+        "Concierge Service"
+      ],
+      "hotel_id": 9
+    },
+    {
+      "id": 4,
+      "type": "luxury",
+      "price": 267,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Fitness Center"
+      ],
+      "hotel_id": 9
+    }
+  ],
+  "10": [
+    {
+      "id": 1,
+      "type": "economy",
+      "price": 149,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant"
+      ],
+      "hotel_id": 10
+    },
+    {
+      "id": 2,
+      "type": "business",
+      "price": 216,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Spa and Wellness Center",
+        "Valet Parking"
+      ],
+      "hotel_id": 10
+    },
+    {
+      "id": 3,
+      "type": "premium",
+      "price": 144,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant"
+      ],
+      "hotel_id": 10
     },
     {
       "id": 4,
@@ -569,68 +635,7 @@
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Meeting Facilities",
-        "Business Center",
-        "Pet-Friendly"
-      ],
-      "hotel_id": 9
-    }
-  ],
-  "10": [
-    {
-      "id": 1,
-      "type": "economy",
-      "price": 236,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Pet-Friendly"
-      ],
-      "hotel_id": 10
-    },
-    {
-      "id": 2,
-      "type": "business",
-      "price": 113,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant"
-      ],
-      "hotel_id": 10
-    },
-    {
-      "id": 3,
-      "type": "premium",
-      "price": 206,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Valet Parking"
-      ],
-      "hotel_id": 10
-    },
-    {
-      "id": 4,
-      "type": "luxury",
-      "price": 203,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Airport Shuttle",
-        "Business Center",
-        "Spa and Wellness Center"
+        "Meeting Facilities"
       ],
       "hotel_id": 10
     }
@@ -639,32 +644,6 @@
     {
       "id": 1,
       "type": "economy",
-      "price": 253,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant"
-      ],
-      "hotel_id": 11
-    },
-    {
-      "id": 2,
-      "type": "business",
-      "price": 209,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant"
-      ],
-      "hotel_id": 11
-    },
-    {
-      "id": 3,
-      "type": "premium",
       "price": 186,
       "amenities": [
         "Free Wi-Fi",
@@ -672,21 +651,57 @@
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Spa and Wellness Center"
+        "Laundry Service",
+        "Airport Shuttle",
+        "Pet-Friendly",
+        "Lounge/Bar Area",
+        "Swimming Pool"
       ],
       "hotel_id": 11
     },
     {
-      "id": 4,
-      "type": "luxury",
-      "price": 289,
+      "id": 2,
+      "type": "business",
+      "price": 175,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Concierge Service"
+        "Meeting Facilities",
+        "Laundry Service",
+        "Business Center",
+        "Swimming Pool",
+        "Fitness Center"
+      ],
+      "hotel_id": 11
+    },
+    {
+      "id": 3,
+      "type": "premium",
+      "price": 248,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant"
+      ],
+      "hotel_id": 11
+    },
+    {
+      "id": 4,
+      "type": "luxury",
+      "price": 207,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Spa and Wellness Center",
+        "Business Center"
       ],
       "hotel_id": 11
     }
@@ -695,63 +710,59 @@
     {
       "id": 1,
       "type": "economy",
-      "price": 264,
+      "price": 252,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Fitness Center",
-        "Concierge Service",
-        "Laundry Service",
-        "Bicycle Rental",
-        "Outdoor Terrace"
+        "Valet Parking",
+        "Meeting Facilities"
       ],
       "hotel_id": 12
     },
     {
       "id": 2,
       "type": "business",
-      "price": 212,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Childcare Services",
-        "Pet-Friendly"
-      ],
-      "hotel_id": 12
-    },
-    {
-      "id": 3,
-      "type": "premium",
-      "price": 148,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Laundry Service",
-        "Fitness Center",
-        "Swimming Pool",
-        "Lounge/Bar Area"
-      ],
-      "hotel_id": 12
-    },
-    {
-      "id": 4,
-      "type": "luxury",
       "price": 132,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
-        "On-site Restaurant"
+        "On-site Restaurant",
+        "Childcare Services"
+      ],
+      "hotel_id": 12
+    },
+    {
+      "id": 3,
+      "type": "premium",
+      "price": 266,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Business Center",
+        "Pet-Friendly"
+      ],
+      "hotel_id": 12
+    },
+    {
+      "id": 4,
+      "type": "luxury",
+      "price": 256,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Lounge/Bar Area",
+        "Swimming Pool"
       ],
       "hotel_id": 12
     }
@@ -760,17 +771,16 @@
     {
       "id": 1,
       "type": "economy",
-      "price": 282,
+      "price": 119,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Spa and Wellness Center",
-        "Valet Parking",
-        "Laundry Service",
         "Concierge Service",
+        "Valet Parking",
+        "Bicycle Rental",
         "Meeting Facilities"
       ],
       "hotel_id": 13
@@ -778,45 +788,48 @@
     {
       "id": 2,
       "type": "business",
-      "price": 263,
+      "price": 155,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
-        "On-site Restaurant"
+        "On-site Restaurant",
+        "Airport Shuttle",
+        "Meeting Facilities",
+        "Laundry Service"
       ],
       "hotel_id": 13
     },
     {
       "id": 3,
       "type": "premium",
-      "price": 182,
+      "price": 227,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "24-Hour Front Desk"
+        "Airport Shuttle",
+        "Spa and Wellness Center",
+        "Pet-Friendly",
+        "Outdoor Terrace"
       ],
       "hotel_id": 13
     },
     {
       "id": 4,
       "type": "luxury",
-      "price": 213,
+      "price": 290,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Bicycle Rental",
-        "Spa and Wellness Center",
-        "Valet Parking",
-        "Pet-Friendly",
-        "Swimming Pool"
+        "Fitness Center",
+        "Airport Shuttle"
       ],
       "hotel_id": 13
     }
@@ -825,30 +838,33 @@
     {
       "id": 1,
       "type": "economy",
-      "price": 220,
+      "price": 113,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
+        "Spa and Wellness Center",
         "Pet-Friendly",
-        "Bicycle Rental",
-        "Concierge Service",
-        "Swimming Pool"
+        "Fitness Center"
       ],
       "hotel_id": 14
     },
     {
       "id": 2,
       "type": "business",
-      "price": 290,
+      "price": 157,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
+        "Bicycle Rental",
+        "Swimming Pool",
+        "Fitness Center",
+        "Lounge/Bar Area",
         "Pet-Friendly"
       ],
       "hotel_id": 14
@@ -856,30 +872,30 @@
     {
       "id": 3,
       "type": "premium",
-      "price": 262,
+      "price": 178,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Meeting Facilities"
+        "Meeting Facilities",
+        "Swimming Pool",
+        "Outdoor Terrace",
+        "Airport Shuttle"
       ],
       "hotel_id": 14
     },
     {
       "id": 4,
       "type": "luxury",
-      "price": 246,
+      "price": 182,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
-        "On-site Restaurant",
-        "Concierge Service",
-        "Childcare Services",
-        "Spa and Wellness Center"
+        "On-site Restaurant"
       ],
       "hotel_id": 14
     }
@@ -888,21 +904,22 @@
     {
       "id": 1,
       "type": "economy",
-      "price": 245,
+      "price": 106,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Swimming Pool"
+        "Lounge/Bar Area",
+        "Outdoor Terrace"
       ],
       "hotel_id": 15
     },
     {
       "id": 2,
       "type": "business",
-      "price": 112,
+      "price": 238,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
@@ -910,30 +927,161 @@
         "Free Parking",
         "On-site Restaurant",
         "Spa and Wellness Center",
-        "Meeting Facilities"
+        "24-Hour Front Desk"
       ],
       "hotel_id": 15
     },
     {
       "id": 3,
       "type": "premium",
-      "price": 231,
+      "price": 121,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Spa and Wellness Center",
-        "Outdoor Terrace",
-        "Bicycle Rental"
+        "Pet-Friendly"
       ],
       "hotel_id": 15
     },
     {
       "id": 4,
       "type": "luxury",
+      "price": 298,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Bicycle Rental",
+        "Childcare Services",
+        "Business Center",
+        "24-Hour Front Desk",
+        "Meeting Facilities"
+      ],
+      "hotel_id": 15
+    }
+  ],
+  "16": [
+    {
+      "id": 1,
+      "type": "economy",
+      "price": 123,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Meeting Facilities",
+        "Outdoor Terrace",
+        "Business Center"
+      ],
+      "hotel_id": 16
+    },
+    {
+      "id": 2,
+      "type": "business",
+      "price": 182,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Lounge/Bar Area"
+      ],
+      "hotel_id": 16
+    },
+    {
+      "id": 3,
+      "type": "premium",
+      "price": 147,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Meeting Facilities",
+        "Swimming Pool",
+        "Pet-Friendly",
+        "Lounge/Bar Area",
+        "Outdoor Terrace"
+      ],
+      "hotel_id": 16
+    },
+    {
+      "id": 4,
+      "type": "luxury",
+      "price": 148,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Business Center",
+        "Airport Shuttle",
+        "Childcare Services"
+      ],
+      "hotel_id": 16
+    }
+  ],
+  "17": [
+    {
+      "id": 1,
+      "type": "economy",
+      "price": 101,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Meeting Facilities",
+        "Pet-Friendly",
+        "Valet Parking",
+        "Business Center",
+        "Outdoor Terrace"
+      ],
+      "hotel_id": 17
+    },
+    {
+      "id": 2,
+      "type": "business",
       "price": 114,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Business Center",
+        "Outdoor Terrace"
+      ],
+      "hotel_id": 17
+    },
+    {
+      "id": 3,
+      "type": "premium",
+      "price": 214,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
+        "Bicycle Rental"
+      ],
+      "hotel_id": 17
+    },
+    {
+      "id": 4,
+      "type": "luxury",
+      "price": 286,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
@@ -943,130 +1091,6 @@
         "Outdoor Terrace",
         "Airport Shuttle"
       ],
-      "hotel_id": 15
-    }
-  ],
-  "16": [
-    {
-      "id": 1,
-      "type": "economy",
-      "price": 135,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Outdoor Terrace",
-        "Airport Shuttle",
-        "Meeting Facilities"
-      ],
-      "hotel_id": 16
-    },
-    {
-      "id": 2,
-      "type": "business",
-      "price": 262,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Swimming Pool",
-        "Outdoor Terrace"
-      ],
-      "hotel_id": 16
-    },
-    {
-      "id": 3,
-      "type": "premium",
-      "price": 113,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Valet Parking",
-        "Business Center"
-      ],
-      "hotel_id": 16
-    },
-    {
-      "id": 4,
-      "type": "luxury",
-      "price": 234,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant"
-      ],
-      "hotel_id": 16
-    }
-  ],
-  "17": [
-    {
-      "id": 1,
-      "type": "economy",
-      "price": 193,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Meeting Facilities",
-        "Laundry Service",
-        "Valet Parking",
-        "Pet-Friendly",
-        "Lounge/Bar Area"
-      ],
-      "hotel_id": 17
-    },
-    {
-      "id": 2,
-      "type": "business",
-      "price": 253,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant"
-      ],
-      "hotel_id": 17
-    },
-    {
-      "id": 3,
-      "type": "premium",
-      "price": 184,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Valet Parking",
-        "Business Center",
-        "Bicycle Rental"
-      ],
-      "hotel_id": 17
-    },
-    {
-      "id": 4,
-      "type": "luxury",
-      "price": 129,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Meeting Facilities"
-      ],
       "hotel_id": 17
     }
   ],
@@ -1074,21 +1098,6 @@
     {
       "id": 1,
       "type": "economy",
-      "price": 217,
-      "amenities": [
-        "Free Wi-Fi",
-        "Complimentary Breakfast",
-        "Room Service",
-        "Free Parking",
-        "On-site Restaurant",
-        "Fitness Center",
-        "Spa and Wellness Center"
-      ],
-      "hotel_id": 18
-    },
-    {
-      "id": 2,
-      "type": "business",
       "price": 276,
       "amenities": [
         "Free Wi-Fi",
@@ -1096,34 +1105,45 @@
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Outdoor Terrace",
+        "Laundry Service"
+      ],
+      "hotel_id": 18
+    },
+    {
+      "id": 2,
+      "type": "business",
+      "price": 169,
+      "amenities": [
+        "Free Wi-Fi",
+        "Complimentary Breakfast",
+        "Room Service",
+        "Free Parking",
+        "On-site Restaurant",
         "Spa and Wellness Center",
-        "Swimming Pool"
+        "Bicycle Rental",
+        "Airport Shuttle"
       ],
       "hotel_id": 18
     },
     {
       "id": 3,
       "type": "premium",
-      "price": 232,
+      "price": 215,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Swimming Pool",
-        "Fitness Center",
-        "Laundry Service",
-        "Concierge Service",
-        "24-Hour Front Desk"
+        "Lounge/Bar Area",
+        "Outdoor Terrace"
       ],
       "hotel_id": 18
     },
     {
       "id": 4,
       "type": "luxury",
-      "price": 290,
+      "price": 169,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
@@ -1131,10 +1151,10 @@
         "Free Parking",
         "On-site Restaurant",
         "Spa and Wellness Center",
-        "Concierge Service",
-        "Laundry Service",
-        "Pet-Friendly",
-        "Bicycle Rental"
+        "Fitness Center",
+        "24-Hour Front Desk",
+        "Business Center",
+        "Swimming Pool"
       ],
       "hotel_id": 18
     }
@@ -1143,66 +1163,57 @@
     {
       "id": 1,
       "type": "economy",
-      "price": 297,
+      "price": 218,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Pet-Friendly",
-        "Lounge/Bar Area",
-        "Swimming Pool",
-        "Valet Parking",
-        "24-Hour Front Desk"
+        "Swimming Pool"
       ],
       "hotel_id": 19
     },
     {
       "id": 2,
       "type": "business",
-      "price": 145,
+      "price": 171,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Spa and Wellness Center"
+        "Meeting Facilities",
+        "Lounge/Bar Area",
+        "Childcare Services",
+        "Business Center"
       ],
       "hotel_id": 19
     },
     {
       "id": 3,
       "type": "premium",
-      "price": 180,
+      "price": 174,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
-        "On-site Restaurant",
-        "Childcare Services",
-        "Outdoor Terrace",
-        "Fitness Center"
+        "On-site Restaurant"
       ],
       "hotel_id": 19
     },
     {
       "id": 4,
       "type": "luxury",
-      "price": 231,
+      "price": 299,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
-        "On-site Restaurant",
-        "Childcare Services",
-        "Meeting Facilities",
-        "Business Center",
-        "Laundry Service",
-        "Spa and Wellness Center"
+        "On-site Restaurant"
       ],
       "hotel_id": 19
     }
@@ -1211,63 +1222,63 @@
     {
       "id": 1,
       "type": "economy",
-      "price": 116,
+      "price": 125,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
-        "On-site Restaurant"
+        "On-site Restaurant",
+        "Lounge/Bar Area",
+        "Laundry Service",
+        "Bicycle Rental",
+        "Outdoor Terrace",
+        "Swimming Pool"
       ],
       "hotel_id": 20
     },
     {
       "id": 2,
       "type": "business",
-      "price": 256,
+      "price": 220,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Outdoor Terrace",
-        "24-Hour Front Desk",
-        "Meeting Facilities",
-        "Laundry Service"
+        "Airport Shuttle"
       ],
       "hotel_id": 20
     },
     {
       "id": 3,
       "type": "premium",
-      "price": 221,
+      "price": 237,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
         "On-site Restaurant",
-        "Spa and Wellness Center",
-        "Outdoor Terrace",
+        "Concierge Service",
         "Airport Shuttle",
-        "Childcare Services",
-        "Meeting Facilities"
+        "Laundry Service",
+        "Outdoor Terrace",
+        "Pet-Friendly"
       ],
       "hotel_id": 20
     },
     {
       "id": 4,
       "type": "luxury",
-      "price": 256,
+      "price": 105,
       "amenities": [
         "Free Wi-Fi",
         "Complimentary Breakfast",
         "Room Service",
         "Free Parking",
-        "On-site Restaurant",
-        "Business Center",
-        "Lounge/Bar Area"
+        "On-site Restaurant"
       ],
       "hotel_id": 20
     }
