@@ -4,7 +4,7 @@
     "name": "Luxury Palace Hotel",
     "location": "City Center",
     "price": 100,
-    "rating": 292,
+    "rating": 3.7,
     "rooms": []
   },
   {
@@ -12,7 +12,7 @@
     "name": "Sunset Resort",
     "location": "Beachfront",
     "price": 140,
-    "rating": 3,
+    "rating": 4.5,
     "rooms": []
   },
   {
@@ -20,7 +20,7 @@
     "name": "Mountain View Lodge",
     "location": "Mountainside",
     "price": 228,
-    "rating": 3,
+    "rating": 3.4,
     "rooms": []
   },
   {
@@ -28,7 +28,7 @@
     "name": "Riverside Inn",
     "location": "Riverbank",
     "price": 106,
-    "rating": 3,
+    "rating": 3.5,
     "rooms": []
   },
   {
@@ -36,7 +36,7 @@
     "name": "Green Valley Retreat",
     "location": "Countryside",
     "price": 255,
-    "rating": 3,
+    "rating": 5,
     "rooms": []
   },
   {
@@ -44,7 +44,7 @@
     "name": "Urban Oasis Hotel",
     "location": "Downtown",
     "price": 213,
-    "rating": 3,
+    "rating": 4.5,
     "rooms": []
   },
   {
@@ -60,7 +60,7 @@
     "name": "Historic Grand Inn",
     "location": "Old Town",
     "price": 148,
-    "rating": 3,
+    "rating": 3.8,
     "rooms": []
   },
   {
@@ -68,7 +68,7 @@
     "name": "Skyline Tower Hotel",
     "location": "Skyscraper District",
     "price": 203,
-    "rating": 3,
+    "rating": 3.9,
     "rooms": []
   },
   {
@@ -84,7 +84,7 @@
     "name": "Golden Sands Resort",
     "location": "Beachfront",
     "price": 289,
-    "rating": 3,
+    "rating": 3.3,
     "rooms": []
   },
   {
@@ -92,7 +92,7 @@
     "name": "Mountain Retreat Lodge",
     "location": "Mountainside",
     "price": 234,
-    "rating": 3,
+    "rating": 4.3,
     "rooms": []
   },
   {
@@ -100,7 +100,7 @@
     "name": "Riverfront Plaza Hotel",
     "location": "City Center",
     "price": 132,
-    "rating": 3,
+    "rating": 3.3,
     "rooms": []
   },
   {
@@ -108,7 +108,7 @@
     "name": "Meadowview Country Inn",
     "location": "Countryside",
     "price": 149,
-    "rating": 3,
+    "rating": 4.6,
     "rooms": []
   },
   {
@@ -116,7 +116,7 @@
     "name": "Metropolitan Grand",
     "location": "Downtown",
     "price": 124,
-    "rating": 5,
+    "rating": 4.7,
     "rooms": []
   },
   {
@@ -124,7 +124,7 @@
     "name": "Serenity Spa Retreat",
     "location": "Spa Town",
     "price": 230,
-    "rating": 3,
+    "rating": 3.9,
     "rooms": []
   },
   {
@@ -132,7 +132,7 @@
     "name": "Historic Riverside Inn",
     "location": "Old Town",
     "price": 135,
-    "rating": 3,
+    "rating": 3.7,
     "rooms": []
   },
   {
@@ -140,7 +140,7 @@
     "name": "Sky High Tower Hotel",
     "location": "Skyscraper District",
     "price": 211,
-    "rating": 3,
+    "rating": 4,
     "rooms": []
   },
   {

@@ -6,7 +6,6 @@ import { UserHotelRoomBooking } from "types/RoomBooking";
 import { isUniqueBooking } from 'src/utils/Booking';
 
 const getListOfHotels = (req: Request, res: Response) => {
-    console.log(hotels)
     res.send({ data: hotels, message: 'Fetched a list of hotels' })
 }
 
