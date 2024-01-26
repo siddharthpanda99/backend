@@ -5,7 +5,7 @@ import { getHotelDetailsById } from "src/utils/getHotelById";
 import { UserHotelRoomBooking } from "types/RoomBooking";
 import { isUniqueBooking } from 'src/utils/Booking';
 
-const getListOfHotels = (res: Response) => {
+const getListOfHotels = (req: Request, res: Response) => {
     res.send({ data: hotels, message: 'Fetched a list of hotels' })
 }
 
