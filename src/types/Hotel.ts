@@ -2,7 +2,7 @@ export type Hotel = {
     id: number;
     name: string;
     location: string;
-    rating: string;
+    rating: number;
+    price: number;
     rooms: [];
-    validate: () => any;
 }

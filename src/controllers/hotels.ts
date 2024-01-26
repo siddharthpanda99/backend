@@ -1,11 +1,12 @@
 import fs from 'fs';
 import { Request, Response, NextFunction } from "express";
-import { hotels } from "fake/Hotels";
+import hotels from 'fake/Hotels.json'
 import { getHotelDetailsById } from "src/utils/getHotelById";
 import { UserHotelRoomBooking } from "types/RoomBooking";
 import { isUniqueBooking } from 'src/utils/Booking';
 
 const getListOfHotels = (req: Request, res: Response) => {
+    console.log(hotels)
     res.send({ data: hotels, message: 'Fetched a list of hotels' })
 }
 

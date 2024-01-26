@@ -2,7 +2,7 @@
 import fs from 'fs';
 
 import { Room } from "types/Room";
-import { hotels } from "fake/Hotels";
+import hotelsJson from "fake/Hotels.json";
 import { amenitiesList } from 'fake/Amenities';
 
 function getRandomAmenities(amenitiesList: any) {
@@ -36,14 +36,19 @@ const generateRoomsForHotel = (hotelId: number): Room[] => {
 const hotelsWithRooms: Record<string, Room[]> = {};
 
 // Assume you already have an array of hotels named 'hotels'
-const hotelIds = hotels.map((hotel) => hotel.id);
+const hotelIds = hotelsJson.map((hotel) => hotel.id);
 
 // Generating rooms for each hotel
 hotelIds.forEach((hotelId) => {
+  console.log("🚀 ~ hotelIds.forEach ~ hotelId:", hotelId)
   hotelsWithRooms[parseInt(hotelId)] = generateRoomsForHotel(hotelId);
+  if(hotelsJson[hotelId]){hotelsJson[hotelId]['price'] = generateRoomsForHotel(hotelId)[0].price;}
+  console.log("🚀 ~ hotelIds.forEach ~ generateRoomsForHotel(hotelId):", generateRoomsForHotel(hotelId)[0].price, hotelsJson[hotelId])
 });
+console.log(hotelsJson)
 
 // Creating a JSON file
 fs.writeFileSync('src/fake-repository/hotelsWithRooms.json', JSON.stringify(hotelsWithRooms, null, 2));
+fs.writeFileSync('src/fake-repository/Hotels.json', JSON.stringify(hotelsJson, null, 2));
 
 console.log('JSON file generated: hotelsWithRooms.json');
