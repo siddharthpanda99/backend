@@ -8,10 +8,15 @@ const updateUser = (req: Request, res: Response) => {
 }
 
 const checkUserBookings = (req: Request, res: Response) => {
-    const userId = parseInt(req.params.userId);
-    console.log("🚀 ~ checkUserBookings ~ userId:", userId)
-    const bookings = UserHotelRoomBookingJson.filter((booking) => booking.user_id === userId)
-    res.send({ data: bookings, message: `List of bookings for : ${userId}` })
+    const query = req.query;
+    const bookings = UserHotelRoomBookingJson.filter((booking) => booking.user_email === query.email)
+    console.log("🚀 ~ checkUserBookings ~ bookings:", bookings, query.email)
+    if(bookings?.length){
+        res.status(200).send({ data: bookings, message: `List of bookings for : ${query.email}` })
+    } else {
+        res.status(204).send({ data: [], message: `No bookings found for : ${query.email}` })
+    }
+    
 }
 
 export { updateUser, checkUserBookings };

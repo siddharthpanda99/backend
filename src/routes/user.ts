@@ -3,6 +3,6 @@ const userRouter = Router();
 
 import { checkUserBookings } from "controllers/user";
 
-userRouter.route('/bookings/user/:userId').get(checkUserBookings);
+userRouter.route('/bookings/user').get(checkUserBookings);
 
 export default userRouter;

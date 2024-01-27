@@ -36,14 +36,14 @@ const bookHotel = (req: Request, res: Response) => {
     console.log("🚀 ~ bookHotel ~ datesOverlapping:", datesOverlapping)
     console.log("🚀 ~ bookHotel ~ isUniqueBooking:", isUnique)
     if (!isUnique){
-        res.send({ data: [], message: "You have already booked this room" })
+        res.status(400).send({ data: [], message: "You have already booked this room" })
     } else if (datesOverlapping) {
         console.log("🚀 ~ bookHotel ~ areDatesAlreadyBlocked:", areDatesAlreadyBlocked)
-        res.send({ data: [], message: "The dates for which you have booked are not available" })
+        res.status(400).send({ data: [], message: "The dates for which you have booked are not available" })
     } else {
         BookingsList.push(body)
         fs.writeFileSync('src/fake-repository/UserHotelRoomBooking.json', JSON.stringify(BookingsList, null, 2));
-        res.send({ data: body, message: "Hotel Booked successfully" })
+        res.status(200).send({ data: body, message: "Hotel Booked successfully" })
     }
 
     // console.log("🚀 ~ bookHotel ~ body:", BookingsList)
