@@ -1,47 +1,29 @@
 [
   {
-    "booking_id": 1,
-    "room_id": 1,
-    "check_in_date": "1997-07-16T19:20+01:00",
-    "check_out_date": "1997-07-16T19:20+01:00",
-    "total_amount": 1000,
-    "user_id": 1,
-    "hotel_id": 1
-  },
-  {
-    "booking_id": 2,
-    "room_id": 2,
-    "check_in_date": "1997-07-16T19:20+01:00",
-    "check_out_date": "1997-07-16T19:20+01:00",
-    "total_amount": 1000,
-    "user_id": 1,
-    "hotel_id": 1
-  },
-  {
-    "booking_id": 3,
-    "room_id": 2,
-    "check_in_date": "1999-07-16T19:20+01:00",
-    "check_out_date": "1999-07-16T19:20+01:00",
-    "total_amount": 1000,
-    "user_id": 1,
-    "hotel_id": 1
-  },
-  {
-    "room_id": 1,
-    "check_in_date": "1997-07-16T19:20+01:00",
-    "check_out_date": "1997-07-16T19:20+01:00",
-    "total_amount": 1000,
-    "user_id": 2,
     "hotel_id": 1,
-    "booking_id": 4
+    "check_in_date": "Fri, 26 Jan 2024 21:34:03 GMT",
+    "check_out_date": "Fri, 26 Jan 2024 21:34:03 GMT",
+    "room_id": 1,
+    "total_amount": 168,
+    "user_email": "john12@example.com",
+    "booking_id": 1
   },
   {
-    "room_id": 1,
-    "check_in_date": "1997-07-16T19:20+01:00",
-    "check_out_date": "1997-07-16T19:20+01:00",
-    "total_amount": 1000,
-    "user_id": 3,
     "hotel_id": 1,
-    "booking_id": 5
+    "check_in_date": "Fri, 7 Jan 2024 21:34:03 GMT",
+    "check_out_date": "Fri, 20 Jan 2024 21:34:03 GMT",
+    "room_id": 1,
+    "total_amount": 168,
+    "user_email": "john123@example.com",
+    "booking_id": 2
+  },
+  {
+    "hotel_id": 1,
+    "check_in_date": "Fri, 24 Jan 2024 21:34:03 GMT",
+    "check_out_date": "Fri, 25 Jan 2024 21:34:03 GMT",
+    "room_id": 1,
+    "total_amount": 168,
+    "user_email": "john1234@example.com",
+    "booking_id": 3
   }
 ]

@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from "express";
 import hotels from 'fake/Hotels.json'
 import { getHotelDetailsById } from "src/utils/getHotelById";
 import { UserHotelRoomBooking } from "types/RoomBooking";
-import { isUniqueBooking } from 'src/utils/Booking';
+import { areDatesAlreadyBlocked, isUniqueBooking } from 'src/utils/Booking';
 
 const getListOfHotels = (req: Request, res: Response) => {
     res.send({ data: hotels, message: 'Fetched a list of hotels' })
@@ -22,7 +22,7 @@ const bookHotel = (req: Request, res: Response) => {
 //     "check_in_date": "1997-07-16T19:20+01:00",
 //     "check_out_date": "1997-07-16T19:20+01:00",
 //     "total_amount": 1000,
-//     "user_id": 1,
+//     "user_email": "test@test.com",
 //     "hotel_id": 1
 // }
     const body: UserHotelRoomBooking = req.body;
@@ -32,13 +32,18 @@ const bookHotel = (req: Request, res: Response) => {
     body.booking_id = BookingsList[BookingsList?.length - 1]?.booking_id + 1
     // If combination of room, hotel, user and booking id must be unique 
     const isUnique = isUniqueBooking(BookingsList, body)
+    const datesOverlapping = areDatesAlreadyBlocked(BookingsList, body)
+    console.log("🚀 ~ bookHotel ~ datesOverlapping:", datesOverlapping)
     console.log("🚀 ~ bookHotel ~ isUniqueBooking:", isUnique)
-    if (isUnique){
+    if (!isUnique){
+        res.send({ data: [], message: "You have already booked this room" })
+    } else if (datesOverlapping) {
+        console.log("🚀 ~ bookHotel ~ areDatesAlreadyBlocked:", areDatesAlreadyBlocked)
+        res.send({ data: [], message: "The dates for which you have booked are not available" })
+    } else {
         BookingsList.push(body)
         fs.writeFileSync('src/fake-repository/UserHotelRoomBooking.json', JSON.stringify(BookingsList, null, 2));
         res.send({ data: body, message: "Hotel Booked successfully" })
-    } else {
-        res.send({ data: [], message: "You have already booked this room" })
     }
 
     // console.log("🚀 ~ bookHotel ~ body:", BookingsList)

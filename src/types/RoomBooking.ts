@@ -5,7 +5,6 @@ export type UserHotelRoomBooking = {
   check_in_date: Date;
   check_out_date: Date;
   total_amount: number;
-  user_id: number;
+  user_email: string;
   hotel_id: number;
-
 }
