@@ -1,36 +1,48 @@
 type GenericObject = Record<string, any>;
 
 export interface SortFilterOptions {
-    sortField?: string;
+    sortFields?: string | string[];
     sortOrder?: 'asc' | 'desc';
-    filters?: Record<string, any>;
+    filters?: Record<string, string | string[]>;
 }
-// NOte, if we used nx monrepos, we could share a common library between front and backend so that we don't have to redefine this same function there on frontend side
-export const sortAndFilterList = <T extends GenericObject>(list: T[], options?: SortFilterOptions): T[] => {
+
+export const sortAndFilterList = <T extends GenericObject>(list: T[], options: SortFilterOptions): T[] => {
     let filteredList = [...list];
 
     // Apply filters
-    if (options?.filters) {
+    if (options.filters) {
         filteredList = filteredList.filter((item) => {
-            return Object.entries(options.filters).every(([key, value]) => {
-                return item[key] === value;
+            return Object.entries(options.filters || {}).every(([key, value]) => {
+                const itemValue = item[key];
+
+                if (Array.isArray(value)) {
+                    // If filter value is an array, check if item value is included in the array
+                    return value.includes(itemValue);
+                } else {
+                    // If filter value is a single value, check for equality
+                    return itemValue === value;
+                }
             });
         });
     }
 
     // Apply sorting
-    if (options?.sortField !== undefined) {
+    if (options.sortFields && options.sortFields.length > 0) {
         filteredList.sort((a, b) => {
-            const aValue = a[options.sortField as keyof T];
-            const bValue = b[options.sortField as keyof T];
+            if (options.sortFields) {
+                for (const sortField of options.sortFields) {
+                    const aValue = a[sortField as keyof T];
+                    const bValue = b[sortField as keyof T];
 
-            if (options.sortOrder === 'desc') {
-                return bValue - aValue;
-            } else {
-                return aValue - bValue;
+                    if (aValue !== bValue) {
+                        return options.sortOrder === 'desc' ? bValue - aValue : aValue - bValue;
+                    }
+                }
             }
+
+            return 0;
         });
     }
 
     return filteredList;
-}
+};

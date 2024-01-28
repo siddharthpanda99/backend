@@ -51,15 +51,14 @@ import { sortAndFilterList } from 'src/utils/sortFilter';
  * //   "message": "An error occurred while fetching hotels."
  * // }
  */
-// http://localhost:8000/api/v1/hotels?sortField=rating&sortOrder=desc
-// http://localhost:8000/hotels?sortField=rating&sortOrder=desc&filters[location]=Mountainside
-
+// http://localhost:8000/api/v1/hotels?sortField=rating&sortOrder=descsortField=price&sortOrder=desc&filters[location]=Countryside&filters[location]=Countryside&filters[location]=Downtown
 const getListOfHotels = (req: Request, res: Response) => {
     const options:SortFilterOptions = {
-        sortField: req.query.sortField as string,
+        sortFields: req.query.sortField as string,
         sortOrder: req.query.sortOrder as 'asc' | 'desc',
         filters: req.query.filters as Record<string, any>,
     };
+    console.log("🚀 ~ getListOfHotels ~ options:", options)
 
     const sortedAndFilteredItems = sortAndFilterList(hotels, options);
 
