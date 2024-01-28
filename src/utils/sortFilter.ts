@@ -5,8 +5,8 @@ export interface SortFilterOptions {
     sortOrder?: 'asc' | 'desc';
     filters?: Record<string, any>;
 }
-
-export function sortAndFilterList<T extends GenericObject>(list: T[], options?: SortFilterOptions): T[] {
+// NOte, if we used nx monrepos, we could share a common library between front and backend so that we don't have to redefine this same function there on frontend side
+export const sortAndFilterList = <T extends GenericObject>(list: T[], options?: SortFilterOptions): T[] => {
     let filteredList = [...list];
 
     // Apply filters
