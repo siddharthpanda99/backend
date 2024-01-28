@@ -1,22 +1,23 @@
-# Use an official Node.js runtime as a parent image
-FROM node:16
+# Use the official Node.js LTS image as the base image
+FROM node:lts-alpine
 
-# Create app directory
+# Set the working directory inside the container
 WORKDIR /app
 
-# Copy the package.json and package-lock.json files to /app 
-COPY package*.json /app
+# Copy package.json, pnpm-lock.yaml, and tsconfig.json to the working directory
+COPY . ./
+
+# Add bash to enter into container for debugging
+RUN apk add --no-cache bash
+
+# Install pnpm
+RUN npm install -g pnpm ts-node tsx typescript
 
 # Install dependencies
-RUN npm i -g pnpm
-# RUN pnpm ci --only=production && pnpm cache clean --force
 RUN pnpm install
 
-# Copy the rest of the application code to /app
-COPY . /app
-
-# Expose port 8000
+# Expose the port your app is running on
 EXPOSE 8000
 
-# Start the server
-CMD ["pnpm","run","dev"]
+# Command to run the app
+CMD ["pnpm", "run", "dev"]

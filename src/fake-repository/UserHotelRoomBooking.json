@@ -25,5 +25,32 @@
     "total_amount": 168,
     "user_email": "john1234@example.com",
     "booking_id": 3
+  },
+  {
+    "hotel_id": 1,
+    "check_in_date": "Sat, 27 Jan 2024 07:32:41 GMT",
+    "check_out_date": "Sat, 27 Jan 2024 07:32:41 GMT",
+    "room_id": 1,
+    "total_amount": 168,
+    "user_email": "john@example.com",
+    "booking_id": 4
+  },
+  {
+    "hotel_id": 1,
+    "check_in_date": "Sat, 27 Jan 2024 08:25:45 GMT",
+    "check_out_date": "Sat, 27 Jan 2024 08:25:45 GMT",
+    "room_id": 3,
+    "total_amount": 149,
+    "user_email": "john@example.com",
+    "booking_id": 5
+  },
+  {
+    "hotel_id": 2,
+    "check_in_date": "Sat, 27 Jan 2024 08:26:35 GMT",
+    "check_out_date": "Sat, 27 Jan 2024 08:26:35 GMT",
+    "room_id": 1,
+    "total_amount": 257,
+    "user_email": "john@example.com",
+    "booking_id": 6
   }
 ]
