@@ -4,6 +4,8 @@ import hotels from 'fake/Hotels.json'
 import { getHotelDetailsById } from "src/utils/getHotelById";
 import { UserHotelRoomBooking } from "types/RoomBooking";
 import { areDatesAlreadyBlocked, isUniqueBooking } from 'src/utils/Booking';
+import { SortFilterOptions } from 'src/utils/sortFilter';
+import { sortAndFilterList } from 'src/utils/sortFilter';
 
 /**
  * Retrieves a list of hotels.
@@ -49,8 +51,19 @@ import { areDatesAlreadyBlocked, isUniqueBooking } from 'src/utils/Booking';
  * //   "message": "An error occurred while fetching hotels."
  * // }
  */
+// http://localhost:8000/api/v1/hotels?sortField=rating&sortOrder=desc
+// http://localhost:8000/hotels?sortField=rating&sortOrder=desc&filters[location]=Mountainside
+
 const getListOfHotels = (req: Request, res: Response) => {
-    res.send({ data: hotels, message: 'Fetched a list of hotels' })
+    const options:SortFilterOptions = {
+        sortField: req.query.sortField as string,
+        sortOrder: req.query.sortOrder as 'asc' | 'desc',
+        filters: req.query.filters as Record<string, any>,
+    };
+
+    const sortedAndFilteredItems = sortAndFilterList(hotels, options);
+
+    res.send({ data: sortedAndFilteredItems, message: 'Fetched a list of hotels' })
 }
 
 
