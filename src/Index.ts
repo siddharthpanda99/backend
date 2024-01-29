@@ -8,7 +8,7 @@ import { warn } from "console";
 import { Logger } from "middlewares/Logger";
 import cors from 'cors';
 // import {appLogger} from "middlewares/Logger";
-// import { notFoundMiddleware, errorHandlerMiddleWare } from "./middleware";
+import { notFoundHandler } from "middlewares/NotFoundHandler";
 
 dotenv.config();
 
@@ -27,7 +27,8 @@ const options: cors.CorsOptions = {
 app.use(cors(options));
 
 app.use(express.json());
-// app.use(Logger);
+app.use(Logger);
+app.use(notFoundHandler);
 
 app.get("/", (req: Request, res: Response) => {
     res.send("Express + TypeScript Server");

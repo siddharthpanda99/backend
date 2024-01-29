@@ -5,11 +5,11 @@ import { transports, format } from "winston";
 
 export const Logger = expressWinston.logger({
     transports: [
-        new transports.Console(),
-        new transports.File({
-            level: 'warn',
-            filename: 'warningLogs.log'
-        }),
+        new transports.Console({ level: 'warn' }),
+        // new transports.File({
+        //     level: 'warn',
+        //     filename: 'warningLogs.log'
+        // }),
         // new transports.MongoDB({
         //     db: 'your_db_uri',
         // })
