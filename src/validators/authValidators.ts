@@ -9,7 +9,7 @@ const loginUserValidation = [
         .notEmpty().withMessage('Please enter your password'),
 ];
 
-const validateLoginUser = (req: Request, res: Response, next: NextFunction) => {
+const allValidatorsPassed = (req: Request, res: Response, next: NextFunction) => {
     const errors = validationResult(req);
 
     if (!errors.isEmpty()) {
@@ -20,4 +20,4 @@ const validateLoginUser = (req: Request, res: Response, next: NextFunction) => {
     next();
 };
 
-export { loginUserValidation, validateLoginUser };
+export { loginUserValidation, allValidatorsPassed };

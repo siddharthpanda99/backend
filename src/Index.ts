@@ -28,7 +28,6 @@ app.use(cors(options));
 
 app.use(express.json());
 app.use(Logger);
-app.use(notFoundHandler);
 
 app.get("/", (req: Request, res: Response) => {
     res.send("Express + TypeScript Server");
@@ -37,6 +36,8 @@ app.get("/", (req: Request, res: Response) => {
 app.use("/api/v1", authRouter);
 app.use("/api/v1", hotelsRouter);
 app.use("/api/v1", userRouter);
+
+app.use(notFoundHandler);
 
 
 app.listen(port, () => {
