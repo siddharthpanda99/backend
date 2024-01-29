@@ -1,4 +1,7 @@
-import { UserHotelRoomBooking } from "types/RoomBooking"
+import { UserHotelRoomBooking, UserHotelRoomBookingDetails } from "types/RoomBooking"
+import { Hotel } from "types/Hotel";
+import { Booking } from "types/Booking";
+import { Room } from "types/Room";
 
 export const isUniqueBooking = (BookingsList: UserHotelRoomBooking[], body: UserHotelRoomBooking) => {
     const matchingBookings = BookingsList.filter((booking: UserHotelRoomBooking) => booking.room_id === body.room_id && booking.user_email === body.user_email && booking.hotel_id === body.hotel_id).length;
@@ -20,4 +23,33 @@ export const areDatesAlreadyBlocked = (BookingsList: UserHotelRoomBooking[], bod
     console.log("🚀 ~ areDatesAlreadyBlocked****************************************** ~ matchingBookings:", matchingBookings)
     // if there is a matching booking, return false
     return matchingBookings 
+}
+
+export function populateBookingsWithDetails(hotels: Hotel[], rooms: Record<number, Room[]>, bookings: UserHotelRoomBooking[]) {
+    const bookingArray: UserHotelRoomBookingDetails[] = [];
+
+    bookings.forEach(booking => {
+        const hotel = hotels.find(h => h.id === booking.hotel_id);
+        const room = rooms[booking.hotel_id]?.find(r => r.id === booking.room_id);
+
+        if (hotel && room) {
+            const bookingDetails = {
+                booking_id: booking.booking_id,
+                user_email: booking.user_email,
+                check_in_date: booking.check_in_date,
+                check_out_date: booking.check_out_date,
+                hotel_name: hotel.name,
+                room_details: {
+                    type: room.type,
+                    noOfRooms: room.noOfRooms,
+                    amenities: room.amenities,
+                },
+                total_amount: room.price,
+            };
+
+            bookingArray.push(bookingDetails);
+        }
+    });
+
+    return bookingArray;
 }

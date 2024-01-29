@@ -4,4 +4,5 @@ export type Room = {
     price: number;
     amenities: string[];
     hotel_id: number;
+    noOfRooms: number;
 }
