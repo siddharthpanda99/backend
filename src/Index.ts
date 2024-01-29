@@ -9,6 +9,7 @@ import { Logger } from "middlewares/Logger";
 import cors from 'cors';
 // import {appLogger} from "middlewares/Logger";
 import { notFoundHandler } from "middlewares/NotFoundHandler";
+import { errorHandler } from "middlewares/ErrorHandler";
 
 dotenv.config();
 
@@ -28,7 +29,6 @@ app.use(cors(options));
 
 app.use(express.json());
 app.use(Logger);
-
 app.get("/", (req: Request, res: Response) => {
     res.send("Express + TypeScript Server");
 });
@@ -37,6 +37,7 @@ app.use("/api/v1", authRouter);
 app.use("/api/v1", hotelsRouter);
 app.use("/api/v1", userRouter);
 
+app.use(errorHandler)
 app.use(notFoundHandler);
 
 

@@ -1,39 +1,38 @@
-import { ErrorRequestHandler, Request, Response, NextFunction } from "express";
-import {
-    BadRequestError,
-    NotFoundError,
-    UnAuthorizedError,
-    ValidationError,
-} from "../errors";
+import express, { ErrorRequestHandler, NextFunction, Request, Response } from 'express';
 
-const errorHandlerMiddleWare: ErrorRequestHandler = async (
-    err,
-    req: Request,
-    res: Response,
-    next: NextFunction
-) => {
-    if (err.errorName === "ValidationError") {
-        const errorObj = err.errors.reduce(
-            (prev: any, validationError: ValidationError) => {
-                return {
-                    ...prev,
-                    [validationError.fieldName]: validationError.message,
-                };
-            },
-            {}
-        );
-        return res.status(err.statusCode).json(errorObj);
+interface CustomError extends Error {
+    status?: number;
+}
+
+export const errorHandler: ErrorRequestHandler = (err: CustomError, req: Request, res: Response, next: NextFunction) => {
+    console.error('Error handler middleware triggered:', err);
+
+    let statusCode: number = err.status || 500;
+    let errorMessage: string = err.message || 'Internal Server Error';
+
+    // Customize error messages and status codes based on error type
+    switch (statusCode) {
+        case 400:
+            errorMessage = 'Bad Request';
+            break;
+        case 403:
+            errorMessage = 'Forbidden';
+            break;
+        case 404:
+            errorMessage = 'Not Found';
+            break;
+        // Add more cases as needed
+
+        // Default case for other errors
+        default:
+            statusCode = 500;
+            errorMessage = 'Internal Server Error';
     }
-    if (
-        err instanceof BadRequestError ||
-        err instanceof UnAuthorizedError ||
-        err instanceof NotFoundError
-    ) {
-        return res.status(err.statusCode).json({ message: err.message });
-    }
-    return res
-        .status(500)
-        .json({ message: "something went wrong please try again later" });
+
+    // Set the response status and send a JSON response
+    res.status(statusCode).json({
+        error: {
+            message: errorMessage,
+        },
+    });
 };
-
-export default errorHandlerMiddleWare;
