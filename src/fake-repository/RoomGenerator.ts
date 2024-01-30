@@ -41,7 +41,7 @@ const hotelIds = hotelsJson.map((hotel) => hotel.id);
 // Generating rooms for each hotel
 hotelIds.forEach((hotelId) => {
   console.log("🚀 ~ hotelIds.forEach ~ hotelId:", hotelId)
-  hotelsWithRooms[parseInt(hotelId)] = generateRoomsForHotel(hotelId);
+  hotelsWithRooms[hotelId.toString()] = generateRoomsForHotel(hotelId);
   if(hotelsJson[hotelId]){hotelsJson[hotelId]['price'] = generateRoomsForHotel(hotelId)[0].price;}
   console.log("🚀 ~ hotelIds.forEach ~ generateRoomsForHotel(hotelId):", generateRoomsForHotel(hotelId)[0].price, hotelsJson[hotelId])
 });

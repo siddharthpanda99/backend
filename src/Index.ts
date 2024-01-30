@@ -5,9 +5,8 @@ import dotenv from "dotenv";
 import pool from "./config";
 import { authRouter, hotelsRouter, userRouter } from "./routes";
 import { warn } from "console";
-import { Logger } from "middlewares/Logger";
+// import { Logger } from "middlewares/Logger";
 import cors from 'cors';
-// import {appLogger} from "middlewares/Logger";
 import { notFoundHandler } from "middlewares/NotFoundHandler";
 import { errorHandler } from "middlewares/ErrorHandler";
 
@@ -28,7 +27,7 @@ const options: cors.CorsOptions = {
 app.use(cors(options));
 
 app.use(express.json());
-app.use(Logger);
+// app.use(Logger);
 app.get("/", (req: Request, res: Response) => {
     res.send("Express + TypeScript Server");
 });
