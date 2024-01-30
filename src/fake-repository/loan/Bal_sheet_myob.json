@@ -1,0 +1,74 @@
+[
+  {
+    "year": 2020,
+    "month": 1,
+    "profitOrLoss": -3736,
+    "assetsValue": 24926011
+  },
+  {
+    "year": 2020,
+    "month": 2,
+    "profitOrLoss": -4288,
+    "assetsValue": 12463330
+  },
+  {
+    "year": 2020,
+    "month": 3,
+    "profitOrLoss": 8761,
+    "assetsValue": 6232430
+  },
+  {
+    "year": 2020,
+    "month": 4,
+    "profitOrLoss": 1571,
+    "assetsValue": 3117430
+  },
+  {
+    "year": 2020,
+    "month": 5,
+    "profitOrLoss": -4969,
+    "assetsValue": 1558490
+  },
+  {
+    "year": 2020,
+    "month": 6,
+    "profitOrLoss": 9379,
+    "assetsValue": 778026
+  },
+  {
+    "year": 2020,
+    "month": 7,
+    "profitOrLoss": 7133,
+    "assetsValue": 390037
+  },
+  {
+    "year": 2020,
+    "month": 8,
+    "profitOrLoss": 3554,
+    "assetsValue": 195404
+  },
+  {
+    "year": 2020,
+    "month": 9,
+    "profitOrLoss": 2648,
+    "assetsValue": 97043
+  },
+  {
+    "year": 2020,
+    "month": 10,
+    "profitOrLoss": 4412,
+    "assetsValue": 47111
+  },
+  {
+    "year": 2020,
+    "month": 11,
+    "profitOrLoss": 2476,
+    "assetsValue": 25448
+  },
+  {
+    "year": 2020,
+    "month": 12,
+    "profitOrLoss": -63226,
+    "assetsValue": -99472764
+  }
+]

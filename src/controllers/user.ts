@@ -1,8 +1,7 @@
-import { Request, Response, NextFunction } from "express";
+import { Request, Response } from "express";
 import UserHotelRoomBookingJson from "fake/UserHotelRoomBooking.json";
 import hotels from 'fake/Hotels.json'
 import roomsJson from 'fake/hotelsWithRooms.json'
-import { Booking } from "types/Booking";
 import { populateBookingsWithDetails } from "src/utils/Booking";
 
 

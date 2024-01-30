@@ -3,7 +3,7 @@ import express, { Express, Request, Response } from "express";
 import dotenv from "dotenv";
 
 import pool from "./config";
-import { authRouter, balanceSheetRouter, hotelsRouter, userRouter } from "./routes";
+import { authRouter, loanRouter, hotelsRouter, userRouter } from "./routes";
 import { warn } from "console";
 // import { Logger } from "middlewares/Logger";
 import cors from 'cors';
@@ -35,7 +35,7 @@ app.get("/", (req: Request, res: Response) => {
 app.use("/api/v1", authRouter);
 app.use("/api/v1", hotelsRouter);
 app.use("/api/v1", userRouter);
-app.use("/api/v1", balanceSheetRouter);
+app.use("/api/v1", loanRouter);
 
 app.use(errorHandler)
 app.use(notFoundHandler);
