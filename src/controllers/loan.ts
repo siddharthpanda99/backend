@@ -82,7 +82,7 @@ export const submitApp = async (req: Request, res: Response) => {
         // Read from the loanslist to fin the requiredLoad entry we want to modify
         const fileBuffer = fs.readFileSync('src/fake-repository/LoanApplications.json').toString();
         const LoansList = JSON.parse(fileBuffer);
-        const reqLoanId = LoansList.findIndex((el: LoanApplication) =>  el.user_id == body.user_id)
+        const reqLoanId = LoansList.findIndex((el: LoanApplication) => el.user_id == body.user_id && !el.processingDate)
 
         // Update the required loan entry by populating with data from decisionENgineRes
         LoansList[reqLoanId] = { ...LoansList[reqLoanId], companyName: body.companyName, provider: body.provider, loan_amt: body.loan_amt, preAssessment: decisionENgineRes.preAssessment, processingDate: decisionENgineRes.processingDate }

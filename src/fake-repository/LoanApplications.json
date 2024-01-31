@@ -1,1 +1,46 @@
-[]
+[
+  {
+    "id": 1,
+    "companyName": "ABC company",
+    "provider": "xero",
+    "user_id": 1,
+    "loan_amt": 160000,
+    "approved": true,
+    "preAssessment": "0",
+    "processingDate": "Wed Jan 31 2024 21:05:39 GMT+0530 (India Standard Time)",
+    "initiationDate": "Wed Jan 31 2024 21:05:33 GMT+0530 (India Standard Time)"
+  },
+  {
+    "id": 2,
+    "companyName": "ABC company",
+    "provider": "xero",
+    "user_id": 1,
+    "loan_amt": 160000,
+    "approved": true,
+    "preAssessment": "0",
+    "processingDate": "Wed Jan 31 2024 21:17:36 GMT+0530 (India Standard Time)",
+    "initiationDate": "Wed Jan 31 2024 21:11:56 GMT+0530 (India Standard Time)"
+  },
+  {
+    "id": 3,
+    "companyName": "ABC company",
+    "provider": "xero",
+    "user_id": 1,
+    "loan_amt": 160000,
+    "approved": true,
+    "preAssessment": "0",
+    "processingDate": "Wed Jan 31 2024 21:28:31 GMT+0530 (India Standard Time)",
+    "initiationDate": "Wed Jan 31 2024 21:23:02 GMT+0530 (India Standard Time)"
+  },
+  {
+    "id": 4,
+    "companyName": "ABC company",
+    "provider": "xero",
+    "user_id": 1,
+    "loan_amt": 160000,
+    "approved": false,
+    "preAssessment": "0",
+    "processingDate": "Wed Jan 31 2024 21:29:30 GMT+0530 (India Standard Time)",
+    "initiationDate": "Wed Jan 31 2024 21:29:06 GMT+0530 (India Standard Time)"
+  }
+]
