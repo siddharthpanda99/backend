@@ -41,7 +41,9 @@ export const initiateLoanApp = async (req: Request, res: Response) => {
             user_id: 0,
             loan_amt: 0,
             approved: false,
-            preAssessment: ""
+            preAssessment: "",
+            processingDate: "",
+            initiationDate: (new Date()).toString()
         }
         if (LoansList.length) {
             // Means there are some loans already there
@@ -74,12 +76,16 @@ export const submitApp = async (req: Request, res: Response) => {
         console.log("🚀 ~ submitApp ~ body:", body)
         // For now, we don't allow modifications to company sheets
         // Check for conditions and send request to decision engines
-        const decisionENgineRes = await fetchDecision(body)
+        const decisionENgineRes: LoanApplication | any = await fetchDecision(body)
         console.log("🚀 ~ submitApp ~ decisionENgineRes:", decisionENgineRes)
+
+        // Read from the loanslist to fin the requiredLoad entry we want to modify
         const fileBuffer = fs.readFileSync('src/fake-repository/LoanApplications.json').toString();
         const LoansList = JSON.parse(fileBuffer);
         const reqLoanId = LoansList.findIndex((el: LoanApplication) =>  el.user_id == body.user_id)
-        LoansList[reqLoanId] = { ...LoansList[reqLoanId], companyName: body.companyName, provider: body.provider, loan_amt: body.loan_amt, preAssessment: decisionENgineRes.preAssessment }
+
+        // Update the required loan entry by populating with data from decisionENgineRes
+        LoansList[reqLoanId] = { ...LoansList[reqLoanId], companyName: body.companyName, provider: body.provider, loan_amt: body.loan_amt, preAssessment: decisionENgineRes.preAssessment, processingDate: decisionENgineRes.processingDate }
         fs.writeFileSync('src/fake-repository/LoanApplications.json', JSON.stringify(LoansList, null, 2));
         res.status(200).send({ data: decisionENgineRes, message: "Your loan request is submitted successfully" });
         

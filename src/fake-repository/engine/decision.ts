@@ -6,15 +6,15 @@ const decisionEngine = (details: LoanApplication) => {
     console.log("🚀 ~ decisionEngine ~ netProfit:", netProfit)
     const avgAssetVal = balMyobJson.reduce((total, item) => total + item.assetsValue, 0)
     console.log("🚀 ~ decisionEngine ~ avgAssetVal:", avgAssetVal)
-    let res;
+    let res = { ...details, "preAssessment": "60", approved: true, processingDate: (new Date()).toString() }
     if(netProfit > 0) {
-        res =  {...details, "preAssessment": "60", approved: true }
-    } else res = { ...details, "preAssessment": "20", approved: true }
+        res =  res
+    } else res = { ...res, "preAssessment": "20" }
     if (avgAssetVal > details.loan_amt) {
-        res = { ...details, "preAssessment": "100", approved: true }
-    } else res = { ...details, "preAssessment": "20", approved: true }
+        res = { ...res, "preAssessment": "100"}
+    } else res = { ...res, "preAssessment": "20" }
     if (netProfit < 0 && avgAssetVal < details.loan_amt) {
-        res = { ...details, "preAssessment": "0", approved: false }
+        res = { ...res, "preAssessment": "0", approved: false }
     }
     return res
 }
