@@ -1,9 +1,9 @@
 export type LoanApplication = {
-    id: number;
-    name: Date;
+    id?: number;
+    companyName: Date;
     provider: Date;
     user_id: number;
     loan_amt: number;
-    approved?: number;
+    approved?: string;
     preAssessment?: string
 }

@@ -8,11 +8,14 @@ const decisionEngine = (details: LoanApplication) => {
     console.log("🚀 ~ decisionEngine ~ avgAssetVal:", avgAssetVal)
     let res;
     if(netProfit > 0) {
-        res =  {...details, "preAssessment": "60" }
-    } else res = { ...details, "preAssessment": "20" }
+        res =  {...details, "preAssessment": "60", approved: true }
+    } else res = { ...details, "preAssessment": "20", approved: true }
     if (avgAssetVal > details.loan_amt) {
-        res = { ...details, "preAssessment": "100" }
-    } else res = { ...details, "preAssessment": "20" }
+        res = { ...details, "preAssessment": "100", approved: true }
+    } else res = { ...details, "preAssessment": "20", approved: true }
+    if (netProfit < 0 && avgAssetVal < details.loan_amt) {
+        res = { ...details, "preAssessment": "0", approved: false }
+    }
     return res
 }
 

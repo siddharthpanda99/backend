@@ -1,0 +1,11 @@
+[
+  {
+    "id": 1,
+    "companyName": "ABC company",
+    "provider": "xero",
+    "user_id": 1,
+    "loan_amt": 200000,
+    "approved": false,
+    "preAssessment": "0"
+  }
+]
