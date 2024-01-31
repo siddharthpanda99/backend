@@ -3,7 +3,6 @@ import fs from 'fs';
 import { fetchCompanySheetSimulated } from "fake/BalanceSheetProvider";
 import { LoanApplication } from "types/LoanApplication";
 import { fetchDecision } from "fake/engine/decision";
-import { message } from 'antd';
 
 // During intiation, call this api to create a local file
 // You hit it only once during the loan process init and get back relevant data for all possible providers

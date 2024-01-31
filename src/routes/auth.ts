@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 const authRouter = Router();
-import { loginUserValidation, allValidatorsPassed } from 'validators/authValidators';
+import { loginUserValidation, allValidatorsPassed } from 'validators/index';
 
 import { loginUser, signUpUser } from "controllers/auth";
 
