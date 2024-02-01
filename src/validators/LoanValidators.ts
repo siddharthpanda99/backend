@@ -50,7 +50,7 @@ const userAlreadyHasUninitiatedLoanRequest: CustomValidator = async (user_id: nu
 const userHasNotInitiatedLoanProcess: CustomValidator = async (user_id: number) => {
     if(LoanAppJson.length){
         // Query the datasource to check if the specified user has an existing loan which is not intitiated ie processingDate doesn't exist
-        const requiredLoanEntries = LoanAppJson.filter(lapp => {
+        const requiredLoanEntries = (LoanAppJson as LoanApplication[]).filter(lapp => {
             return lapp.user_id === user_id && !lapp.processingDate 
         })
 
