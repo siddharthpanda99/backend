@@ -26,7 +26,7 @@ export const errorHandler: ErrorRequestHandler = (err: CustomError, req: Request
         // Default case for other errors
         default:
             statusCode = 500;
-            errorMessage = 'Internal Server Error';
+            errorMessage = 'Internal Server Errorsddfs';
     }
 
     // Set the response status and send a JSON response

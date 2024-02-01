@@ -38,7 +38,7 @@
     "provider": "xero",
     "user_id": 1,
     "loan_amt": 160000,
-    "approved": false,
+    "approved": true,
     "preAssessment": "0",
     "processingDate": "Wed Jan 31 2024 21:29:30 GMT+0530 (India Standard Time)",
     "initiationDate": "Wed Jan 31 2024 21:29:06 GMT+0530 (India Standard Time)"
