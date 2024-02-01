@@ -1,92 +1,20 @@
 [
   {
-    "hotel_id": 1,
-    "check_in_date": "Fri, 26 Jan 2024 21:34:03 GMT",
-    "check_out_date": "Fri, 26 Jan 2024 21:34:03 GMT",
+    "hotel_id": 19,
+    "check_in_date": "Thu, 01 Feb 2024 12:08:59 GMT",
+    "check_out_date": "Fri, 02 Feb 2024 12:08:59 GMT",
     "room_id": 1,
-    "total_amount": 168,
-    "user_email": "john12@example.com",
+    "total_amount": 278,
+    "user_email": "john@example.com",
     "booking_id": 1
   },
   {
-    "hotel_id": 1,
-    "check_in_date": "Fri, 7 Jan 2024 21:34:03 GMT",
-    "check_out_date": "Fri, 20 Jan 2024 21:34:03 GMT",
-    "room_id": 1,
-    "total_amount": 168,
-    "user_email": "john123@example.com",
+    "hotel_id": 19,
+    "check_in_date": "Thu, 01 Feb 2024 12:09:08 GMT",
+    "check_out_date": "Fri, 02 Feb 2024 12:09:08 GMT",
+    "room_id": 2,
+    "total_amount": 250,
+    "user_email": "john@example.com",
     "booking_id": 2
-  },
-  {
-    "hotel_id": 1,
-    "check_in_date": "Fri, 24 Jan 2024 21:34:03 GMT",
-    "check_out_date": "Fri, 25 Jan 2024 21:34:03 GMT",
-    "room_id": 1,
-    "total_amount": 168,
-    "user_email": "john1234@example.com",
-    "booking_id": 3
-  },
-  {
-    "hotel_id": 1,
-    "check_in_date": "Sat, 27 Jan 2024 07:32:41 GMT",
-    "check_out_date": "Sat, 27 Jan 2024 07:32:41 GMT",
-    "room_id": 1,
-    "total_amount": 168,
-    "user_email": "john@example.com",
-    "booking_id": 4
-  },
-  {
-    "hotel_id": 1,
-    "check_in_date": "Sat, 27 Jan 2024 08:25:45 GMT",
-    "check_out_date": "Sat, 27 Jan 2024 08:25:45 GMT",
-    "room_id": 3,
-    "total_amount": 149,
-    "user_email": "john@example.com",
-    "booking_id": 5
-  },
-  {
-    "hotel_id": 2,
-    "check_in_date": "Sat, 27 Jan 2024 08:26:35 GMT",
-    "check_out_date": "Sat, 27 Jan 2024 08:26:35 GMT",
-    "room_id": 1,
-    "total_amount": 257,
-    "user_email": "john@example.com",
-    "booking_id": 6
-  },
-  {
-    "hotel_id": 3,
-    "check_in_date": "Fri, 7 Jan 2024 21:34:03 GMT",
-    "check_out_date": "Fri, 20 Jan 2024 21:34:03 GMT",
-    "room_id": 1,
-    "total_amount": 168,
-    "user_email": "john123@example.com",
-    "booking_id": 7
-  },
-  {
-    "hotel_id": 30,
-    "check_in_date": "Fri, 7 Jan 2024 21:34:03 GMT",
-    "check_out_date": "Fri, 20 Jan 2024 21:34:03 GMT",
-    "room_id": 1,
-    "total_amount": 168,
-    "user_email": "john123@example.com",
-    "booking_id": 8
-  },
-  {
-    "hotel_id": 3,
-    "check_in_date": "Fri, 27 Jan 2024 21:34:03 GMT",
-    "check_out_date": "Fri, 20 Jan 2024 21:34:03 GMT",
-    "room_id": 1,
-    "total_amount": 168,
-    "user_email": "john@example.com",
-    "booking_id": 9
-  },
-  {
-    "hotel_id": 3,
-    "check_in_date": "Fri, 27 Jan 2024 21:34:03 GMT",
-    "check_out_date": "Fri, 20 Jan 2024 21:34:03 GMT",
-    "room_id": 3,
-    "total_amount": 168,
-    "user_email": "john@example.com",
-    "booking_id": 10
   }
 ]

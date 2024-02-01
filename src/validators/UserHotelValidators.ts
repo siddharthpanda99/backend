@@ -33,8 +33,10 @@ const userExists: CustomValidator = async (user_email: string) => {
 };
 
 const dateValidator: CustomValidator = (value: string, { req }) => {
-    const checkInDate = new Date(req.body.check_in_date);
-    const checkOutDate = new Date(value);
+    const checkInDate = Date.parse(req.body.check_in_date);
+    console.log("🚀 ~ checkInDate:", checkInDate)
+    const checkOutDate = Date.parse(req.body.check_out_date);
+    console.log("🚀 ~ checkOutDate:", checkOutDate)
 
     // Check that check_in_date and check_out_date are not the same
     if (checkInDate === checkOutDate) {
@@ -47,7 +49,8 @@ const dateValidator: CustomValidator = (value: string, { req }) => {
     }
 
     // Check that both check_in_date and check_out_date are not in the past
-    const currentDate = new Date();
+    const currentDate = Date.now();
+    console.log("🚀 ~ currentDate:", currentDate)
     if (checkInDate < currentDate || checkOutDate < currentDate) {
         throw new Error('Check-in and check-out dates must be in the future');
     }
@@ -57,9 +60,9 @@ export const UserBookingValidation = [
     body('hotel_id')
         .notEmpty().withMessage('Please enter the id for hotel you are booking for').custom(hotelExists),
     body('check_in_date')
-        .notEmpty().withMessage('Please enter your check_in_date').custom(dateValidator),
+        .notEmpty().withMessage('Please enter your check_in_date'),
     body('check_out_date')
-        .notEmpty().withMessage('Please enter your check_out_date').custom(dateValidator),
+        .notEmpty().withMessage('Please enter your check_out_date'),
     body('room_id')
         .notEmpty().withMessage('Please enter your room_id'),
     body('total_amount')

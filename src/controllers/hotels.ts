@@ -182,7 +182,7 @@ const bookHotel = (req: Request, res: Response) => {
     const fileBuffer = fs.readFileSync('src/fake-repository/UserHotelRoomBooking.json').toString();
     const BookingsList = JSON.parse(fileBuffer);
     console.log("🚀 ~ bookHotel ~ BookingsList:", BookingsList?.slice(-1))
-    body.booking_id = BookingsList[BookingsList?.length - 1]?.booking_id + 1
+    body.booking_id = BookingsList.length ? BookingsList[BookingsList?.length - 1]?.booking_id + 1 : 1
     // If combination of room, hotel, user and booking id must be unique 
     const isUnique = isUniqueBooking(BookingsList, body)
     const datesOverlapping = areDatesAlreadyBlocked(BookingsList, body)
