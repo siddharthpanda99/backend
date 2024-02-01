@@ -12,7 +12,7 @@ coverage
 benchmarks/graphs
 
 # Generated files
-.env*
+# .env*
 dist
 data
 
