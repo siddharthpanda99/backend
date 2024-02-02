@@ -13,6 +13,9 @@
     "testgen": "tsx src/scripts/BDDTestGen/TestGenerationScript.ts",
     "trace": "ts-node --require src/instrumentation.ts src/index.ts"
   },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

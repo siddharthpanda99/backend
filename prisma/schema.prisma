@@ -27,7 +27,7 @@ model Hotel {
   id          Int      @id @default(autoincrement()) @map("hotel_id")
   name        String   @db.VarChar(100)
   location    String   @db.VarChar(100)
-  rating      String   @db.Char(60)
+  rating      Int   
   price       Int      
   bookings    Bookings[]
   @@map("hotels") // This maps the model to a database table named "hotels".
