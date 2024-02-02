@@ -6,6 +6,7 @@ import { UserHotelRoomBooking } from "types/RoomBooking";
 import { areDatesAlreadyBlocked, isUniqueBooking } from 'src/utils/Booking';
 import { SortFilterOptions } from 'src/utils/sortFilter';
 import { sortAndFilterList } from 'src/utils/sortFilter';
+import { PrismaClient } from '@prisma/client';
 
 /**
  * Retrieves a list of hotels.
@@ -52,17 +53,19 @@ import { sortAndFilterList } from 'src/utils/sortFilter';
  * // }
  */
 // http://localhost:8000/api/v1/hotels?sortField=rating&sortOrder=descsortField=price&sortOrder=desc&filters[location]=Countryside&filters[location]=Countryside&filters[location]=Downtown
-const getListOfHotels = (req: Request, res: Response) => {
+const getListOfHotels = async (req: Request, res: Response) => {
     const options:SortFilterOptions = {
         sortFields: req.query.sortField as string,
         sortOrder: req.query.sortOrder as 'asc' | 'desc',
         filters: req.query.filters as Record<string, any>,
     };
+    const prisma = new PrismaClient()
     console.log("🚀 ~ getListOfHotels ~ options:", options)
+    const hotels = await prisma.hotel.findMany();
+    console.log("🚀 ~ getListOfHotels ~ hotels:", hotels)
+    // const sortedAndFilteredItems = sortAndFilterList(hotels, options);
 
-    const sortedAndFilteredItems = sortAndFilterList(hotels, options);
-
-    res.send({ data: sortedAndFilteredItems, message: 'Fetched a list of hotels' })
+    res.send({ data: hotels, message: 'Fetched a list of hotels' })
 }
 
 

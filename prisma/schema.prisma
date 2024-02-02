@@ -1,0 +1,65 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          Int      @id @default(autoincrement()) @map("user_id") 
+  first_name  String   @db.VarChar(100)
+  last_name   String   @db.VarChar(100)
+  username    String   @db.VarChar(100) @unique
+  password    String   @db.Char(60) //<-I want this field to be hashed when
+  email       String   @db.VarChar(100) @unique
+  bookings    Bookings[]
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  @@map("users") // This maps the model to a database table named "users".
+}
+
+model Hotel {
+  id          Int      @id @default(autoincrement()) @map("hotel_id")
+  name        String   @db.VarChar(100)
+  location    String   @db.VarChar(100)
+  rating      String   @db.Char(60)
+  price       Int      
+  bookings    Bookings[]
+  @@map("hotels") // This maps the model to a database table named "hotels".
+}
+
+model Bookings {
+  id              Int      @id @default(autoincrement()) @map("booking_id")
+  check_in_date   DateTime @default(now()) @map("check_in_date")
+  check_out_date  DateTime @updatedAt @map("check_out_date")
+  user            User     @relation(fields: [user_id], references: [id])
+  total_amount    Int
+  user_id         Int    
+  room            Room     @relation(fields: [room_id], references: [id])  
+  room_id         Int     
+  hotel           Hotel     @relation(fields: [hotel_id], references: [id])  
+  hotel_id        Int     
+  @@map("bookings") // This maps the model to a database table named "hotels".
+}
+
+model Room {
+  id              Int      @id @default(autoincrement()) @map("room_id")
+  type            String
+  price           Int
+  bookings        Bookings[]
+  @@map("rooms") // This maps the model to a database table named "hotels".
+}
+
+enum Amenities {
+  free_wifi             @map("Free Wi-Fi")
+  comp_breakfast        @map("Complimentary Breakfast")
+  room_service          @map("Room Service")
+  free_parking          @map("Free Parking")
+  onsite_restaurant     @map("On-site Restaurant")
+  pet_friendly          @map("Pet-Friendly")
+}

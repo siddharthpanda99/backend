@@ -1,8 +1,7 @@
 // src/index.js
 import express, { Express, Request, Response } from "express";
 import dotenv from "dotenv";
-
-import pool from "./config";
+// import { createDatabase } from "./config/db";
 import { authRouter, loanRouter, hotelsRouter, userRouter } from "./routes";
 import { warn } from "console";
 // import { Logger } from "middlewares/Logger";
@@ -14,6 +13,7 @@ dotenv.config();
 
 const app: Express = express();
 const port = process.env.PORT || 3000;
+// createDatabase();
 
 // Add a list of allowed origins.
 // If you have more origins you would like to add, you can add them to the array below.

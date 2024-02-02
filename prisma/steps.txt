@@ -1,0 +1,25 @@
+To apply the changes to database:
+npx prisma migrate dev --name init
+This creates a migration 
+
+Then use 
+npx prisma generate
+
+which will genrate the client for prisma to help us run queries
+
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+
+✔ Generated Prisma Client (v5.9.1) to .\node_modules\.pnpm\@prisma+client@5.9.1_prisma@5.9.1\node_modules\@prisma\client in 69ms
+
+Start using Prisma Client in Node.js (See: https://pris.ly/d/client)
+```
+import { PrismaClient } from '@prisma/client'
+const prisma = new PrismaClient()
+```
+or start using Prisma Client at the edge (See: https://pris.ly/d/accelerate)
+```
+import { PrismaClient } from '@prisma/client/edge'
+const prisma = new PrismaClient()
+
+
