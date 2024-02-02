@@ -1,0 +1,21 @@
+### Login ###
+POST http://localhost:8000/api/v1/login
+Content-Type: application/json
+
+{
+  "email": "john@example.com",
+  "password": "password123"
+}
+####
+
+### SignUp ####
+POST http://localhost:8000/api/v1/signup
+Content-Type: application/json
+
+{
+  "username": "je2023",
+  "email": "john@example1.com",
+  "password": "password123",
+  "first_name": "John",
+  "last_name": "Example"
+}

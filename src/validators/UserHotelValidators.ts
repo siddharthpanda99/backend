@@ -34,9 +34,9 @@ const userExists: CustomValidator = async (user_email: string) => {
 
 const dateValidator: CustomValidator = (value: string, { req }) => {
     const checkInDate = Date.parse(req.body.check_in_date);
-    console.log("🚀 ~ checkInDate:", checkInDate)
+    console.log("🚀 ~ checkInDate:", checkInDate, req.body.check_in_date)
     const checkOutDate = Date.parse(req.body.check_out_date);
-    console.log("🚀 ~ checkOutDate:", checkOutDate)
+    console.log("🚀 ~ checkOutDate:", checkOutDate, req.body.check_out_date)
 
     // Check that check_in_date and check_out_date are not the same
     if (checkInDate === checkOutDate) {
@@ -60,9 +60,9 @@ export const UserBookingValidation = [
     body('hotel_id')
         .notEmpty().withMessage('Please enter the id for hotel you are booking for').custom(hotelExists),
     body('check_in_date')
-        .notEmpty().withMessage('Please enter your check_in_date'),
+        .notEmpty().withMessage('Please enter your check_in_date').custom(dateValidator),
     body('check_out_date')
-        .notEmpty().withMessage('Please enter your check_out_date'),
+        .notEmpty().withMessage('Please enter your check_out_date').custom(dateValidator),
     body('room_id')
         .notEmpty().withMessage('Please enter your room_id'),
     body('total_amount')

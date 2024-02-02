@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { User } from "types/User";
+import { SignUpUserInput, User } from "types/User";
 import { users } from "fake/Users";
 
 /**
@@ -39,7 +39,7 @@ import { users } from "fake/Users";
  * // }
  */
 const signUpUser = (req: Request, res: Response) => {
-    const body: User = req.body;
+    const body: SignUpUserInput = req.body;
     if (!body.email || !body.password) {
         res.status(403).send({ data: {}, message: 'Please enter username and/or password' })
     }
