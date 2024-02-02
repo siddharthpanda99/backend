@@ -23,3 +23,5 @@ import { PrismaClient } from '@prisma/client/edge'
 const prisma = new PrismaClient()
 
 
+Whenever you make a change to db schema, run migration
+npx prisma migrate dev --name changed-hotel-rating-to-string

@@ -4,10 +4,9 @@
 import { PrismaClient } from '@prisma/client'
 import hotelsJson from 'fake/Hotels.json';
 import {users} from 'fake/Users'
-import { User } from '../src/types/User';
 
 const prisma = new PrismaClient()
-console.log(hotelsJson)
+console.log("🚀 ~ hotelsJson:", hotelsJson)
 console.log("🚀 ~ users:", users)
 
 

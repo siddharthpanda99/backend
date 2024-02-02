@@ -44,7 +44,7 @@ model Bookings {
   room_id         Int     
   hotel           Hotel     @relation(fields: [hotel_id], references: [id])  
   hotel_id        Int     
-  @@map("bookings") // This maps the model to a database table named "hotels".
+  @@map("bookings") // This maps the model to a database table named "bookings".
 }
 
 model Room {
@@ -52,7 +52,29 @@ model Room {
   type            String
   price           Int
   bookings        Bookings[]
-  @@map("rooms") // This maps the model to a database table named "hotels".
+  @@map("rooms") // This maps the model to a database table named "rooms".
+}
+
+model LoanApplication {
+  id                Int      @id @default(autoincrement()) @map("loan_id")
+  companyName       String
+  provider          Int
+  loan_amt          Int
+  approved          Boolean
+  preAssessment     String
+  initiation_date   DateTime @default(now()) @map("initiation_date")
+  processing_date   DateTime @updatedAt @map("processing_date")
+  @@map("loan_applications") // This maps the model to a database table named "hotels".
+}
+
+model BalanceSheet {
+  id                Int      @id @default(autoincrement()) @map("bal_sheet_id")
+  companyName       String
+  year              Int
+  month             Int
+  profitOrLoss      Int
+  assetsValue       Int
+  @@map("bal_sheet") // This maps the model to a database table named "hotels".
 }
 
 enum Amenities {
