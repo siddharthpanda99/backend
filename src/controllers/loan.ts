@@ -4,6 +4,7 @@ import { fetchCompanySheetSimulated } from "fake/BalanceSheetProvider";
 import { LoanApplication, LoanInitiationInput } from "types/LoanApplication";
 import { fetchDecision } from "fake/engine/decision";
 import { users } from "fake/Users";
+import LoanAppJson from 'fake/LoanApplications.json'
 
 // During intiation, call this api to create a local file
 // You hit it only once during the loan process init and get back relevant data for all possible providers
@@ -53,7 +54,7 @@ export const initiateLoanApp = async (req: Request, res: Response) => {
             const lastId = LoansList[LoansList.length - 1]["id"];
             LoansList.push({
                 ...loanObj,
-                id: lastId+1,
+                id: lastId + 1,
                 user_id: current_user_id
             })
         } else LoansList.push({
@@ -69,6 +70,24 @@ export const initiateLoanApp = async (req: Request, res: Response) => {
         res.status(500).send({ error: 'Internal Server Error' });
     }
 };
+
+// Get list of loans for the user
+// http://localhost:8000/api/v1/loans?user_email=abd
+export const loansListPerUser = async (req: Request, res: Response) => {
+    const curr_user: number | undefined = typeof req.query.user_id === 'string' ? parseInt(req.query.user_id, 10) : undefined;
+    console.log("🚀 ~ loansListPerUser ~ curr_user:", curr_user)
+    try {
+        let filteredLoansList;
+        if (curr_user) {
+             filteredLoansList = LoanAppJson.filter((loanApp) => loanApp.user_id === curr_user)
+        } 
+
+
+        res.status(200).send({ data: filteredLoansList, message: `Fetched a list of loans for user` });
+    } catch (error) {
+        res.status(500).send({ error: 'Internal Server Error' });
+    }
+}
 
 
 // Submit app with bal sheet
@@ -90,7 +109,7 @@ export const submitApp = async (req: Request, res: Response) => {
         LoansList[reqLoanId] = { ...LoansList[reqLoanId], companyName: body.companyName, provider: body.provider, loan_amt: body.loan_amt, preAssessment: decisionENgineRes.preAssessment, processingDate: decisionENgineRes.processingDate }
         fs.writeFileSync('src/fake-repository/LoanApplications.json', JSON.stringify(LoansList, null, 2));
         res.status(200).send({ data: decisionENgineRes, message: "Your loan request is submitted successfully" });
-        
+
     } catch (error) {
         res.status(500).send({ error: 'Internal Server Error' });
     }

@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { getSheetByProvider, initiateLoanApp, submitApp } from 'controllers/loan';
+import { getSheetByProvider, initiateLoanApp, loansListPerUser, submitApp } from 'controllers/loan';
 import { LoanInitiationValidator } from 'validators/LoanValidators';
 import { allValidatorsPassed } from 'validators/index';
 import { LoanSubmissionvalidator } from 'validators/LoanValidators';
@@ -13,5 +13,7 @@ loanRouter.route('/loan/bal-sheet/:provider').get(getSheetByProvider)
 
 // When loan app submitted, we receive the balance sheet + user + comapny details, then we send out the request to decision engine that will process the whole info and return the response back to user that loan process in progress
 loanRouter.route('/loan/submit').post(LoanSubmissionvalidator, allValidatorsPassed, submitApp);
+
+loanRouter.route('/loans').get(loansListPerUser)
 
 export default loanRouter;
