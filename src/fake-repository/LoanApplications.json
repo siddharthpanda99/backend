@@ -45,13 +45,13 @@
   },
   {
     "id": 5,
-    "companyName": "",
-    "provider": "",
+    "companyName": "ABC",
+    "provider": "xero",
     "user_id": 1,
-    "loan_amt": 0,
+    "loan_amt": "1000000000000",
     "approved": false,
-    "preAssessment": "",
-    "processingDate": "",
-    "initiationDate": "Mon Feb 05 2024 09:02:45 GMT+0530 (India Standard Time)"
+    "preAssessment": "0",
+    "processingDate": "Mon Feb 05 2024 13:25:40 GMT+0530 (India Standard Time)",
+    "initiationDate": "Mon Feb 05 2024 13:22:53 GMT+0530 (India Standard Time)"
   }
 ]

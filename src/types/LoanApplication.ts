@@ -11,5 +11,5 @@ export type LoanApplication = {
 }
 
 export type LoanInitiationInput = {
-    user_email: string;
+    user_id: number;
 }

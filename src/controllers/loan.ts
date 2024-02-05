@@ -34,7 +34,7 @@ export const requestBalSheet = async (req: Request, res: Response) => {
 export const initiateLoanApp = async (req: Request, res: Response) => {
     try {
         const body: LoanInitiationInput = req.body;
-        const current_user_id = users.find((user) => user.email === body.user_email)?.id
+        const current_user_id = body.user_id
         const fileBuffer = fs.readFileSync('src/fake-repository/LoanApplications.json').toString();
         const LoansList = JSON.parse(fileBuffer);
         const loanObj = {
