@@ -9,3 +9,7 @@ export type LoanApplication = {
     processingDate: string;
     preAssessment?: string
 }
+
+export type LoanInitiationInput = {
+    user_email: string;
+}

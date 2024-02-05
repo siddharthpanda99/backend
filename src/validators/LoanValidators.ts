@@ -4,8 +4,9 @@ import { users } from 'fake/Users';
 import { LoanApplication } from 'types/LoanApplication';
 import { User } from 'types/User';
 
-const userExists: CustomValidator = async (user_id: number) => {
+const userExists: CustomValidator = async (user_email: string) => {
     // Query the database to check if the hotel with the given ID exists
+    const user_id = users.find((user) => user.email === user_email)?.id;
     const user: User | undefined = users.find(usr => {
         return usr.id === user_id
     })
@@ -18,8 +19,9 @@ const userExists: CustomValidator = async (user_id: number) => {
     return Promise.resolve();
 };
 
-const userHasAleastOneUnApprovedLoan: CustomValidator = async (user_id: number) => {
+const userHasAleastOneUnApprovedLoan: CustomValidator = async (user_email: string) => {
     // Query the database to check if the hotel with the given ID exists
+    const user_id = users.find((user) => user.email === user_email)?.id
     const requiredLoanEntries = (LoanAppJson as LoanApplication[]).filter(lapp => {
         return lapp.user_id === user_id && lapp.processingDate && lapp.approved === false
     })
@@ -32,9 +34,10 @@ const userHasAleastOneUnApprovedLoan: CustomValidator = async (user_id: number) 
     return Promise.resolve();
 };
 
-const userAlreadyHasUninitiatedLoanRequest: CustomValidator = async (user_id: number) => {
+const userAlreadyHasUninitiatedLoanRequest: CustomValidator = async (user_email: string) => {
     // Query the database to check if the hotel with the given ID exists
     const requiredLoanEntries = (LoanAppJson as LoanApplication[]).filter(lapp => {
+        const user_id = users.find((user) => user.email === user_email)?.id
         // for the user_id, the initiationDate exists, approved is false and processingDate still not present ie still in intiation stage 
         return lapp.user_id === user_id && lapp.initiationDate && !lapp.processingDate && lapp.approved === false
     })
@@ -72,7 +75,7 @@ const userHasNotInitiatedLoanProcess: CustomValidator = async (user_id: number) 
 };
 
 export const LoanInitiationValidator = [
-    body('user_id')
+    body('user_email')
         .notEmpty().withMessage('Please enter the id for user that is initiating loan process').custom(userExists).custom(userHasAleastOneUnApprovedLoan).custom(userAlreadyHasUninitiatedLoanRequest),
 ];
 

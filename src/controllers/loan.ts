@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import fs from 'fs';
 import { fetchCompanySheetSimulated } from "fake/BalanceSheetProvider";
-import { LoanApplication } from "types/LoanApplication";
+import { LoanApplication, LoanInitiationInput } from "types/LoanApplication";
 import { fetchDecision } from "fake/engine/decision";
+import { users } from "fake/Users";
 
 // During intiation, call this api to create a local file
 // You hit it only once during the loan process init and get back relevant data for all possible providers
@@ -31,7 +32,8 @@ export const requestBalSheet = async (req: Request, res: Response) => {
 // Initiate Loan application payload: username, comapnyname, 
 export const initiateLoanApp = async (req: Request, res: Response) => {
     try {
-        const body: LoanApplication = req.body;
+        const body: LoanInitiationInput = req.body;
+        const current_user_id = users.find((user) => user.email === body.user_email)?.id
         const fileBuffer = fs.readFileSync('src/fake-repository/LoanApplications.json').toString();
         const LoansList = JSON.parse(fileBuffer);
         const loanObj = {
@@ -52,12 +54,12 @@ export const initiateLoanApp = async (req: Request, res: Response) => {
             LoansList.push({
                 ...loanObj,
                 id: lastId+1,
-                user_id: body.user_id
+                user_id: current_user_id
             })
         } else LoansList.push({
             ...loanObj,
             id: 1,
-            user_id: body.user_id
+            user_id: current_user_id
         })
         fs.writeFileSync('src/fake-repository/LoanApplications.json', JSON.stringify(LoansList, null, 2));
         console.log("🚀 ~ initiateLoanApp ~ LoansList:", LoansList)
