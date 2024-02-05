@@ -93,8 +93,8 @@ const loginUser = (req: Request, res: Response) => {
 
     const req_user: User | undefined = users.find(user => user.email === body.email && user.password === body.password)
     if (req_user) {
-        const { email, token } = req_user;
-        res.status(200).send({ data: { email, token }, message: 'User logged in successfully' })
+        const { email, token, id } = req_user;
+        res.status(200).send({ data: { email, token, id }, message: 'User logged in successfully' })
     } else {
         res.status(200).send({ data: [], message: 'Check email/password' })
     }
