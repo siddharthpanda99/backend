@@ -7,6 +7,10 @@ from app.core.openapi import custom_openapi
 from app.modules.common.routes.index import router as common_router
 from app.modules.auth.routes.index import router as auth_router
 from app.modules.sessions.routes.index import router as sessions_router
+from app.modules.authorization.routes.roles import router as roles_router
+from app.modules.authorization.routes.permissions import router as permissions_router
+from app.modules.users.routes.users import router as users_router
+from app.modules.projects.routes.projects import router as projects_router
 
 settings = get_settings()
 
@@ -26,6 +30,31 @@ def create_app() -> FastAPI:
     app.include_router(common_router, prefix=settings.API_V1_STR)
     app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"])
     app.include_router(sessions_router, prefix=f"{settings.API_V1_STR}/sessions", tags=["Sessions"])
+    
+    # Module Routers
+    app.include_router(roles_router, prefix=f"{settings.API_V1_STR}/roles", tags=["Roles"])
+    app.include_router(permissions_router, prefix=f"{settings.API_V1_STR}/permissions", tags=["Permissions"])
+    app.include_router(users_router, prefix=f"{settings.API_V1_STR}/users", tags=["Users"])
+    app.include_router(projects_router, prefix=f"{settings.API_V1_STR}/projects", tags=["Projects"])
+
+    # Exception Handlers
+    from fastapi.exceptions import RequestValidationError
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+    from sqlalchemy.exc import SQLAlchemyError
+    from app.core.exceptions import (
+        NexusException,
+        nexus_exception_handler,
+        validation_exception_handler,
+        sqlalchemy_exception_handler,
+        generic_exception_handler,
+        http_exception_handler
+    )
+    
+    app.add_exception_handler(NexusException, nexus_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+    app.add_exception_handler(Exception, generic_exception_handler)
 
     return app
 
