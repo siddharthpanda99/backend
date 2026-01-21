@@ -8,6 +8,7 @@ class LoginRequest(BaseModel):
 
 class RegisterRequest(BaseModel):
     email: EmailStr
+    username: str
     password: str
     full_name: str
     confirm_password: str
@@ -21,10 +22,15 @@ class TokenResponse(BaseModel):
 class UserResponse(BaseModel):
     id: str
     email: EmailStr
-    full_name: str
+    username: str
+    full_name: Optional[str] = None
     is_active: bool
     
     model_config = ConfigDict(from_attributes=True)
+
+class TokenPayload(BaseModel):
+    sub: Optional[str] = None
+    exp: Optional[int] = None
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
@@ -47,6 +53,3 @@ class VerifyEmailRequest(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
-
-
-

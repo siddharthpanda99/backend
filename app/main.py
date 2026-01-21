@@ -11,6 +11,8 @@ from app.modules.authorization.routes.roles import router as roles_router
 from app.modules.authorization.routes.permissions import router as permissions_router
 from app.modules.users.routes.users import router as users_router
 from app.modules.projects.routes.projects import router as projects_router
+from fastapi import Depends
+from app.modules.auth.dependencies.index import get_current_active_user
 
 settings = get_settings()
 
@@ -28,14 +30,14 @@ def create_app() -> FastAPI:
 
     # Include Routers
     app.include_router(common_router, prefix=settings.API_V1_STR)
-    app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"])
-    app.include_router(sessions_router, prefix=f"{settings.API_V1_STR}/sessions", tags=["Sessions"])
+    app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"]) # Auth handles its own security
+    app.include_router(sessions_router, prefix=f"{settings.API_V1_STR}/sessions", tags=["Sessions"], dependencies=[Depends(get_current_active_user)])
     
     # Module Routers
-    app.include_router(roles_router, prefix=f"{settings.API_V1_STR}/roles", tags=["Roles"])
-    app.include_router(permissions_router, prefix=f"{settings.API_V1_STR}/permissions", tags=["Permissions"])
-    app.include_router(users_router, prefix=f"{settings.API_V1_STR}/users", tags=["Users"])
-    app.include_router(projects_router, prefix=f"{settings.API_V1_STR}/projects", tags=["Projects"])
+    app.include_router(roles_router, prefix=f"{settings.API_V1_STR}/roles", tags=["Roles"], dependencies=[Depends(get_current_active_user)])
+    app.include_router(permissions_router, prefix=f"{settings.API_V1_STR}/permissions", tags=["Permissions"], dependencies=[Depends(get_current_active_user)])
+    app.include_router(users_router, prefix=f"{settings.API_V1_STR}/users", tags=["Users"], dependencies=[Depends(get_current_active_user)])
+    app.include_router(projects_router, prefix=f"{settings.API_V1_STR}/projects", tags=["Projects"], dependencies=[Depends(get_current_active_user)])
 
     # Exception Handlers
     from fastapi.exceptions import RequestValidationError
