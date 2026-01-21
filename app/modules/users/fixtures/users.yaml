@@ -1,0 +1,120 @@
+users:
+  - email: "admin@nexus.com"
+    username: "admin"
+    full_name: "Super Administrator"
+    is_active: true
+    role: "admin"
+
+  - email: "manager.one@nexus.com"
+    username: "manager1"
+    full_name: "John Manager"
+    is_active: true
+    role: "manager"
+
+  - email: "manager.two@nexus.com"
+    username: "manager2"
+    full_name: "Sarah Lead"
+    is_active: true
+    role: "manager"
+
+  - email: "dev.one@nexus.com"
+    username: "dev1"
+    full_name: "Alice Coder"
+    is_active: true
+    role: "user"
+
+  - email: "dev.two@nexus.com"
+    username: "dev2"
+    full_name: "Bob Builder"
+    is_active: true
+    role: "user"
+
+  - email: "dev.three@nexus.com"
+    username: "dev3"
+    full_name: "Charlie Davis"
+    is_active: true
+    role: "user"
+
+  - email: "dev.four@nexus.com"
+    username: "dev4"
+    full_name: "Diana Prince"
+    is_active: true
+    role: "user"
+
+  - email: "dev.five@nexus.com"
+    username: "dev5"
+    full_name: "Evan Wright"
+    is_active: true
+    role: "user"
+
+  - email: "qa.one@nexus.com"
+    username: "qa1"
+    full_name: "Fiona Tester"
+    is_active: true
+    role: "user"
+
+  - email: "qa.two@nexus.com"
+    username: "qa2"
+    full_name: "George Quality"
+    is_active: true
+    role: "user"
+
+  - email: "design.one@nexus.com"
+    username: "design1"
+    full_name: "Hannah Artist"
+    is_active: true
+    role: "user"
+
+  - email: "design.two@nexus.com"
+    username: "design2"
+    full_name: "Ian Creative"
+    is_active: true
+    role: "user"
+
+  - email: "product.one@nexus.com"
+    username: "product1"
+    full_name: "Jane Product"
+    is_active: true
+    role: "manager"
+
+  - email: "client.one@nexus.com"
+    username: "client1"
+    full_name: "Kevin Client"
+    is_active: true
+    role: "user"
+
+  - email: "guest.one@nexus.com"
+    username: "guest1"
+    full_name: "Laura Guest"
+    is_active: false
+    role: "user"
+
+  - email: "new.hire@nexus.com"
+    username: "newhire"
+    full_name: "Mike New"
+    is_active: true
+    role: "user"
+
+  - email: "contractor.one@nexus.com"
+    username: "contractor1"
+    full_name: "Nina Contractor"
+    is_active: true
+    role: "user"
+
+  - email: "finance.one@nexus.com"
+    username: "finance1"
+    full_name: "Oscar Finance"
+    is_active: true
+    role: "user"
+
+  - email: "support.one@nexus.com"
+    username: "support1"
+    full_name: "Paula Support"
+    is_active: true
+    role: "user"
+
+  - email: "inactive.user@nexus.com"
+    username: "inactive1"
+    full_name: "Quinn Left"
+    is_active: false
+    role: "user"

@@ -1,0 +1,78 @@
+roles:
+  - name: "admin"
+    description: "Administrator with full access"
+    permissions:
+      - resource: "all"
+        action: "manage"
+        name: "all:manage"
+        description: "Full administrative access"
+
+  - name: "manager"
+    description: "Manager with access to projects and users"
+    permissions:
+      - resource: "users"
+        action: "read"
+        name: "users:read"
+      - resource: "users"
+        action: "write"
+        name: "users:write"
+      - resource: "projects"
+        action: "read"
+        name: "projects:read"
+      - resource: "projects"
+        action: "write"
+        name: "projects:write"
+
+  - name: "user"
+    description: "Standard user"
+    permissions:
+      - resource: "projects"
+        action: "read"
+        name: "projects:read"
+      - resource: "profile"
+        action: "manage"
+        name: "profile:manage"
+
+  # Project Roles
+  - name: "project:admin"
+    description: "Project Administrator"
+    permissions:
+      - resource: "project"
+        action: "delete"
+        name: "project:delete"
+      - resource: "project"
+        action: "manage_members"
+        name: "project:manage_members"
+      - resource: "project"
+        action: "edit"
+        name: "project:edit"
+      - resource: "project"
+        action: "view"
+        name: "project:view"
+
+  - name: "project:editor"
+    description: "Can edit project content"
+    permissions:
+      - resource: "project"
+        action: "edit"
+        name: "project:edit"
+      - resource: "project"
+        action: "view"
+        name: "project:view"
+
+  - name: "project:commenter"
+    description: "Can view and comment"
+    permissions:
+      - resource: "project"
+        action: "comment"
+        name: "project:comment"
+      - resource: "project"
+        action: "view"
+        name: "project:view"
+
+  - name: "project:viewer"
+    description: "Read-only access"
+    permissions:
+      - resource: "project"
+        action: "view"
+        name: "project:view"

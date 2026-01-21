@@ -34,6 +34,8 @@ def main():
     subparsers.add_parser("db-up", help="Start database services")
     subparsers.add_parser("db-down", help="Stop database services")
     subparsers.add_parser("db-logs", help="View database logs")
+    seed_parser = subparsers.add_parser("seed", help="Seed the database with initial data")
+    seed_parser.add_argument("--modules", nargs="+", help="Specific modules to seed (e.g. users projects)")
 
     args = parser.parse_args()
 
@@ -43,6 +45,24 @@ def main():
         db_down()
     elif args.command == "db-logs":
         db_logs()
+    elif args.command == "seed":
+        from app.modules.database.service.connection import init_db
+        from app.modules.database.service.seed_runner import register_seeder, run_seeds
+        from app.modules.authorization.seeds.role_seeder import AuthorizationSeeder
+        from app.modules.users.seeds.user_seeder import UserSeeder
+        from app.modules.projects.seeds.project_seeder import ProjectSeeder
+        
+        # Initialize tables first (in case they don't exist)
+        print("Ensuring tables exist...")
+        init_db()
+        
+        # Register and run
+        register_seeder(AuthorizationSeeder)
+        register_seeder(UserSeeder)
+        register_seeder(ProjectSeeder)
+        
+        target = args.modules if args.modules else None
+        run_seeds(target)
     else:
         parser.print_help()
 
