@@ -4,6 +4,8 @@ from sqlmodel import Session, select
 from app.modules.database.service.seeder_base import BaseSeeder
 from app.modules.users.models.user import User
 
+from app.core.security import get_password_hash
+
 class UserSeeder(BaseSeeder):
     key = "users"
     dependencies = ["auth"]
@@ -27,7 +29,7 @@ class UserSeeder(BaseSeeder):
                     email=email,
                     username=u_data["username"],
                     full_name=u_data.get("full_name"),
-                    hashed_password="nexus_password", # Default password
+                    hashed_password=get_password_hash("password"), # Default password hashed with argon2
                     is_active=u_data.get("is_active", True)
                 )
                 session.add(user)

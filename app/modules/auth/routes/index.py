@@ -2,7 +2,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
-from app.core.database import get_session
+from app.modules.database.service.connection import get_session
 from app.modules.common.types.index import APIResponse
 from app.modules.auth.types.index import (
     LoginRequest, RegisterRequest, TokenResponse, UserResponse,
@@ -43,7 +43,9 @@ def login(
     """
     Authenticate user and return access token.
     """
+    print(f"DEBUG: Login attempt for {data.email}")
     token = auth_service.authenticate_user(session, data)
+    print("DEBUG: Authentication successful")
     return APIResponse(data=token, message="Login successful")
 
 @router.post("/register", response_model=APIResponse[UserResponse])

@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from fastapi.middleware.cors import CORSMiddleware
 from app.core.settings import get_settings
 from app.core.openapi import custom_openapi
 
@@ -16,6 +18,25 @@ from app.modules.auth.dependencies.index import get_current_active_user
 
 settings = get_settings()
 
+import sys
+from sqlalchemy import text
+from app.modules.database.service.connection import engine
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Verify Database Connection
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        print("Database connection established successfully.")
+    except Exception as e:
+        print(f"Critical Error: Database connection failed. {e}")
+        sys.exit(1)
+        
+    yield
+    # Shutdown
+    engine.dispose()
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.PROJECT_NAME,
@@ -23,6 +44,18 @@ def create_app() -> FastAPI:
         openapi_url=settings.OPENAPI_URL,
         docs_url=settings.DOCS_URL,
         redoc_url=settings.REDOC_URL,
+        lifespan=lifespan
+    )
+
+    # Set all CORS enabled origins
+    # Set all CORS enabled origins
+    # Using allow_origin_regex to allow any origin with credentials (safe for dev, restrict in prod if needed)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex="https?://.*", 
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # Register Custom OpenAPI
@@ -47,6 +80,7 @@ def create_app() -> FastAPI:
         NexusException,
         nexus_exception_handler,
         validation_exception_handler,
+        pydantic_exception_handler,
         sqlalchemy_exception_handler,
         generic_exception_handler,
         http_exception_handler
@@ -54,6 +88,8 @@ def create_app() -> FastAPI:
     
     app.add_exception_handler(NexusException, nexus_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    from pydantic import ValidationError
+    app.add_exception_handler(ValidationError, pydantic_exception_handler)
     app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(Exception, generic_exception_handler)

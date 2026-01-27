@@ -4,6 +4,9 @@ from functools import lru_cache
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Nexus AI Backend"
     VERSION: str = "0.1.0"
+    ENVIRONMENT: str = "prod"
+    BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    # BACKEND_CORS_ORIGINS: list[str] = ["*"]
     API_V1_STR: str = "/api/v1"
     
     # OpenAPI Customization
@@ -18,7 +21,7 @@ class Settings(BaseSettings):
 
     # Database Settings
     POSTGRES_SERVER: str = "localhost"
-    POSTGRES_USER: str = "postgres"
+    POSTGRES_USER: str = "nexus"
     POSTGRES_PASSWORD: str = "nexus_password"
     POSTGRES_DB: str = "nexus_db"
     POSTGRES_PORT: int = 5432

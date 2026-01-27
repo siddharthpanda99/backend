@@ -5,7 +5,7 @@ from jose import jwt, JWTError
 from sqlmodel import Session, select
 from pydantic import ValidationError
 
-from app.core.database import get_session
+from app.modules.database.service.connection import get_session
 from app.core.settings import get_settings
 from app.modules.users.models.user import User
 from app.modules.auth.types.index import TokenPayload

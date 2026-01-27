@@ -17,7 +17,7 @@ def db_up():
     run_command("docker-compose up -d")
     print("Database Services Started.")
     print("pgAdmin is available at http://localhost:5050")
-    print("Default credentials: admin@nexus.com / nexus_password")
+    print("Default credentials: admin@nexus.ai / nexus_password")
 
 def db_down():
     print("Stopping Database Services...")
@@ -34,6 +34,7 @@ def main():
     subparsers.add_parser("db-up", help="Start database services")
     subparsers.add_parser("db-down", help="Stop database services")
     subparsers.add_parser("db-logs", help="View database logs")
+    subparsers.add_parser("init-db", help="Create database tables")
     seed_parser = subparsers.add_parser("seed", help="Seed the database with initial data")
     seed_parser.add_argument("--modules", nargs="+", help="Specific modules to seed (e.g. users projects)")
 
@@ -45,16 +46,16 @@ def main():
         db_down()
     elif args.command == "db-logs":
         db_logs()
-    elif args.command == "seed":
+    elif args.command == "init-db":
         from app.modules.database.service.connection import init_db
+        print("Creating database tables...")
+        init_db()
+        print("Tables created successfully.")
+    elif args.command == "seed":
         from app.modules.database.service.seed_runner import register_seeder, run_seeds
         from app.modules.authorization.seeds.role_seeder import AuthorizationSeeder
         from app.modules.users.seeds.user_seeder import UserSeeder
         from app.modules.projects.seeds.project_seeder import ProjectSeeder
-        
-        # Initialize tables first (in case they don't exist)
-        print("Ensuring tables exist...")
-        init_db()
         
         # Register and run
         register_seeder(AuthorizationSeeder)
@@ -65,6 +66,11 @@ def main():
         run_seeds(target)
     else:
         parser.print_help()
+
+def dev_server():
+    """Entry point for 'uv run dev'"""
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
 
 if __name__ == "__main__":
     main()

@@ -11,10 +11,12 @@ dependencies = [
     "psycopg[binary]>=3.2.1",
     "passlib[bcrypt]>=1.7.4",
     "python-jose[cryptography]>=3.3.0",
+    "argon2-cffi>=25.1.0",
 ]
 
 [project.scripts]
 nexus = "app.cli:main"
+dev = "app.cli:dev_server"
 
 [build-system]
 requires = ["hatchling"]

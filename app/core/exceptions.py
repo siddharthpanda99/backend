@@ -6,6 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from pydantic import ValidationError
+from app.core.settings import get_settings
 
 class NexusException(Exception):
     def __init__(
@@ -45,7 +46,7 @@ def _build_error_response(
     }
     
     # Add stack trace if exception is provided
-    if exc:
+    if exc and get_settings().ENVIRONMENT == "development":
         content["stack_trace"] = traceback.format_exc().splitlines()
 
     return JSONResponse(status_code=status_code, content=content)
@@ -76,6 +77,23 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         module=module,
         detail=errors,
         exc=None # Validation errors don't really need stack traces
+    )
+
+async def pydantic_exception_handler(request: Request, exc: ValidationError):
+    module = _get_module_from_request(str(request.url))
+    errors = []
+    for error in exc.errors():
+        err_msg = error.get("msg")
+        field = ".".join(str(x) for x in error.get("loc", []))
+        errors.append(f"{field}: {err_msg}")
+        
+    return _build_error_response(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        code="VALIDATION_ERROR",
+        message="Data validation failed",
+        module=module,
+        detail=errors,
+        exc=None
     )
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):

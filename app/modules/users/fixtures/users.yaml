@@ -1,119 +1,119 @@
 users:
-  - email: "admin@nexus.com"
+  - email: "admin@nexus.ai"
     username: "admin"
     full_name: "Super Administrator"
     is_active: true
     role: "admin"
 
-  - email: "manager.one@nexus.com"
+  - email: "manager.one@nexus.ai"
     username: "manager1"
     full_name: "John Manager"
     is_active: true
     role: "manager"
 
-  - email: "manager.two@nexus.com"
+  - email: "manager.two@nexus.ai"
     username: "manager2"
     full_name: "Sarah Lead"
     is_active: true
     role: "manager"
 
-  - email: "dev.one@nexus.com"
+  - email: "dev.one@nexus.ai"
     username: "dev1"
     full_name: "Alice Coder"
     is_active: true
     role: "user"
 
-  - email: "dev.two@nexus.com"
+  - email: "dev.two@nexus.ai"
     username: "dev2"
     full_name: "Bob Builder"
     is_active: true
     role: "user"
 
-  - email: "dev.three@nexus.com"
+  - email: "dev.three@nexus.ai"
     username: "dev3"
     full_name: "Charlie Davis"
     is_active: true
     role: "user"
 
-  - email: "dev.four@nexus.com"
+  - email: "dev.four@nexus.ai"
     username: "dev4"
     full_name: "Diana Prince"
     is_active: true
     role: "user"
 
-  - email: "dev.five@nexus.com"
+  - email: "dev.five@nexus.ai"
     username: "dev5"
     full_name: "Evan Wright"
     is_active: true
     role: "user"
 
-  - email: "qa.one@nexus.com"
+  - email: "qa.one@nexus.ai"
     username: "qa1"
     full_name: "Fiona Tester"
     is_active: true
     role: "user"
 
-  - email: "qa.two@nexus.com"
+  - email: "qa.two@nexus.ai"
     username: "qa2"
     full_name: "George Quality"
     is_active: true
     role: "user"
 
-  - email: "design.one@nexus.com"
+  - email: "design.one@nexus.ai"
     username: "design1"
     full_name: "Hannah Artist"
     is_active: true
     role: "user"
 
-  - email: "design.two@nexus.com"
+  - email: "design.two@nexus.ai"
     username: "design2"
     full_name: "Ian Creative"
     is_active: true
     role: "user"
 
-  - email: "product.one@nexus.com"
+  - email: "product.one@nexus.ai"
     username: "product1"
     full_name: "Jane Product"
     is_active: true
     role: "manager"
 
-  - email: "client.one@nexus.com"
+  - email: "client.one@nexus.ai"
     username: "client1"
     full_name: "Kevin Client"
     is_active: true
     role: "user"
 
-  - email: "guest.one@nexus.com"
+  - email: "guest.one@nexus.ai"
     username: "guest1"
     full_name: "Laura Guest"
     is_active: false
     role: "user"
 
-  - email: "new.hire@nexus.com"
+  - email: "new.hire@nexus.ai"
     username: "newhire"
     full_name: "Mike New"
     is_active: true
     role: "user"
 
-  - email: "contractor.one@nexus.com"
+  - email: "contractor.one@nexus.ai"
     username: "contractor1"
     full_name: "Nina Contractor"
     is_active: true
     role: "user"
 
-  - email: "finance.one@nexus.com"
+  - email: "finance.one@nexus.ai"
     username: "finance1"
     full_name: "Oscar Finance"
     is_active: true
     role: "user"
 
-  - email: "support.one@nexus.com"
+  - email: "support.one@nexus.ai"
     username: "support1"
     full_name: "Paula Support"
     is_active: true
     role: "user"
 
-  - email: "inactive.user@nexus.com"
+  - email: "inactive.user@nexus.ai"
     username: "inactive1"
     full_name: "Quinn Left"
     is_active: false

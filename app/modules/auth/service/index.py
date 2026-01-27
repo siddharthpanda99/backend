@@ -10,12 +10,27 @@ from app.core.security import get_password_hash, verify_password, create_access_
 
 class AuthService:
     def authenticate_user(self, session: Session, login_data: LoginRequest) -> TokenResponse:
+        print(f"DEBUG: authenticate_user called for {login_data.email}")
         # 1. Get user by email
         statement = select(User).where(User.email == login_data.email)
+        print("DEBUG: Executing DB query to find user...")
         user = session.exec(statement).first()
+        print(f"DEBUG: User found: {user is not None}")
         
         # 2. Verify password
-        if not user or not verify_password(login_data.password, user.hashed_password):
+        if not user:
+            print("DEBUG: User not found, raising 401")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        print("DEBUG: Verifying password...")
+        is_password_valid = verify_password(login_data.password, user.hashed_password)
+        print(f"DEBUG: Password valid: {is_password_valid}")
+
+        if not is_password_valid:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password",
@@ -23,7 +38,9 @@ class AuthService:
             )
             
         # 3. Create Token
+        print("DEBUG: Creating access token...")
         access_token = create_access_token(subject=user.email)
+        print("DEBUG: Access token created")
         
         # 4. Return Token
         # NOTE: Refresh token logic is simplified/mocked for now as we didn't add a refresh token table/logic in plan
