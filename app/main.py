@@ -19,19 +19,35 @@ from app.modules.auth.dependencies.index import get_current_active_user
 settings = get_settings()
 
 import sys
+import time
 from sqlalchemy import text
 from app.modules.database.service.connection import engine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Verify Database Connection
-    try:
-        with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
-        print("Database connection established successfully.")
-    except Exception as e:
-        print(f"Critical Error: Database connection failed. {e}")
-        sys.exit(1)
+    max_retries = 4
+    retry_interval = 2
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"Startup: Verifying database connection (Attempt {attempt + 1}/{max_retries})...")
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+            print("Database connection established successfully.")
+            break
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"Warning: Database connection failed. Retrying in {retry_interval} seconds...")
+                print(f"Error: {e}")
+                time.sleep(retry_interval)
+            else:
+                print("="*60)
+                print(f"CRITICAL ERROR: Could not connect to the database after {max_retries} attempts.")
+                print(f"Please ensure the database server is running at {settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}.")
+                print(f"Detailed Error: {e}")
+                print("="*60)
+                sys.exit(1)
         
     yield
     # Shutdown

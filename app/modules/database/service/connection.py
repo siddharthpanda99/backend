@@ -11,7 +11,7 @@ else:
     DATABASE_URL = settings.SQLALCHEMY_DATABASE_URI
 
 # Connection arguments for pooling and performance
-connect_args = {}
+connect_args = {"connect_timeout": 5}
 
 engine = create_engine(
     DATABASE_URL,

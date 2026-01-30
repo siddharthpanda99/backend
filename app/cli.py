@@ -69,6 +69,8 @@ def main():
 
 def dev_server():
     """Entry point for 'uv run dev'"""
+    db_up()
+    print("\nStarting Backend Server...")
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
 
