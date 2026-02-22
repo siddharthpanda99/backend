@@ -39,6 +39,10 @@ async def lifespan(app: FastAPI):
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
             print("Database connection established successfully.")
+            
+            from app.modules.database.service.connection import init_db
+            init_db()
+            print("Database initialized and models registered.")
             break
         except Exception as e:
             if attempt < max_retries - 1:
