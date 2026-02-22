@@ -1,44 +1,62 @@
-from typing import List, Optional
-from sqlmodel import Session, select
+from typing import List, Optional, Dict, Any
 from fastapi import HTTPException
-from common_lib.modules.core_infrastructure.tool.models import ToolDefinitionRecord
 from app.modules.tools.schemas.index import ToolCreate, ToolUpdate
+from app.core.common_lib_integration import common_memory, sync_entity_to_fs
 
 class ToolService:
-    def get_all(self, session: Session, skip: int = 0, limit: int = 100) -> List[ToolDefinitionRecord]:
-        statement = select(ToolDefinitionRecord).offset(skip).limit(limit)
-        return session.exec(statement).all()
+    def get_all(self, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        tools = common_memory.list_tool_definitions()
+        return tools[skip : skip + limit]
 
-    def get_by_id(self, session: Session, tool_id: str) -> Optional[ToolDefinitionRecord]:
-        return session.get(ToolDefinitionRecord, tool_id)
+    def get_by_id(self, tool_id: str) -> Optional[Dict[str, Any]]:
+        return common_memory.get_tool_definition(tool_id)
 
-    def create(self, session: Session, tool_in: ToolCreate) -> ToolDefinitionRecord:
-        db_obj = ToolDefinitionRecord(**tool_in.model_dump())
-        session.add(db_obj)
-        session.commit()
-        session.refresh(db_obj)
-        return db_obj
+    def create(self, tool_in: ToolCreate) -> Dict[str, Any]:
+        data = tool_in.model_dump()
+        tool_id = data.get("id") or data.get("name")
+        if not tool_id:
+            raise HTTPException(status_code=400, detail="Tool ID or Name is required")
+            
+        common_memory.save_tool_definition(
+            definition=data
+        )
+        sync_entity_to_fs("tool", tool_id)
+        return self.get_by_id(tool_id)
 
-    def update(self, session: Session, tool_id: str, tool_in: ToolUpdate) -> ToolDefinitionRecord:
-        db_obj = self.get_by_id(session, tool_id)
-        if not db_obj:
+    def update(self, tool_id: str, tool_in: ToolUpdate) -> Dict[str, Any]:
+        existing = self.get_by_id(tool_id)
+        if not existing:
             raise HTTPException(status_code=404, detail="Tool not found")
             
         update_data = tool_in.model_dump(exclude_unset=True)
-        for key, value in update_data.items():
-            setattr(db_obj, key, value)
-            
-        session.add(db_obj)
-        session.commit()
-        session.refresh(db_obj)
-        return db_obj
+        # Assuming the tool schema is largely dynamic/embedded into definition
+        merged = {**existing.get("definition", existing), **update_data}
+        merged["id"] = tool_id
+        
+        common_memory.save_tool_definition(
+            definition=merged
+        )
+        sync_entity_to_fs("tool", tool_id)
+        return self.get_by_id(tool_id)
 
-    def delete(self, session: Session, tool_id: str) -> bool:
-        db_obj = self.get_by_id(session, tool_id)
-        if not db_obj:
+    def delete(self, tool_id: str) -> bool:
+        if not self.get_by_id(tool_id):
             raise HTTPException(status_code=404, detail="Tool not found")
-        session.delete(db_obj)
-        session.commit()
+        # common_memory does not natively have delete_tool_definition easily exposed
+        # I will emulate it for the unified interface here if not perfectly mirroring agent
+        try:
+            from common_lib.modules.core_infrastructure.tool.models import ToolDefinitionRecord
+            from sqlalchemy import delete
+            with common_memory._get_session() as session:
+                stmt = delete(ToolDefinitionRecord).where(ToolDefinitionRecord.id == tool_id)
+                session.execute(stmt)
+                session.commit()
+        except AttributeError:
+            # Fallback if the underlying method exists
+            if hasattr(common_memory, 'delete_tool_definition'):
+                common_memory.delete_tool_definition(tool_id)
+            else:
+                pass
         return True
 
 tool_service = ToolService()

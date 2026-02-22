@@ -9,28 +9,28 @@ from app.modules.memories.schemas.index import MemoryRead, MemoryCreate, MemoryU
 router = APIRouter()
 
 @router.get("/", response_model=APIResponse[List[MemoryRead]])
-def list_memories(skip: int = 0, limit: int = 100, db: Session = Depends(get_session)):
-    items = memory_service.get_all(db, skip=skip, limit=limit)
+def list_memories(skip: int = 0, limit: int = 100):
+    items = memory_service.get_all(skip=skip, limit=limit)
     return APIResponse(data=items, message="Retrieved list of memories")
 
 @router.post("/", response_model=APIResponse[MemoryRead])
-def create_memory(memory_in: MemoryCreate, db: Session = Depends(get_session)):
-    item = memory_service.create(db, memory_in)
+def create_memory(memory_in: MemoryCreate):
+    item = memory_service.create(memory_in)
     return APIResponse(data=item, message="Memory created successfully")
 
 @router.get("/{id}", response_model=APIResponse[MemoryRead])
-def get_memory(id: str, db: Session = Depends(get_session)):
-    item = memory_service.get_by_id(db, id)
+def get_memory(id: str):
+    item = memory_service.get_by_id(id)
     if not item:
         raise HTTPException(status_code=404, detail="Memory not found")
     return APIResponse(data=item, message="Memory retrieved successfully")
 
 @router.put("/{id}", response_model=APIResponse[MemoryRead])
-def update_memory(id: str, memory_in: MemoryUpdate, db: Session = Depends(get_session)):
-    item = memory_service.update(db, id, memory_in)
+def update_memory(id: str, memory_in: MemoryUpdate):
+    item = memory_service.update(id, memory_in)
     return APIResponse(data=item, message="Memory updated successfully")
 
 @router.delete("/{id}", response_model=APIResponse[dict])
-def delete_memory(id: str, db: Session = Depends(get_session)):
-    memory_service.delete(db, id)
+def delete_memory(id: str):
+    memory_service.delete(id)
     return APIResponse(data={"success": True}, message="Memory deleted successfully")

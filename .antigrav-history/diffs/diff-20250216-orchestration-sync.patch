@@ -1,0 +1,607 @@
+diff --git a/app/modules/agents/routes/index.py b/app/modules/agents/routes/index.py
+index ba5755d..f58fa58 100644
+--- a/app/modules/agents/routes/index.py
++++ b/app/modules/agents/routes/index.py
+@@ -9,28 +9,28 @@ from app.modules.agents.schemas.index import AgentRead, AgentCreate, AgentUpdate
+ router = APIRouter()
+ 
+ @router.get("/", response_model=APIResponse[List[AgentRead]])
+-def list_agents(skip: int = 0, limit: int = 100, db: Session = Depends(get_session)):
+-    items = agent_service.get_all(db, skip=skip, limit=limit)
++def list_agents(skip: int = 0, limit: int = 100):
++    items = agent_service.get_all(skip=skip, limit=limit)
+     return APIResponse(data=items, message="Retrieved list of agents")
+ 
+ @router.post("/", response_model=APIResponse[AgentRead])
+-def create_agent(agent_in: AgentCreate, db: Session = Depends(get_session)):
+-    item = agent_service.create(db, agent_in)
++def create_agent(agent_in: AgentCreate):
++    item = agent_service.create(agent_in)
+     return APIResponse(data=item, message="Agent created successfully")
+ 
+ @router.get("/{id}", response_model=APIResponse[AgentRead])
+-def get_agent(id: str, db: Session = Depends(get_session)):
+-    item = agent_service.get_by_id(db, id)
++def get_agent(id: str):
++    item = agent_service.get_by_id(id)
+     if not item:
+         raise HTTPException(status_code=404, detail="Agent not found")
+     return APIResponse(data=item, message="Agent retrieved successfully")
+ 
+ @router.put("/{id}", response_model=APIResponse[AgentRead])
+-def update_agent(id: str, agent_in: AgentUpdate, db: Session = Depends(get_session)):
+-    item = agent_service.update(db, id, agent_in)
++def update_agent(id: str, agent_in: AgentUpdate):
++    item = agent_service.update(id, agent_in)
+     return APIResponse(data=item, message="Agent updated successfully")
+ 
+ @router.delete("/{id}", response_model=APIResponse[dict])
+-def delete_agent(id: str, db: Session = Depends(get_session)):
+-    agent_service.delete(db, id)
++def delete_agent(id: str):
++    agent_service.delete(id)
+     return APIResponse(data={"success": True}, message="Agent deleted successfully")
+diff --git a/app/modules/agents/service/index.py b/app/modules/agents/service/index.py
+index a3e8c57..6365888 100644
+--- a/app/modules/agents/service/index.py
++++ b/app/modules/agents/service/index.py
+@@ -1,44 +1,62 @@
+-from typing import List, Optional
+-from sqlmodel import Session, select
++from typing import List, Optional, Dict, Any
+ from fastapi import HTTPException
+-from common_lib.modules.orchestration.agent.models import AgentDefinitionRecord
+ from app.modules.agents.schemas.index import AgentCreate, AgentUpdate
++from app.core.common_lib_integration import common_memory, sync_entity_to_fs
+ 
+ class AgentService:
+-    def get_all(self, session: Session, skip: int = 0, limit: int = 100) -> List[AgentDefinitionRecord]:
+-        statement = select(AgentDefinitionRecord).offset(skip).limit(limit)
+-        return session.exec(statement).all()
++    def get_all(self, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
++        agents = common_memory.list_agent_definitions()
++        return agents[skip : skip + limit]
+ 
+-    def get_by_id(self, session: Session, agent_id: str) -> Optional[AgentDefinitionRecord]:
+-        return session.get(AgentDefinitionRecord, agent_id)
++    def get_by_id(self, agent_id: str) -> Optional[Dict[str, Any]]:
++        return common_memory.get_agent_definition(agent_id)
+ 
+-    def create(self, session: Session, agent_in: AgentCreate) -> AgentDefinitionRecord:
+-        db_obj = AgentDefinitionRecord(**agent_in.model_dump())
+-        session.add(db_obj)
+-        session.commit()
+-        session.refresh(db_obj)
+-        return db_obj
++    def create(self, agent_in: AgentCreate) -> Dict[str, Any]:
++        data = agent_in.model_dump()
++        agent_id = data.get("id") or data.get("name")
++        if not agent_id:
++            raise HTTPException(status_code=400, detail="Agent ID or Name is required")
++            
++        common_memory.save_agent_definition(
++            name=agent_id,
++            identity=data.get("identity", {}),
++            definition=data.get("definition", {}),
++            version=data.get("version", "1.0.0"),
++            description=data.get("description"),
++            agent_type=data.get("agent_type")
++        )
++        sync_entity_to_fs("agent", agent_id)
++        return self.get_by_id(agent_id)
+ 
+-    def update(self, session: Session, agent_id: str, agent_in: AgentUpdate) -> AgentDefinitionRecord:
+-        db_obj = self.get_by_id(session, agent_id)
+-        if not db_obj:
++    def update(self, agent_id: str, agent_in: AgentUpdate) -> Dict[str, Any]:
++        existing = self.get_by_id(agent_id)
++        if not existing:
+             raise HTTPException(status_code=404, detail="Agent not found")
+             
+         update_data = agent_in.model_dump(exclude_unset=True)
+-        for key, value in update_data.items():
+-            setattr(db_obj, key, value)
+-            
+-        session.add(db_obj)
+-        session.commit()
+-        session.refresh(db_obj)
+-        return db_obj
++        
++        # Merge properties into existing
++        identity = update_data.get("identity", existing.get("identity", {}))
++        definition = update_data.get("definition", existing.get("definition", {}))
++        version = update_data.get("version", existing.get("version", "1.0.0"))
++        description = update_data.get("description", existing.get("description"))
++        agent_type = update_data.get("agent_type", existing.get("agent_type"))
++        
++        common_memory.save_agent_definition(
++            name=agent_id,
++            identity=identity,
++            definition=definition,
++            version=version,
++            description=description,
++            agent_type=agent_type
++        )
++        sync_entity_to_fs("agent", agent_id)
++        return self.get_by_id(agent_id)
+ 
+-    def delete(self, session: Session, agent_id: str) -> bool:
+-        db_obj = self.get_by_id(session, agent_id)
+-        if not db_obj:
++    def delete(self, agent_id: str) -> bool:
++        if not self.get_by_id(agent_id):
+             raise HTTPException(status_code=404, detail="Agent not found")
+-        session.delete(db_obj)
+-        session.commit()
++        common_memory.delete_agent_definition(agent_id)
+         return True
+ 
+ agent_service = AgentService()
+diff --git a/app/modules/database/service/connection.py b/app/modules/database/service/connection.py
+index 85f185d..d419a0f 100644
+--- a/app/modules/database/service/connection.py
++++ b/app/modules/database/service/connection.py
+@@ -53,25 +53,7 @@ def init_db():
+     from app.modules.authorization.models.index import Role, Permission, UserRole, RolePermission, UserResourceRole
+     from app.modules.projects.models.index import Project, ProjectModule, Workflow, Task
+     
+-    # Import common_lib models to establish them in the core backend database
+-    from common_lib.modules.orchestration.agent.models import AgentDefinitionRecord
+-    from common_lib.modules.orchestration.workflow.models import WorkflowDefinitionRecord
+-    from common_lib.modules.core_infrastructure.tool.models import ToolDefinitionRecord
+-    from common_lib.modules.orchestration.memory.models import MemoryDefinitionRecord
+-    from common_lib.modules.orchestration.skill.models import SkillDefinitionRecord
+-    from common_lib.modules.orchestration.prompt.models import PromptRecord
+-    from common_lib.modules.data_storage.database.orm import Base
+-    
+-    # Needs to be called before we can make the pgvector tables
+-    try:
+-        with engine.connect() as conn:
+-            conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
+-            conn.commit()
+-    except Exception as e:
+-        print(f"Warning: Could not create pgvector extension: {e}")
+-    
+     SQLModel.metadata.create_all(engine)
+-    Base.metadata.create_all(engine)
+ 
+ def get_session():
+     with Session(engine) as session:
+diff --git a/app/modules/memories/routes/index.py b/app/modules/memories/routes/index.py
+index 36ddb61..cbe39de 100644
+--- a/app/modules/memories/routes/index.py
++++ b/app/modules/memories/routes/index.py
+@@ -9,28 +9,28 @@ from app.modules.memories.schemas.index import MemoryRead, MemoryCreate, MemoryU
+ router = APIRouter()
+ 
+ @router.get("/", response_model=APIResponse[List[MemoryRead]])
+-def list_memories(skip: int = 0, limit: int = 100, db: Session = Depends(get_session)):
+-    items = memory_service.get_all(db, skip=skip, limit=limit)
++def list_memories(skip: int = 0, limit: int = 100):
++    items = memory_service.get_all(skip=skip, limit=limit)
+     return APIResponse(data=items, message="Retrieved list of memories")
+ 
+ @router.post("/", response_model=APIResponse[MemoryRead])
+-def create_memory(memory_in: MemoryCreate, db: Session = Depends(get_session)):
+-    item = memory_service.create(db, memory_in)
++def create_memory(memory_in: MemoryCreate):
++    item = memory_service.create(memory_in)
+     return APIResponse(data=item, message="Memory created successfully")
+ 
+ @router.get("/{id}", response_model=APIResponse[MemoryRead])
+-def get_memory(id: str, db: Session = Depends(get_session)):
+-    item = memory_service.get_by_id(db, id)
++def get_memory(id: str):
++    item = memory_service.get_by_id(id)
+     if not item:
+         raise HTTPException(status_code=404, detail="Memory not found")
+     return APIResponse(data=item, message="Memory retrieved successfully")
+ 
+ @router.put("/{id}", response_model=APIResponse[MemoryRead])
+-def update_memory(id: str, memory_in: MemoryUpdate, db: Session = Depends(get_session)):
+-    item = memory_service.update(db, id, memory_in)
++def update_memory(id: str, memory_in: MemoryUpdate):
++    item = memory_service.update(id, memory_in)
+     return APIResponse(data=item, message="Memory updated successfully")
+ 
+ @router.delete("/{id}", response_model=APIResponse[dict])
+-def delete_memory(id: str, db: Session = Depends(get_session)):
+-    memory_service.delete(db, id)
++def delete_memory(id: str):
++    memory_service.delete(id)
+     return APIResponse(data={"success": True}, message="Memory deleted successfully")
+diff --git a/app/modules/memories/service/index.py b/app/modules/memories/service/index.py
+index 2ae6994..8898ed7 100644
+--- a/app/modules/memories/service/index.py
++++ b/app/modules/memories/service/index.py
+@@ -1,44 +1,94 @@
+-from typing import List, Optional
+-from sqlmodel import Session, select
++from typing import List, Optional, Dict, Any
+ from fastapi import HTTPException
+-from common_lib.modules.orchestration.memory.models import MemoryDefinitionRecord
+ from app.modules.memories.schemas.index import MemoryCreate, MemoryUpdate
++from app.core.common_lib_integration import common_memory, sync_entity_to_fs
+ 
+ class MemoryService:
+-    def get_all(self, session: Session, skip: int = 0, limit: int = 100) -> List[MemoryDefinitionRecord]:
+-        statement = select(MemoryDefinitionRecord).offset(skip).limit(limit)
+-        return session.exec(statement).all()
++    def get_all(self, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
++        # common_memory.list_memory_definitions() if available, else emulate via fallback
++        try:
++            memories = common_memory.list_memory_definitions()
++            return memories[skip : skip + limit]
++        except AttributeError:
++            from common_lib.modules.orchestration.memory.models import MemoryDefinitionRecord
++            from sqlmodel import select
++            with common_memory._get_session() as session:
++                statement = select(MemoryDefinitionRecord).offset(skip).limit(limit)
++                records = session.exec(statement).all()
++                return [r.dict() if hasattr(r, 'dict') else {c.name: getattr(r, c.name) for c in r.__table__.columns} for r in records]
+ 
+-    def get_by_id(self, session: Session, memory_id: str) -> Optional[MemoryDefinitionRecord]:
+-        return session.get(MemoryDefinitionRecord, memory_id)
++    def get_by_id(self, memory_id: str) -> Optional[Dict[str, Any]]:
++        try:
++            return common_memory.get_memory_definition(memory_id)
++        except AttributeError:
++            from common_lib.modules.orchestration.memory.models import MemoryDefinitionRecord
++            with common_memory._get_session() as session:
++                record = session.get(MemoryDefinitionRecord, memory_id)
++                return record.dict() if record and hasattr(record, 'dict') else ({c.name: getattr(record, c.name) for c in record.__table__.columns} if record else None)
+ 
+-    def create(self, session: Session, memory_in: MemoryCreate) -> MemoryDefinitionRecord:
+-        db_obj = MemoryDefinitionRecord(**memory_in.model_dump())
+-        session.add(db_obj)
+-        session.commit()
+-        session.refresh(db_obj)
+-        return db_obj
++    def create(self, memory_in: MemoryCreate) -> Dict[str, Any]:
++        data = memory_in.model_dump()
++        memory_id = data.get("id") or data.get("name")
++        if not memory_id:
++            raise HTTPException(status_code=400, detail="Memory ID or Name is required")
++            
++        try:
++            common_memory.save_memory_definition(
++                name=memory_id,
++                definition=data.get("definition", {}),
++                version=data.get("version", "1.0.0")
++            )
++        except AttributeError:
++            from common_lib.modules.orchestration.memory.models import MemoryDefinitionRecord
++            with common_memory._get_session() as session:
++                record = MemoryDefinitionRecord(**data)
++                session.add(record)
++                session.commit()
++                
++        sync_entity_to_fs("memory", memory_id)
++        return self.get_by_id(memory_id)
+ 
+-    def update(self, session: Session, memory_id: str, memory_in: MemoryUpdate) -> MemoryDefinitionRecord:
+-        db_obj = self.get_by_id(session, memory_id)
+-        if not db_obj:
++    def update(self, memory_id: str, memory_in: MemoryUpdate) -> Dict[str, Any]:
++        existing = self.get_by_id(memory_id)
++        if not existing:
+             raise HTTPException(status_code=404, detail="Memory not found")
+             
+         update_data = memory_in.model_dump(exclude_unset=True)
+-        for key, value in update_data.items():
+-            setattr(db_obj, key, value)
+-            
+-        session.add(db_obj)
+-        session.commit()
+-        session.refresh(db_obj)
+-        return db_obj
++        definition = update_data.get("definition", existing.get("definition", {}))
++        version = update_data.get("version", existing.get("version", "1.0.0"))
++        
++        try:
++            common_memory.save_memory_definition(
++                name=memory_id,
++                definition=definition,
++                version=version
++            )
++        except AttributeError:
++            from common_lib.modules.orchestration.memory.models import MemoryDefinitionRecord
++            with common_memory._get_session() as session:
++                record = session.get(MemoryDefinitionRecord, memory_id)
++                if record:
++                    for k, v in update_data.items():
++                        setattr(record, k, v)
++                    session.commit()
++                
++        sync_entity_to_fs("memory", memory_id)
++        return self.get_by_id(memory_id)
+ 
+-    def delete(self, session: Session, memory_id: str) -> bool:
+-        db_obj = self.get_by_id(session, memory_id)
+-        if not db_obj:
++    def delete(self, memory_id: str) -> bool:
++        if not self.get_by_id(memory_id):
+             raise HTTPException(status_code=404, detail="Memory not found")
+-        session.delete(db_obj)
+-        session.commit()
++            
++        try:
++            common_memory.delete_memory_definition(memory_id)
++        except AttributeError:
++            from common_lib.modules.orchestration.memory.models import MemoryDefinitionRecord
++            from sqlalchemy import delete
++            with common_memory._get_session() as session:
++                stmt = delete(MemoryDefinitionRecord).where(MemoryDefinitionRecord.id == memory_id)
++                session.execute(stmt)
++                session.commit()
++                
+         return True
+ 
+ memory_service = MemoryService()
+diff --git a/app/modules/tools/routes/index.py b/app/modules/tools/routes/index.py
+index 1ebec12..659b15b 100644
+--- a/app/modules/tools/routes/index.py
++++ b/app/modules/tools/routes/index.py
+@@ -9,28 +9,28 @@ from app.modules.tools.schemas.index import ToolRead, ToolCreate, ToolUpdate
+ router = APIRouter()
+ 
+ @router.get("/", response_model=APIResponse[List[ToolRead]])
+-def list_tools(skip: int = 0, limit: int = 100, db: Session = Depends(get_session)):
+-    items = tool_service.get_all(db, skip=skip, limit=limit)
++def list_tools(skip: int = 0, limit: int = 100):
++    items = tool_service.get_all(skip=skip, limit=limit)
+     return APIResponse(data=items, message="Retrieved list of tools")
+ 
+ @router.post("/", response_model=APIResponse[ToolRead])
+-def create_tool(tool_in: ToolCreate, db: Session = Depends(get_session)):
+-    item = tool_service.create(db, tool_in)
++def create_tool(tool_in: ToolCreate):
++    item = tool_service.create(tool_in)
+     return APIResponse(data=item, message="Tool created successfully")
+ 
+ @router.get("/{id}", response_model=APIResponse[ToolRead])
+-def get_tool(id: str, db: Session = Depends(get_session)):
+-    item = tool_service.get_by_id(db, id)
++def get_tool(id: str):
++    item = tool_service.get_by_id(id)
+     if not item:
+         raise HTTPException(status_code=404, detail="Tool not found")
+     return APIResponse(data=item, message="Tool retrieved successfully")
+ 
+ @router.put("/{id}", response_model=APIResponse[ToolRead])
+-def update_tool(id: str, tool_in: ToolUpdate, db: Session = Depends(get_session)):
+-    item = tool_service.update(db, id, tool_in)
++def update_tool(id: str, tool_in: ToolUpdate):
++    item = tool_service.update(id, tool_in)
+     return APIResponse(data=item, message="Tool updated successfully")
+ 
+ @router.delete("/{id}", response_model=APIResponse[dict])
+-def delete_tool(id: str, db: Session = Depends(get_session)):
+-    tool_service.delete(db, id)
++def delete_tool(id: str):
++    tool_service.delete(id)
+     return APIResponse(data={"success": True}, message="Tool deleted successfully")
+diff --git a/app/modules/tools/service/index.py b/app/modules/tools/service/index.py
+index 0919a52..53a7661 100644
+--- a/app/modules/tools/service/index.py
++++ b/app/modules/tools/service/index.py
+@@ -1,44 +1,62 @@
+-from typing import List, Optional
+-from sqlmodel import Session, select
++from typing import List, Optional, Dict, Any
+ from fastapi import HTTPException
+-from common_lib.modules.core_infrastructure.tool.models import ToolDefinitionRecord
+ from app.modules.tools.schemas.index import ToolCreate, ToolUpdate
++from app.core.common_lib_integration import common_memory, sync_entity_to_fs
+ 
+ class ToolService:
+-    def get_all(self, session: Session, skip: int = 0, limit: int = 100) -> List[ToolDefinitionRecord]:
+-        statement = select(ToolDefinitionRecord).offset(skip).limit(limit)
+-        return session.exec(statement).all()
++    def get_all(self, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
++        tools = common_memory.list_tool_definitions()
++        return tools[skip : skip + limit]
+ 
+-    def get_by_id(self, session: Session, tool_id: str) -> Optional[ToolDefinitionRecord]:
+-        return session.get(ToolDefinitionRecord, tool_id)
++    def get_by_id(self, tool_id: str) -> Optional[Dict[str, Any]]:
++        return common_memory.get_tool_definition(tool_id)
+ 
+-    def create(self, session: Session, tool_in: ToolCreate) -> ToolDefinitionRecord:
+-        db_obj = ToolDefinitionRecord(**tool_in.model_dump())
+-        session.add(db_obj)
+-        session.commit()
+-        session.refresh(db_obj)
+-        return db_obj
++    def create(self, tool_in: ToolCreate) -> Dict[str, Any]:
++        data = tool_in.model_dump()
++        tool_id = data.get("id") or data.get("name")
++        if not tool_id:
++            raise HTTPException(status_code=400, detail="Tool ID or Name is required")
++            
++        common_memory.save_tool_definition(
++            definition=data
++        )
++        sync_entity_to_fs("tool", tool_id)
++        return self.get_by_id(tool_id)
+ 
+-    def update(self, session: Session, tool_id: str, tool_in: ToolUpdate) -> ToolDefinitionRecord:
+-        db_obj = self.get_by_id(session, tool_id)
+-        if not db_obj:
++    def update(self, tool_id: str, tool_in: ToolUpdate) -> Dict[str, Any]:
++        existing = self.get_by_id(tool_id)
++        if not existing:
+             raise HTTPException(status_code=404, detail="Tool not found")
+             
+         update_data = tool_in.model_dump(exclude_unset=True)
+-        for key, value in update_data.items():
+-            setattr(db_obj, key, value)
+-            
+-        session.add(db_obj)
+-        session.commit()
+-        session.refresh(db_obj)
+-        return db_obj
++        # Assuming the tool schema is largely dynamic/embedded into definition
++        merged = {**existing.get("definition", existing), **update_data}
++        merged["id"] = tool_id
++        
++        common_memory.save_tool_definition(
++            definition=merged
++        )
++        sync_entity_to_fs("tool", tool_id)
++        return self.get_by_id(tool_id)
+ 
+-    def delete(self, session: Session, tool_id: str) -> bool:
+-        db_obj = self.get_by_id(session, tool_id)
+-        if not db_obj:
++    def delete(self, tool_id: str) -> bool:
++        if not self.get_by_id(tool_id):
+             raise HTTPException(status_code=404, detail="Tool not found")
+-        session.delete(db_obj)
+-        session.commit()
++        # common_memory does not natively have delete_tool_definition easily exposed
++        # I will emulate it for the unified interface here if not perfectly mirroring agent
++        try:
++            from common_lib.modules.core_infrastructure.tool.models import ToolDefinitionRecord
++            from sqlalchemy import delete
++            with common_memory._get_session() as session:
++                stmt = delete(ToolDefinitionRecord).where(ToolDefinitionRecord.id == tool_id)
++                session.execute(stmt)
++                session.commit()
++        except AttributeError:
++            # Fallback if the underlying method exists
++            if hasattr(common_memory, 'delete_tool_definition'):
++                common_memory.delete_tool_definition(tool_id)
++            else:
++                pass
+         return True
+ 
+ tool_service = ToolService()
+diff --git a/app/modules/workflows/routes/index.py b/app/modules/workflows/routes/index.py
+index e7534c3..c900011 100644
+--- a/app/modules/workflows/routes/index.py
++++ b/app/modules/workflows/routes/index.py
+@@ -9,28 +9,28 @@ from app.modules.workflows.schemas.index import WorkflowRead, WorkflowCreate, Wo
+ router = APIRouter()
+ 
+ @router.get("/", response_model=APIResponse[List[WorkflowRead]])
+-def list_workflows(skip: int = 0, limit: int = 100, db: Session = Depends(get_session)):
+-    items = workflow_service.get_all(db, skip=skip, limit=limit)
++def list_workflows(skip: int = 0, limit: int = 100):
++    items = workflow_service.get_all(skip=skip, limit=limit)
+     return APIResponse(data=items, message="Retrieved list of workflows")
+ 
+ @router.post("/", response_model=APIResponse[WorkflowRead])
+-def create_workflow(workflow_in: WorkflowCreate, db: Session = Depends(get_session)):
+-    item = workflow_service.create(db, workflow_in)
++def create_workflow(workflow_in: WorkflowCreate):
++    item = workflow_service.create(workflow_in)
+     return APIResponse(data=item, message="Workflow created successfully")
+ 
+ @router.get("/{id}", response_model=APIResponse[WorkflowRead])
+-def get_workflow(id: str, db: Session = Depends(get_session)):
+-    item = workflow_service.get_by_id(db, id)
++def get_workflow(id: str):
++    item = workflow_service.get_by_id(id)
+     if not item:
+         raise HTTPException(status_code=404, detail="Workflow not found")
+     return APIResponse(data=item, message="Workflow retrieved successfully")
+ 
+ @router.put("/{id}", response_model=APIResponse[WorkflowRead])
+-def update_workflow(id: str, workflow_in: WorkflowUpdate, db: Session = Depends(get_session)):
+-    item = workflow_service.update(db, id, workflow_in)
++def update_workflow(id: str, workflow_in: WorkflowUpdate):
++    item = workflow_service.update(id, workflow_in)
+     return APIResponse(data=item, message="Workflow updated successfully")
+ 
+ @router.delete("/{id}", response_model=APIResponse[dict])
+-def delete_workflow(id: str, db: Session = Depends(get_session)):
+-    workflow_service.delete(db, id)
++def delete_workflow(id: str):
++    workflow_service.delete(id)
+     return APIResponse(data={"success": True}, message="Workflow deleted successfully")
+diff --git a/app/modules/workflows/service/index.py b/app/modules/workflows/service/index.py
+index 72c7402..8ea0a7c 100644
+--- a/app/modules/workflows/service/index.py
++++ b/app/modules/workflows/service/index.py
+@@ -1,44 +1,51 @@
+-from typing import List, Optional
+-from sqlmodel import Session, select
++from typing import List, Optional, Dict, Any
+ from fastapi import HTTPException
+-from common_lib.modules.orchestration.workflow.models import WorkflowDefinitionRecord
+ from app.modules.workflows.schemas.index import WorkflowCreate, WorkflowUpdate
++from app.core.common_lib_integration import common_memory, sync_entity_to_fs
+ 
+ class WorkflowService:
+-    def get_all(self, session: Session, skip: int = 0, limit: int = 100) -> List[WorkflowDefinitionRecord]:
+-        statement = select(WorkflowDefinitionRecord).offset(skip).limit(limit)
+-        return session.exec(statement).all()
++    def get_all(self, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
++        workflows = common_memory.list_workflow_definitions()
++        return workflows[skip : skip + limit]
+ 
+-    def get_by_id(self, session: Session, workflow_id: str) -> Optional[WorkflowDefinitionRecord]:
+-        return session.get(WorkflowDefinitionRecord, workflow_id)
++    def get_by_id(self, workflow_id: str) -> Optional[Dict[str, Any]]:
++        return common_memory.get_workflow_definition(workflow_id)
+ 
+-    def create(self, session: Session, workflow_in: WorkflowCreate) -> WorkflowDefinitionRecord:
+-        db_obj = WorkflowDefinitionRecord(**workflow_in.model_dump())
+-        session.add(db_obj)
+-        session.commit()
+-        session.refresh(db_obj)
+-        return db_obj
++    def create(self, workflow_in: WorkflowCreate) -> Dict[str, Any]:
++        data = workflow_in.model_dump()
++        workflow_id = data.get("id") or data.get("name")
++        if not workflow_id:
++            raise HTTPException(status_code=400, detail="Workflow ID or Name is required")
++            
++        common_memory.save_workflow_definition(
++            name=workflow_id,
++            definition=data.get("definition", {}),
++            version=data.get("version", "1.0.0")
++        )
++        sync_entity_to_fs("workflow", workflow_id)
++        return self.get_by_id(workflow_id)
+ 
+-    def update(self, session: Session, workflow_id: str, workflow_in: WorkflowUpdate) -> WorkflowDefinitionRecord:
+-        db_obj = self.get_by_id(session, workflow_id)
+-        if not db_obj:
++    def update(self, workflow_id: str, workflow_in: WorkflowUpdate) -> Dict[str, Any]:
++        existing = self.get_by_id(workflow_id)
++        if not existing:
+             raise HTTPException(status_code=404, detail="Workflow not found")
+             
+         update_data = workflow_in.model_dump(exclude_unset=True)
+-        for key, value in update_data.items():
+-            setattr(db_obj, key, value)
+-            
+-        session.add(db_obj)
+-        session.commit()
+-        session.refresh(db_obj)
+-        return db_obj
++        definition = update_data.get("definition", existing.get("definition", {}))
++        version = update_data.get("version", existing.get("version", "1.0.0"))
++        
++        common_memory.save_workflow_definition(
++            name=workflow_id,
++            definition=definition,
++            version=version
++        )
++        sync_entity_to_fs("workflow", workflow_id)
++        return self.get_by_id(workflow_id)
+ 
+-    def delete(self, session: Session, workflow_id: str) -> bool:
+-        db_obj = self.get_by_id(session, workflow_id)
+-        if not db_obj:
++    def delete(self, workflow_id: str) -> bool:
++        if not self.get_by_id(workflow_id):
+             raise HTTPException(status_code=404, detail="Workflow not found")
+-        session.delete(db_obj)
+-        session.commit()
++        common_memory.delete_workflow_definition(workflow_id)
+         return True
+ 
+ workflow_service = WorkflowService()
