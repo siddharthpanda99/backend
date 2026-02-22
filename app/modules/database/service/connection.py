@@ -53,7 +53,25 @@ def init_db():
     from app.modules.authorization.models.index import Role, Permission, UserRole, RolePermission, UserResourceRole
     from app.modules.projects.models.index import Project, ProjectModule, Workflow, Task
     
+    # Import common_lib models to establish them in the core backend database
+    from common_lib.modules.orchestration.agent.models import AgentDefinitionRecord
+    from common_lib.modules.orchestration.workflow.models import WorkflowDefinitionRecord
+    from common_lib.modules.core_infrastructure.tool.models import ToolDefinitionRecord
+    from common_lib.modules.orchestration.memory.models import MemoryDefinitionRecord
+    from common_lib.modules.orchestration.skill.models import SkillDefinitionRecord
+    from common_lib.modules.orchestration.prompt.models import PromptRecord
+    from common_lib.modules.data_storage.database.orm import Base
+    
+    # Needs to be called before we can make the pgvector tables
+    try:
+        with engine.connect() as conn:
+            conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
+            conn.commit()
+    except Exception as e:
+        print(f"Warning: Could not create pgvector extension: {e}")
+    
     SQLModel.metadata.create_all(engine)
+    Base.metadata.create_all(engine)
 
 def get_session():
     with Session(engine) as session:

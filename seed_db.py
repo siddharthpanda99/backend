@@ -1,5 +1,5 @@
 from sqlmodel import Session, select, SQLModel
-from app.core.database import engine
+from app.modules.database.service.connection import engine
 from app.core.security import get_password_hash
 from app.modules.users.models.user import User
 from app.modules.authorization.models.role import Role
@@ -100,7 +100,11 @@ def seed_db():
             session.commit()
             print(f"Admin User created: {admin_email} / admin123")
         else:
-            print("Admin User already exists.")
+            print("Admin User already exists. Resetting password to admin123...")
+            existing_admin.hashed_password = get_password_hash("admin123")
+            session.add(existing_admin)
+            session.commit()
+            print("Admin User password reset.")
 
     print("Seeding Complete!")
 
