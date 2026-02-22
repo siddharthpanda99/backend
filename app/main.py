@@ -13,6 +13,10 @@ from app.modules.authorization.routes.roles import router as roles_router
 from app.modules.authorization.routes.permissions import router as permissions_router
 from app.modules.users.routes.users import router as users_router
 from app.modules.projects.routes.projects import router as projects_router
+from app.modules.agents.routes.index import router as agents_router
+from app.modules.workflows.routes.index import router as workflows_router
+from app.modules.tools.routes.index import router as tools_router
+from app.modules.memories.routes.index import router as memories_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -87,6 +91,12 @@ def create_app() -> FastAPI:
     app.include_router(permissions_router, prefix=f"{settings.API_V1_STR}/permissions", tags=["Permissions"], dependencies=[Depends(get_current_active_user)])
     app.include_router(users_router, prefix=f"{settings.API_V1_STR}/users", tags=["Users"], dependencies=[Depends(get_current_active_user)])
     app.include_router(projects_router, prefix=f"{settings.API_V1_STR}/projects", tags=["Projects"], dependencies=[Depends(get_current_active_user)])
+
+    # Entities
+    app.include_router(agents_router, prefix=f"{settings.API_V1_STR}/agents", tags=["Agents"], dependencies=[Depends(get_current_active_user)])
+    app.include_router(workflows_router, prefix=f"{settings.API_V1_STR}/workflows", tags=["Workflows"], dependencies=[Depends(get_current_active_user)])
+    app.include_router(tools_router, prefix=f"{settings.API_V1_STR}/tools", tags=["Tools"], dependencies=[Depends(get_current_active_user)])
+    app.include_router(memories_router, prefix=f"{settings.API_V1_STR}/memories", tags=["Memories"], dependencies=[Depends(get_current_active_user)])
 
     # Exception Handlers
     from fastapi.exceptions import RequestValidationError
