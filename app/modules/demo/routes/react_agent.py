@@ -84,35 +84,85 @@ def calculate_math(expression: str) -> str:
 def query_capability_inventory(query: str = "current") -> str:
     """
     Search for advanced or specialized tools NOT currently listed in your prompt.
-    Use this to find specific capabilities like 'pdf extraction', 'database access', etc.
+    If 'query' is an exact tool ID, returns the full input schema.
+    Returns names, identifiers, AND detailed input/output schemas if found.
     """
     global _active_session_config, _engine_manager
     
-    query_lc = (query or "current").lower()
+    query_lc = (query or "current").lower().strip()
     is_search = query_lc not in ["current", "session", "active"]
-    
-    # 1. Fetch EVERYTHING if searching or if "all" is explicitly requested
     all_capabilities = []
-    if is_search or "all" in query_lc:
-        if _engine_manager and _engine_manager.registry_svc:
+
+    # 1. Collate all known capabilities
+    if _engine_manager:
+        # Static demo tools
+        for t in DEMO_TOOL_REGISTRY:
+             all_capabilities.append({
+                 "id": t['id'], 
+                 "name": t['name'], 
+                 "description": t['description'], 
+                 "type": "tool",
+                 "source": "demo"
+             })
+        
+        # Dynamic tools from registry
+        if _engine_manager.registry_svc:
             try:
                 dynamic_tools = _engine_manager.registry_svc.get_tools_by_category()
                 for cat, tools in dynamic_tools.items():
                     for t in tools:
-                        all_capabilities.append({"id": t['id'], "name": t['name'], "description": t['description'], "type": "tool"})
+                        all_capabilities.append({
+                            "id": t['id'], 
+                            "name": t['name'], 
+                            "description": t['description'], 
+                            "type": "tool",
+                            "source": "registry",
+                            "schema": t.get("capability", {}).get("arguments", [])
+                        })
             except Exception: pass
             
         try:
             from common_lib.modules.memory import common_memory
             workflows = common_memory.list_workflow_definitions()
             for w in workflows:
-                all_capabilities.append({"id": w['id'], "name": w.get('name') or w['id'], "description": "Workflow execution", "type": "workflow"})
+                all_capabilities.append({
+                    "id": w['id'], 
+                    "name": w.get('name') or w['id'], 
+                    "description": "Workflow execution", 
+                    "type": "workflow",
+                    "source": "memory",
+                    "schema": w.get("inputs", [])
+                })
         except Exception: pass
 
     # 2. If it's a search, filter the results
     if is_search:
         matches = []
         keywords = query_lc.split()
+        
+        # Check for exact ID match first (detailed view)
+        exact_match = next((c for c in all_capabilities if c['id'].lower() == query_lc), None)
+        if exact_match:
+            res = f"### Detailed Capability: {exact_match['name']} (`{exact_match['id']}`)\n"
+            res += f"**Description**: {exact_match['description']}\n"
+            res += f"**Type**: {exact_match['type'].title()}\n\n"
+            
+            schema = exact_match.get("schema")
+            if schema:
+                res += "**Input Arguments**:\n"
+                if isinstance(schema, list):
+                    for arg in schema:
+                        name = arg.get("name", "arg")
+                        a_type = arg.get("type", "any")
+                        a_desc = arg.get("description", "")
+                        res += f"- `{name}` ({a_type}): {a_desc}\n"
+                else:
+                    res += f"```json\n{json.dumps(schema, indent=2)}\n```\n"
+            else:
+                 res += "*No detailed schema available for this capability.*\n"
+            return res
+
+        # Fallback to general search
         for cap in all_capabilities:
             text = f"{cap['id']} {cap['name']} {cap['description']}".lower()
             if any(k in text for k in keywords):
@@ -124,6 +174,11 @@ def query_capability_inventory(query: str = "current") -> str:
         res = f"### Search Results for '{query}'\n"
         for m in matches[:10]: # Limit to 10 for prompt efficiency
             res += f"- {m['name']} (`{m['id']}`): {m['description']}\n"
+            # If search is specific and few matches, include schema summary
+            if len(matches) <= 3 and m.get("schema"):
+                res += "  *Arguments*: " + ", ".join([a.get('name', '') for a in m['schema'] if isinstance(a, dict)]) + "\n"
+        
+        res += "\nTo see full input requirements for a tool, call `query_capability_inventory` with its unique ID."
         return res
 
     # 3. Default: Show active session tools
@@ -238,8 +293,9 @@ You have access to the following tools:
 2. DO NOT use tools (like 'remember_info') for basic introductions or casual chat. The system automatically handles long-term context extraction for you after the turn is finished.
 3. ONLY use tools if you need specific, external information (weather, calculation, or searching for advanced tool capabilities).
 4. If a user asks for a capability (e.g., 'PDF parsing') and you don't see an exact match in {tool_names}, ALWAYS use 'query_capability_inventory' with synonyms like 'extract', 'read', or 'parse' before saying no.
-5. NEVER repeat the same tool call with the same input.
-6. Once you have acknowledged a greeting or introduction, finish with a 'Final Answer' immediately.
+5. NEVER repeat the same tool call with the same input. If a search result didn't change, provide a 'Final Answer' based on the current results.
+6. Once you find a capability match, provide a 'Final Answer' summarizing the tool names, their IDs, and their functional descriptions to the user.
+7. Once you have acknowledged a greeting or introduction, finish with a 'Final Answer' immediately.
 7. Example for "I am Siddharth": 
    Thought: The user is introducing himself. I should acknowledge this naturally without tools.
    Final Answer: Nice to meet you, Siddharth! How can I help today?
