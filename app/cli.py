@@ -72,7 +72,13 @@ def dev_server():
     db_up()
     print("\nStarting Backend Server...")
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    import sys
+    from pathlib import Path
+    
+    backend_dir = str(Path(__file__).parent.parent.resolve())
+    common_lib_dir = str((Path(__file__).parent.parent.parent / "Python Libs" / "common_lib" / "src").resolve())
+    
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True, reload_dirs=[backend_dir, common_lib_dir])
 
 if __name__ == "__main__":
     main()

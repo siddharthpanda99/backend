@@ -17,6 +17,7 @@ from app.modules.agents.routes.index import router as agents_router
 from app.modules.workflows.routes.index import router as workflows_router
 from app.modules.tools.routes.index import router as tools_router
 from app.modules.memories.routes.index import router as memories_router
+from app.modules.demo.routes.react_agent import router as demo_react_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -101,6 +102,9 @@ def create_app() -> FastAPI:
     app.include_router(workflows_router, prefix=f"{settings.API_V1_STR}/workflows", tags=["Workflows"], dependencies=[Depends(get_current_active_user)])
     app.include_router(tools_router, prefix=f"{settings.API_V1_STR}/tools", tags=["Tools"], dependencies=[Depends(get_current_active_user)])
     app.include_router(memories_router, prefix=f"{settings.API_V1_STR}/memories", tags=["Memories"], dependencies=[Depends(get_current_active_user)])
+
+    # Demo
+    app.include_router(demo_react_router, prefix=f"{settings.API_V1_STR}/demo", tags=["Demo"])
 
     # Exception Handlers
     from fastapi.exceptions import RequestValidationError
