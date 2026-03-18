@@ -89,8 +89,9 @@ def query_capability_inventory(query: str = "current") -> str:
     """
     global _active_session_config, _engine_manager
     
-    query_lc = (query or "current").lower().strip()
-    is_search = query_lc not in ["current", "session", "active"]
+    # Normalize query string (strip redundant quotes which LLMs often add)
+    query_lc = (query or "current").lower().strip().strip("'").strip('"').strip()
+    is_search = query_lc not in ["current", "session", "active", "all"]
     all_capabilities = []
 
     # 1. Collate all known capabilities
@@ -115,7 +116,7 @@ def query_capability_inventory(query: str = "current") -> str:
                             "id": t['id'], 
                             "name": t['name'], 
                             "description": t['description'], 
-                            "type": "tool",
+                            "type": t.get("type", "tool"),
                             "source": "registry",
                             "schema": t.get("capability", {}).get("arguments", [])
                         })
@@ -128,7 +129,7 @@ def query_capability_inventory(query: str = "current") -> str:
                 all_capabilities.append({
                     "id": w['id'], 
                     "name": w.get('name') or w['id'], 
-                    "description": "Workflow execution", 
+                    "description": "Workflow execution or composite process", 
                     "type": "workflow",
                     "source": "memory",
                     "schema": w.get("inputs", [])
@@ -138,7 +139,8 @@ def query_capability_inventory(query: str = "current") -> str:
     # 2. If it's a search, filter the results
     if is_search:
         matches = []
-        keywords = query_lc.split()
+        # Support full query match OR keyword match
+        keywords = [k for k in query_lc.replace("-", " ").replace(".", " ").split() if len(k) > 1]
         
         # Check for exact ID match first (detailed view)
         exact_match = next((c for c in all_capabilities if c['id'].lower() == query_lc), None)
@@ -638,17 +640,32 @@ JSON Result:"""
                         log="Max steps (6) reached. Loop prevention triggered."
                     )}
 
-                # REPETITION GUARD: Check if we are calling the same thing repeatedly
+                # REPETITION GUARD: Detect and provide feedback for redundant actions
                 if len(intermediate_steps) >= 2:
-                    last_action = intermediate_steps[-1][0]
-                    prev_action = intermediate_steps[-2][0]
-                    # If action and input are identical to the previous step, it's a loop
+                    last_action, last_obs = intermediate_steps[-1]
+                    prev_action, prev_obs = intermediate_steps[-2]
+                    
                     if isinstance(last_action, AgentAction) and isinstance(prev_action, AgentAction):
                         if last_action.tool == prev_action.tool and last_action.tool_input == prev_action.tool_input:
-                            logger.warning(f"REPETITION DETECTED: {last_action.tool}. Forcing termination.")
+                            # If it's the FIRST repetition, try to nudge the model instead of erroring
+                            if len(intermediate_steps) < 4:
+                                logger.warning(f"REPETITION DETECTED (attempt {len(intermediate_steps)}): Providing feedback.")
+                                feedback = f"ALERT: You are repeating the tool call '{last_action.tool}' with the same input. " \
+                                           f"The previous result was: \"{last_obs}\". " \
+                                           f"DO NOT repeat this again. Either provide a Final Answer explaining what you found, " \
+                                           f"or try a different search query/tool."
+                                
+                                # We add a fake entry to scratchpad or just let it continue but with this knowledge?
+                                # The best way is to let the model re-think.
+                                # But if we return here, we need to decide what to return.
+                                # If we want the LLM to see this, we can return it as a "Observation" for a virtual step.
+                                return {"agent_outcome": AgentAction(tool="query_capability_inventory", tool_input="feedback", log=feedback)}
+
+                            # Hard stop for persistent loops
+                            logger.error(f"STUBBORN LOOP DETECTED: {last_action.tool}. Forcing termination.")
                             return {"agent_outcome": AgentFinish(
-                                return_values={"output": "I noticed I was repeating the same action. I've stopped to avoid a loop. How else can I assist?"},
-                                log="Tool repetition detected."
+                                return_values={"output": f"I'm sorry, I'm having trouble retrieving fresh data for '{last_action.tool_input}'. I've searched several times but no new results appeared. How else can I help?"},
+                                log="Stubborn loop termination."
                             )}
 
                 # Inject current structured state into the prompt
