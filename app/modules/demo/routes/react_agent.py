@@ -290,6 +290,9 @@ Long-term Labeled Context (Hints):
 You have access to the following tools:
 {tools}
 
+### CURRENT STRATEGY:
+{strategy}
+
 ### CORE RULES:
 1. Handle greetings and introductions naturally. For simple phrases like "hi", "hello", "my name is...", or casual chat, provide a direct 'Final Answer' acknowledging the user.
 2. DO NOT use tools (like 'remember_info') for basic introductions or casual chat. The system automatically handles long-term context extraction for you after the turn is finished.
@@ -578,7 +581,7 @@ def load_agent(
             return log
 
         async def preprocess_input(state):
-            """Initial analysis of user input to categorize intent and extract immediate context."""
+            """Initial analysis of user input to categorize intent, extract context, AND generate a strategy."""
             user_input = state.get("input", "")
             if not user_input or not _master_agent:
                 return {}
@@ -589,10 +592,12 @@ User Input: {user_input}
 1. Categorize intent: (greeting, instruction, question, casual, or other)
 2. Extract 'hints' (entities, preferences, settings, config).
    For each hint provide: label, description, reasoning.
+3. Generate a 'strategy': A 1-sentence high-level plan for the agent (e.g., "Ask for user name then proceed to search tools" or "Directly answer the question using available knowledge").
 
 Format as JSON:
 {{
   "intent": "...",
+  "strategy": "...",
   "hints": [{{ "label": "...", "description": "...", "reasoning": "..." }}]
 }}
 
@@ -604,6 +609,7 @@ JSON Result:"""
                     found_json = json.loads(content[content.find("{"):content.rfind("}")+1])
                     new_hints = found_json.get("hints", [])
                     intent = found_json.get("intent", "other")
+                    strategy = found_json.get("strategy", "Proceed with standard ReAct reasoning.")
                     
                     current_hints = state.get("hints", []) or []
                     if new_hints:
@@ -612,6 +618,7 @@ JSON Result:"""
                     
                     meta = state.get("operational_metadata", {}) or {}
                     meta["last_intent"] = intent
+                    meta["current_strategy"] = strategy
                     
                     return {"hints": current_hints, "operational_metadata": meta}
                 return {}
@@ -672,11 +679,16 @@ JSON Result:"""
                 state_json = json.dumps(state.get("structured_state", {}), indent=2)
                 hints_json = json.dumps(state.get("hints", []), indent=2)
                 
+                # Strategy retrieval
+                meta = state.get("operational_metadata", {}) or {}
+                strategy = meta.get("current_strategy", "Analyze user input and use tools if necessary.")
+
                 chain_input = {
                     "input": state["input"],
                     "conversation_history": history,
                     "structured_state": state_json,
                     "hints_state": hints_json,
+                    "strategy": strategy,
                     "agent_scratchpad": scratchpad,
                     "intermediate_steps": intermediate_steps
                 }
