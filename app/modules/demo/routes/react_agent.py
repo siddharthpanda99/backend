@@ -767,6 +767,22 @@ JSON Result:"""
         _master_agent.set_checkpointer(_checkpointer)
         _master_agent._compile_graph()
 
+    # --- Update Local Active Config for UI ---
+    global _active_session_config
+    # Try to reuse existing session_id if available (persistence-friendly)
+    curr_id = _active_session_config.get("session_id") if _active_session_config else None
+    
+    _active_session_config = {
+        "model_path": model_path or os.getenv("LOCAL_LLM_MODEL_PATH", "default"),
+        "agent_id": agent_id,
+        "agent_display_name": definition.identity.display_name,
+        "tools": active_tool_meta,
+        "tool_count": tool_count,
+        "workflow_count": workflow_count,
+        "session_id": curr_id or f"session-{datetime.now().strftime('%Y%m%d%H%M')}-{agent_id[:4]}"
+    }
+    logger.info(f"Deployed Agent Active Config: Ready for thread {_active_session_config['session_id']}")
+
 # Initial load
 try:
     load_agent()
@@ -900,7 +916,7 @@ async def deploy_config(req: DeployRequest):
             agent_id=req.agent_id,
             tool_ids=req.tool_ids
         )
-        return {"status": "success", "info": _engine_manager.get_session_info()}
+        return {"status": "success", "info": await get_session_info()}
     except Exception as e:
         logger.error(traceback.format_exc())
         return {"status": "error", "message": str(e)}
