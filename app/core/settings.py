@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
     # BACKEND_CORS_ORIGINS: list[str] = ["*"]
     API_V1_STR: str = "/api/v1"
+    PRELOAD_LLM: bool = False
     
     # OpenAPI Customization
     OPENAPI_URL: str = "/openapi.json"

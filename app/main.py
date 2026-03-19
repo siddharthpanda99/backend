@@ -1,4 +1,6 @@
+import os
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.settings import get_settings
@@ -99,16 +101,21 @@ def create_app() -> FastAPI:
 
     # Entities
     app.include_router(agents_router, prefix=f"{settings.API_V1_STR}/agents", tags=["Agents"], dependencies=[Depends(get_current_active_user)])
-    app.include_router(workflows_router, prefix=f"{settings.API_V1_STR}/workflows", tags=["Workflows"], dependencies=[Depends(get_current_active_user)])
+    app.include_router(workflows_router, prefix=f"{settings.API_V1_STR}/workflows", tags=["Workflows"])
     app.include_router(tools_router, prefix=f"{settings.API_V1_STR}/tools", tags=["Tools"], dependencies=[Depends(get_current_active_user)])
     app.include_router(memories_router, prefix=f"{settings.API_V1_STR}/memories", tags=["Memories"], dependencies=[Depends(get_current_active_user)])
     
     # New Vision API
     from app.modules.vision.routes import router as vision_router
-    app.include_router(vision_router, prefix=f"{settings.API_V1_STR}/vision", tags=["Vision"], dependencies=[Depends(get_current_active_user)])
+    app.include_router(vision_router, prefix=f"{settings.API_V1_STR}/vision", tags=["Vision"])
 
     # Demo
     app.include_router(demo_react_router, prefix=f"{settings.API_V1_STR}/demo", tags=["Demo"])
+
+    # Serve generated images as static files
+    generated_content_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "generated_content")
+    os.makedirs(generated_content_dir, exist_ok=True)
+    app.mount("/generated", StaticFiles(directory=generated_content_dir), name="generated")
 
     # Exception Handlers
     from fastapi.exceptions import RequestValidationError

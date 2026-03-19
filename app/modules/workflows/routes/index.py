@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session
-from typing import List
+from typing import List, Dict, Any
+import json
 from app.modules.common.types.index import APIResponse
 from app.modules.database.service.connection import get_session
 from app.modules.workflows.service.index import workflow_service
@@ -12,6 +14,15 @@ router = APIRouter()
 def run_workflow(request: WorkflowRunRequest):
     result = workflow_service.run_graph(request.nodes, request.edges, request.inputs)
     return APIResponse(data=result, message="Workflow execution completed")
+
+@router.post("/run-stream")
+async def run_workflow_stream(request: WorkflowRunRequest):
+    async def event_generator():
+        async for event in workflow_service.run_graph_stream(request.nodes, request.edges, request.inputs):
+            # Format as SSE
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @router.get("/", response_model=APIResponse[List[WorkflowRead]])
 def list_workflows(skip: int = 0, limit: int = 100):

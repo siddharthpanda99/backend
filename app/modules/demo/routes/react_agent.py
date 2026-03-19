@@ -384,7 +384,8 @@ def load_agent(
     agent_id: str = "demo_master_agent",
     tool_ids: list = None,
     system_prompt: str = None,
-    guardrails: list = None
+    guardrails: list = None,
+    preload: bool = True
 ) -> ReactMasterAgent:
     """Dynamically loads or reloads the master agent using the Modular service."""
     global _engine_manager, _master_agent
@@ -404,7 +405,7 @@ def load_agent(
         target_files=[], 
         model_path=env_model or model_path, 
         provider_type=env_provider,
-        preload=True
+        preload=preload
     )
     model_provider = LangChainModelAdapter(provider=_engine_manager.main_llm)
     
@@ -561,9 +562,15 @@ JSON Result:"""
 
 # Initial boot-up load
 try:
-    load_agent()
+    from app.core.settings import get_settings
+    _settings = get_settings()
+    # Always call load_agent to initialize engine_manager/registry, 
+    # but only preload model if setting is enabled.
+    load_agent(preload=_settings.PRELOAD_LLM)
+    if not _settings.PRELOAD_LLM:
+        logger.info("Engine initialized; skipping initial LLM preload per settings.")
 except Exception as e:
-    logger.error(f"Initial agent load failed: {e}")
+    logger.error(f"Initial agent load check failed: {e}")
 
 class DeployRequest(BaseModel):
     model_path: Optional[str] = None
