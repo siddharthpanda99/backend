@@ -4,9 +4,14 @@ from typing import List
 from app.modules.common.types.index import APIResponse
 from app.modules.database.service.connection import get_session
 from app.modules.workflows.service.index import workflow_service
-from app.modules.workflows.schemas.index import WorkflowRead, WorkflowCreate, WorkflowUpdate
+from app.modules.workflows.schemas.index import WorkflowRead, WorkflowCreate, WorkflowUpdate, WorkflowRunRequest
 
 router = APIRouter()
+
+@router.post("/run", response_model=APIResponse[Dict[str, Any]])
+def run_workflow(request: WorkflowRunRequest):
+    result = workflow_service.run_graph(request.nodes, request.edges, request.inputs)
+    return APIResponse(data=result, message="Workflow execution completed")
 
 @router.get("/", response_model=APIResponse[List[WorkflowRead]])
 def list_workflows(skip: int = 0, limit: int = 100):

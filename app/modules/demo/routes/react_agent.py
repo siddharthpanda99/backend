@@ -16,6 +16,7 @@ from common_lib.modules.orchestration.agent.react_master_agent import ReactMaste
 from common_lib.modules.orchestration.agent.schemas import AgentDefinition, AgentIdentity, AgentType
 from common_lib.modules.core_infrastructure.shared.enums import Status, AgentRole, ReasoningLevel, AutonomyLevel
 from app.core.common_lib_integration import common_memory
+from app.agentic.master_agent import MasterAgent, format_scratchpad
 
 # ANSI Colors for terminal
 BLUE = "\033[94m"
@@ -123,7 +124,6 @@ def query_capability_inventory(query: str = "current") -> str:
             except Exception: pass
             
         try:
-            from common_lib.modules.memory import common_memory
             workflows = common_memory.list_workflow_definitions()
             for w in workflows:
                 all_capabilities.append({
@@ -382,20 +382,20 @@ def load_agent(
     model_path: str = None,
     provider: str = "local_llama",
     agent_id: str = "demo_master_agent",
-    tool_ids: list = None
+    tool_ids: list = None,
+    system_prompt: str = None,
+    guardrails: list = None
 ) -> ReactMasterAgent:
-    """Dynamically loads or reloads the master agent."""
+    """Dynamically loads or reloads the master agent using the Modular service."""
     global _engine_manager, _master_agent
     
-    class DummyContext:
-        def __init__(self):
-            self.adapter = None
-            self.service = None 
-            
-    ctx = DummyContext()
-    
+    # 1. Setup Engine & LLM
     if _engine_manager is None:
-        _engine_manager = EngineManager(ctx)
+        class DummyContext:
+            def __init__(self):
+                self.adapter = None
+                self.service = None
+        _engine_manager = EngineManager(DummyContext())
     
     env_model = os.getenv("LOCAL_LLM_MODEL_PATH") or os.getenv("LOCAL_HF_MODEL_PATH")
     env_provider = os.getenv("LLM_PROVIDER_TYPE", provider)
@@ -406,469 +406,160 @@ def load_agent(
         provider_type=env_provider,
         preload=True
     )
-
-    raw_provider = _engine_manager.main_llm
-    model_provider = LangChainModelAdapter(provider=raw_provider)
+    model_provider = LangChainModelAdapter(provider=_engine_manager.main_llm)
     
-    identity = AgentIdentity(
-        agent_name=agent_id,
-        display_name=agent_id.replace("_", " ").capitalize(),
-        version="1.0",
-        status=Status.ACTIVE,
-        owner="system"
-    )
-    agent_type = AgentType(
-        role=AgentRole.ORCHESTRATOR,
-        secondary_roles=[],
-        reasoning_level=ReasoningLevel.ANALYTICAL,
-        autonomy=AutonomyLevel.FULL,
-        template=None
+    # 2. Configure Service (Modular Prompts/Guardrails)
+    service = MasterAgent(
+        model_provider=model_provider, 
+        engine_manager=_engine_manager,
+        system_prompt=system_prompt,
+        guardrails=guardrails
     )
     
-    definition = AgentDefinition(
-        identity=identity,
-        type=agent_type,
-        system_prompt_override=DEMO_AGENT_PROMPT
-    )
-    
-    # Filter tools by selected IDs; default to all if none specified
+    # 3. Tool Preparation
     selected_tools = []
     active_tool_meta = []
-    tool_count = 0
-    workflow_count = 0
-    
-    # Check hardcoded tools
     for e in DEMO_TOOL_REGISTRY:
-        # ALWAYS include core system tools for state management and discovery
-        is_core = e["id"] in ["query_capability_inventory", "remember_info", "extract_and_remember_hints"]
-        if is_core or (not tool_ids or e["id"] in tool_ids):
-            selected_tools.append(e["handler"])
-            active_tool_meta.append({"id": e["id"], "name": e["name"], "description": e["description"]})
-            tool_count += 1
+        if not tool_ids or e["id"] in tool_ids:
+            if e.get("handler"):
+                selected_tools.append(e["handler"])
+                active_tool_meta.append({"id": e["id"], "name": e["name"], "description": e["description"]})
             
-    # Load dynamic tools and workflows
-    if tool_ids:
-        # 1. Check Tool Registry
-        if _engine_manager.registry_svc:
-            _engine_manager.sync_registry()
-            
-            for tid in tool_ids:
-                if any(m["id"] == tid for m in active_tool_meta): continue
-                    
-                schema = _engine_manager.registry_svc.get_tool(tid)
-                if schema:
-                    lc_tool = tool_schema_to_langchain(schema)
-                    if lc_tool:
-                        selected_tools.append(lc_tool)
-                        active_tool_meta.append({"id": tid, "name": schema.name, "description": schema.capability.description})
-                        
-                        is_wf = (schema.metadata or {}).get("entity_type") == "workflow" or tid.startswith("workflows.")
-                        if is_wf: workflow_count += 1
-                        else: tool_count += 1
-                        logger.info(f"Loaded dynamic {'workflow' if is_wf else 'tool'}: {tid}")
+    if tool_ids and _engine_manager.registry_svc:
+        _engine_manager.sync_registry()
+        for tid in tool_ids:
+            if any(m["id"] == tid for m in active_tool_meta): continue
+            schema = _engine_manager.registry_svc.get_tool(tid)
+            if schema:
+                lc_tool = tool_schema_to_langchain(schema)
+                if lc_tool:
+                    selected_tools.append(lc_tool)
+                    active_tool_meta.append({"id": tid, "name": schema.name, "description": schema.capability.description})
 
-        # 2. Check Workflow Engine (for workflows not in tool registry)
-        if _engine_manager.engine and _engine_manager.engine.workflows:
-            for tid in tool_ids:
-                if any(m["id"] == tid for m in active_tool_meta): continue
-                
-                if tid in _engine_manager.engine.workflows:
-                    wf_obj = _engine_manager.engine.workflows[tid]
-                    
-                    def create_wf_wrapper(w_id, w_name, w_desc):
-                        @tool
-                        def run_workflow_exec(inputs: str) -> str:
-                            """Execute a specialized workflow."""
-                            res = _engine_manager.engine._handle_workflow(inputs, workflow_id=w_id)
-                            mem = res.get("final_memory", {})
-                            if isinstance(mem, dict):
-                                return str(mem.get("output") or mem.get("response") or mem)
-                            return str(mem)
-                        run_workflow_exec.name = f"wf__{w_id.replace('.', '__')}"
-                        run_workflow_exec.description = f"Specialized Workflow: {w_name}. {w_desc}"
-                        return run_workflow_exec
-
-                    name = getattr(wf_obj, 'name', tid.replace("_", " ").title())
-                    desc = "Execute a multi-agent orchestration workflow."
-                    
-                    wf_tool = create_wf_wrapper(tid, name, desc)
-                    selected_tools.append(wf_tool)
-                    active_tool_meta.append({"id": tid, "name": name, "description": desc})
-                    workflow_count += 1
-                    logger.info(f"Loaded workflow as tool: {tid}")
-
-    if not selected_tools:
-        # Always give the agent at least something to work with
-        selected_tools = ALL_DEMO_TOOLS
-        active_tool_meta = [{"id": e["id"], "name": e["name"], "description": e["description"]} for e in DEMO_TOOL_REGISTRY]
-        tool_count = len(selected_tools)
-        logger.warning("No valid tools selected — using fallback demo tools.")
-
-    # --- Tool Segmentation ---
-    # 1. Internal tools for graph nodes (Not visible to LLM)
-    INTERNAL_TOOLS = ["remember_info", "extract_and_remember_hints"]
-    internal_tool_map = {e["id"]: e["handler"] for e in DEMO_TOOL_REGISTRY if e["id"] in INTERNAL_TOOLS}
+    # 4. COMPILE LANGGRAPH (Modular Reasoning nodes)
+    from langgraph.graph import StateGraph, END
+    workflow = StateGraph(ReActState)
     
-    # 2. Agent tools (Visible to LLM if thin-prompt doesn't hide them)
-    agent_tools = []
-    from langchain_core.tools import BaseTool
-    for t in selected_tools:
-        # Wrap everything in a standard check
-        lc_tool = t
-        if not isinstance(t, BaseTool) and callable(t):
-             t_name = getattr(t, 'name', getattr(t, '__name__', str(t)))
-             t_desc = getattr(t, 'description', getattr(t, '__doc__', "No description provided."))
-             lc_tool = StructuredTool.from_function(func=t, name=t_name, description=t_desc)
-        
-        t_id = getattr(lc_tool, 'id', getattr(lc_tool, 'name', str(lc_tool))).lower()
-        if not any(it in t_id for it in INTERNAL_TOOLS):
-            agent_tools.append(lc_tool)
-
-    # --- Performance Optimization: Thin Prompt Visibility ---
-    MUST_BE_IN_PROMPT = ["query_capability_inventory", "get_current_weather", "calculate_math"]
-    prompt_tools = []
+    workflow.add_node("preprocess_input", service.preprocess_input)
+    async def agent_thinking_node(state):
+        return await service.run_agent(state, selected_tools)
     
-    if len(agent_tools) > 5:
-        for t in agent_tools:
-            t_name = getattr(t, 'name', str(t)).lower()
-            if any(cid in t_name for cid in MUST_BE_IN_PROMPT) or any(cid in t_name for cid in ["doc", "pdf", "search", "vision"]):
-                prompt_tools.append(t)
-        logger.info(f"Thin-Prompt: Using {len(prompt_tools)} tools for LLM reasoning.")
-    else:
-        prompt_tools = agent_tools
-        logger.info(f"Full-Prompt: Using {len(prompt_tools)} tools.")
-
-    _master_agent = ReactMasterAgent(
-        definition=definition,
-        model_provider=model_provider,
-        tools=agent_tools
-    )
-    # Re-sync tool map after init to ensure names match exactly
-    _master_agent.tool_map = {getattr(t, 'name', str(t)): t for t in agent_tools}
-    # Add internal tools to tool_map so graph nodes can find them, but they aren't in the Agent's reasoning pool
-    for tid, handler in internal_tool_map.items():
-        if tid not in _master_agent.tool_map:
-            _master_agent.tool_map[tid] = handler if isinstance(handler, BaseTool) else StructuredTool.from_function(func=handler, name=tid, description="INTERNAL")
-
-    # Custom compile with graph persistence
-    try:
-        from langchain.agents import create_react_agent
-    except ImportError:
-        from langchain_classic.agents import create_react_agent
-        
-    from langchain_core.prompts import PromptTemplate
+    workflow.add_node("agent_thinking", agent_thinking_node)
     
-    prompt_template = PromptTemplate.from_template(DEMO_AGENT_PROMPT)
-    _master_agent.graph = None 
-    
-    try:
-        # Build optimized runnable
-        react_runnable = create_react_agent(
-            llm=model_provider,
-            tools=prompt_tools,
-            prompt=prompt_template
-        )
-        
-        # We manually re-bind the nodes to ensure correct tool execution logic
-        # Custom scratchpad formatter to avoid dependency issues with moving langchain modules
-        def format_scratchpad(intermediate_steps):
-            log = ""
-            for action, observation in intermediate_steps:
-                log += f"Thought: {action.log}\n"
-                log += f"Action: {action.tool}\n"
-                log += f"Action Input: {action.tool_input}\n"
-                log += f"Observation: {observation}\n"
-            return log
-
-        async def preprocess_input(state):
-            """Initial analysis of user input to categorize intent, extract context, AND generate a strategy."""
-            user_input = state.get("input", "")
-            if not user_input or not _master_agent:
-                return {}
-
-            prompt = f"""Analyze the User Input for intent and key information.
-User Input: {user_input}
-
-1. Categorize intent: (greeting, instruction, question, casual, or other)
-2. Extract 'hints' (entities, preferences, settings, config).
-   For each hint provide: label, description, reasoning.
-3. Generate a 'strategy': A 1-sentence high-level plan for the agent (e.g., "Ask for user name then proceed to search tools" or "Directly answer the question using available knowledge").
-
-Format as JSON:
-{{
-  "intent": "...",
-  "strategy": "...",
-  "hints": [{{ "label": "...", "description": "...", "reasoning": "..." }}]
-}}
-
-JSON Result:"""
+    async def execute_tool_node(state):
+        current_steps = state.get("intermediate_steps", []) or []
+        action = state["agent_outcome"]
+        if not isinstance(action, AgentAction): return {"intermediate_steps": []}
+        t_name = action.tool
+        if t_name == "query_capability_inventory":
+            obs = service.query_capability_inventory(action.tool_input)
+            return {"intermediate_steps": current_steps + [(action, obs)]}
+        t_obj = next((t for t in selected_tools if getattr(t, 'name', '') == t_name or getattr(t, '__name__', '') == t_name), None)
+        if t_obj:
             try:
-                res = await _master_agent.model_provider.ainvoke(prompt)
-                content = str(res.content if hasattr(res, 'content') else res).strip()
-                if "{" in content and "}" in content:
-                    found_json = json.loads(content[content.find("{"):content.rfind("}")+1])
-                    new_hints = found_json.get("hints", [])
-                    intent = found_json.get("intent", "other")
-                    strategy = found_json.get("strategy", "Proceed with standard ReAct reasoning.")
-                    
-                    current_hints = state.get("hints", []) or []
-                    if new_hints:
-                        current_hints.extend(new_hints)
-                        logger.info(f"Pre-extracted hints: {new_hints}")
-                    
-                    meta = state.get("operational_metadata", {}) or {}
-                    meta["last_intent"] = intent
-                    meta["current_strategy"] = strategy
-                    
-                    return {"hints": current_hints, "operational_metadata": meta}
-                return {}
-            except Exception as e:
-                logger.error(f"Pre-processing failed: {e}")
-                return {}
-        async def run_agent(state):
-            """Normal Path: LLM Execution"""
-            try:
-                # Truncate conversation history to avoid context overflow in local LLMs
-                history = state.get("conversation_history", "")
-                history_lines = history.strip().split("\n")
-                if len(history_lines) > 10:
-                    history = "\n".join(history_lines[-10:])
-                
-                # Format the intermediate steps into a ReAct scratchpad
-                intermediate_steps = state.get("intermediate_steps", [])
-                scratchpad = format_scratchpad(intermediate_steps)
-                
-                # Check for loops (too many intermediate steps)
-                # Hard limit at 6 to prevent runaway in demo
-                if len(intermediate_steps) >= 6:
-                    logger.warning(f"CRITICAL: Loop detected for session. Forcing stop at 6 steps.")
-                    return {"agent_outcome": AgentFinish(
-                        return_values={"output": "I'm having trouble completing this task efficiently. I've stopped to prevent a loop. Is there a simpler way I can help?"},
-                        log="Max steps (6) reached. Loop prevention triggered."
-                    )}
-
-                # REPETITION GUARD: Detect and provide feedback for redundant actions
-                if len(intermediate_steps) >= 2:
-                    last_action, last_obs = intermediate_steps[-1]
-                    prev_action, prev_obs = intermediate_steps[-2]
-                    
-                    if isinstance(last_action, AgentAction) and isinstance(prev_action, AgentAction):
-                        if last_action.tool == prev_action.tool and last_action.tool_input == prev_action.tool_input:
-                            # If it's the FIRST repetition, try to nudge the model instead of erroring
-                            if len(intermediate_steps) < 4:
-                                logger.warning(f"REPETITION DETECTED (attempt {len(intermediate_steps)}): Providing feedback.")
-                                feedback = f"ALERT: You are repeating the tool call '{last_action.tool}' with the same input. " \
-                                           f"The previous result was: \"{last_obs}\". " \
-                                           f"DO NOT repeat this again. Either provide a Final Answer explaining what you found, " \
-                                           f"or try a different search query/tool."
-                                
-                                # We add a fake entry to scratchpad or just let it continue but with this knowledge?
-                                # The best way is to let the model re-think.
-                                # But if we return here, we need to decide what to return.
-                                # If we want the LLM to see this, we can return it as a "Observation" for a virtual step.
-                                return {"agent_outcome": AgentAction(tool="query_capability_inventory", tool_input="feedback", log=feedback)}
-
-                            # Hard stop for persistent loops
-                            logger.error(f"STUBBORN LOOP DETECTED: {last_action.tool}. Forcing termination.")
-                            return {"agent_outcome": AgentFinish(
-                                return_values={"output": f"I'm sorry, I'm having trouble retrieving fresh data for '{last_action.tool_input}'. I've searched several times but no new results appeared. How else can I help?"},
-                                log="Stubborn loop termination."
-                            )}
-
-                # Inject current structured state into the prompt
-                state_json = json.dumps(state.get("structured_state", {}), indent=2)
-                hints_json = json.dumps(state.get("hints", []), indent=2)
-                
-                # Strategy retrieval
-                meta = state.get("operational_metadata", {}) or {}
-                strategy = meta.get("current_strategy", "Analyze user input and use tools if necessary.")
-
-                chain_input = {
-                    "input": state["input"],
-                    "conversation_history": history,
-                    "structured_state": state_json,
-                    "hints_state": hints_json,
-                    "strategy": strategy,
-                    "agent_scratchpad": scratchpad,
-                    "intermediate_steps": intermediate_steps
-                }
-
-                # Run the agent chain
-                outcome = await react_runnable.ainvoke(chain_input)
-                logger.info(f"Agent Outcome: {outcome}")
-                return {"agent_outcome": outcome}
-            except Exception as e:
-                logger.error(f"Execution/Parsing Error: {e}")
-                # FALLBACK: If we get a parsing error on a "Final Answer" or if the model just speaks, try to extract it
-                err_msg = str(e)
-                if "Final Answer:" in err_msg:
-                    answer = err_msg.split("Final Answer:")[-1].strip()
-                    return {"agent_outcome": AgentFinish(return_values={"output": answer}, log=err_msg)}
-                
-                # If it tried to call an internalized extraction tool, treat it as a greeting finish
-                if "extract_and_remember_hints" in err_msg or "remember_info" in err_msg:
-                    return {"agent_outcome": AgentFinish(
-                        return_values={"output": "I've noted that! How else can I help you?"},
-                        log="Model attempted internalized tool. Falling back to finish."
-                    )}
-                
-                return {"agent_outcome": AgentFinish(
-                    return_values={"output": f"I encountered a formatting error: {str(e)}. Please rephrase or try a different approach."},
-                    log=f"Parser Error: {e}"
-                )}
-
-        async def execute_tool(state):
-            current_steps = state.get("intermediate_steps", []) or []
-            action = state["agent_outcome"]
-            if not isinstance(action, AgentAction):
-                return {"intermediate_steps": []}
-            tool_name = action.tool
-            if not tool_name:
-                 return {"intermediate_steps": current_steps + [(action, "Error: No tool name provided.")]}
-                 
-            tool_obj = _master_agent.tool_map.get(tool_name)
-            if not tool_obj:
-                # If tool not found in prompt subset, check the full map (dynamic discovery)
-                logger.warning(f"Tool '{tool_name}' not found. Available: {list(_master_agent.tool_map.keys())}")
-                return {"intermediate_steps": current_steps + [(action, f"Error: Tool '{tool_name}' unknown.")]}
-                    
-            # Execute tool logic
-            try:
-                # Specific logic for remember_info to update state directly
-                if tool_name == "remember_info":
-                    params = action.tool_input
-                    if isinstance(params, str):
-                        try: params = json.loads(params)
-                        except: params = {"key": params, "value": "unknown"}
-                    
-                    key = params.get("key")
-                    value = params.get("value")
-                    
-                    current_state = state.get("structured_state", {}) or {}
-                    current_state[key] = value
-                    
-                    return {
-                        "intermediate_steps": current_steps + [(action, f"Stored {key}={value}")],
-                        "structured_state": current_state
-                    }
-
-                obs = await tool_obj.ainvoke(action.tool_input) if hasattr(tool_obj, "ainvoke") else tool_obj.invoke(action.tool_input)
+                obs = await t_obj.ainvoke(action.tool_input) if hasattr(t_obj, "ainvoke") else t_obj.invoke(action.tool_input)
+                if t_name == "remember_info":
+                    try:
+                        params = action.tool_input
+                        if isinstance(params, str): params = json.loads(params)
+                        k, v = params.get("key"), params.get("value")
+                        if k and v:
+                            cur = state.get("structured_state", {}) or {}
+                            cur[k] = v
+                            return {"intermediate_steps": current_steps + [(action, str(obs))], "structured_state": cur}
+                    except: pass
                 return {"intermediate_steps": current_steps + [(action, str(obs))]}
             except Exception as e:
-                return {"intermediate_steps": current_steps + [(action, f"Error executing tool {tool_name}: {str(e)}")]}
+                return {"intermediate_steps": current_steps + [(action, f"Error: {str(e)}")]}
+        return {"intermediate_steps": current_steps + [(action, f"Error: Tool {t_name} unknown")]}
 
-        async def update_history_node(state):
-            """Appends the current turn to persistent history and CLEAR scratchpad."""
-            outcome = state.get("agent_outcome")
-            if outcome and hasattr(outcome, "return_values"):
-                user_input = state.get("input", "")
-                bot_output = outcome.return_values.get("output", "")
-                new_history = state.get("conversation_history", "") + f"User: {user_input}\nAssistant: {bot_output}\n"
-                return {
-                    "conversation_history": new_history,
-                    "intermediate_steps": [] # Reset for next turn
-                }
-            return {"intermediate_steps": []}
-            
-        async def auto_extract_knowledge(state):
-            """Analyses the turn for interesting facts to add to structured_state."""
+    workflow.add_node("execute_tool", execute_tool_node)
+    
+    async def auto_extract_node(state):
+        """Hidden node to pick up hints after the bot answers."""
+        try:
             user_input = state.get("input", "")
-            bot_output = ""
-            outcome = state.get("agent_outcome")
-            if outcome and hasattr(outcome, "return_values"):
-                bot_output = outcome.return_values.get("output", "")
-                
-            if not user_input or not _master_agent:
-                 return {}
-
-            # Optimization: Skip if bot output is a generic greeting
-            GREETINGS_OR_HELP = ["hi ", "hello", "how can i help", "ai assistant"]
-            if any(g in bot_output.lower() for g in GREETINGS_OR_HELP) and "i am " not in user_input.lower():
-                return {}
-                 
-            # Run a quiet extraction via the LLM
-            prompt = f"""You are a memory sync engine. Observe the interaction:
+            bot_output = state.get("agent_outcome", {}).return_values.get("output", "")
+            if not user_input or not bot_output: return {}
+            
+            prompt = f"""You are a memory engine. Interaction:
 User: {user_input}
 Assistant: {bot_output}
 
-Extract NEW or UPDATED hints about the user or context.
-For each hint, provide:
-- label: A short name/key (e.g. "User Name")
-- description: The core fact or preference
-- reasoning: Why you labeled this (e.g. "User introduced himself")
-
-Format as a JSON list under the key "hints".
-Example: {{"hints": [{{ "label": "User Name", "description": "Siddharth", "reasoning": "Explicit introduction" }}]}}
+Extract NEW or UPDATED hints (label, description, reasoning).
+Format as JSON list: {{"hints": [{{ "label": "...", "description": "...", "reasoning": "..." }}]}}
 If nothing new, return {{"hints": []}}.
 
 JSON Result:"""
-            try:
-                # Direct LLM call for auto-sync
-                res = await _master_agent.model_provider.ainvoke(prompt)
-                content = str(res.content if hasattr(res, 'content') else res).strip()
-                if "{" in content and "}" in content:
-                    found_json = json.loads(content[content.find("{"):content.rfind("}")+1])
-                    new_hints = found_json.get("hints", [])
-                    if new_hints:
-                        current_hints = state.get("hints", []) or []
-                        # Simplistic merge: could be smarter about updates
-                        current_hints.extend(new_hints)
-                        logger.info(f"Auto-extracted hints: {new_hints}")
-                        return {"hints": current_hints}
-                return {}
-            except Exception as e:
-                logger.error(f"Auto-extraction failed: {e}")
-                return {}
-        
-        # Re-compile logic (simplified for this route)
-        from langgraph.graph import StateGraph, END
-        from common_lib.modules.orchestration.agent.react_master_agent import ReActState, AgentAction, AgentFinish
-        
-        wf = StateGraph(ReActState)
-        wf.add_node("preprocess_input", preprocess_input)
-        wf.add_node("agent_thinking", run_agent)
-        wf.add_node("execute_tool", execute_tool)
-        wf.add_node("finalize_turn", update_history_node)
-        wf.add_node("auto_extract", auto_extract_knowledge)
-        wf.set_entry_point("preprocess_input")
-        
-        wf.add_edge("preprocess_input", "agent_thinking")
-        
-        def router(state):
-            if isinstance(state["agent_outcome"], AgentFinish):
-                return "auto_extract" # Intermediate step before finalizing
-            return "execute_tool"
-            
-        wf.add_conditional_edges("agent_thinking", router)
-        wf.add_edge("execute_tool", "agent_thinking")
-        wf.add_edge("auto_extract", "finalize_turn")
-        wf.add_edge("finalize_turn", END)
-        
-        # Enable persistence
-        _master_agent.graph = wf.compile(checkpointer=_checkpointer)
-    except Exception as e:
-        logger.error(f"Failed performance-optimized compile: {e}")
-        # Build standard graph with persistence
-        _master_agent.set_checkpointer(_checkpointer)
-        _master_agent._compile_graph()
+            res = await service.model_provider.ainvoke(prompt)
+            content = str(res.content if hasattr(res, 'content') else res).strip()
+            if "{" in content:
+                found = json.loads(content[content.find("{"):content.rfind("}")+1])
+                new_hints = found.get("hints", [])
+                if new_hints:
+                    cur = state.get("hints", []) or []
+                    cur.extend(new_hints)
+                    return {"hints": cur}
+        except: pass
+        return {}
 
-    # --- Update Local Active Config for UI ---
-    global _active_session_config
-    # Try to reuse existing session_id if available (persistence-friendly)
-    curr_id = _active_session_config.get("session_id") if _active_session_config else None
+    workflow.add_node("auto_extract", auto_extract_node)
     
-    _active_session_config = {
-        "model_path": model_path or os.getenv("LOCAL_LLM_MODEL_PATH", "default"),
-        "agent_id": agent_id,
-        "agent_display_name": definition.identity.display_name,
-        "tools": active_tool_meta,
-        "tool_count": tool_count,
-        "workflow_count": workflow_count,
-        "session_id": curr_id or f"session-{datetime.now().strftime('%Y%m%d%H%M')}-{agent_id[:4]}"
-    }
-    logger.info(f"Deployed Agent Active Config: Ready for thread {_active_session_config['session_id']}")
+    async def finalize_turn_node(state):
+        """Update history and clear scratchpad."""
+        outcome = state.get("agent_outcome")
+        if outcome and hasattr(outcome, "return_values"):
+            user_input = state.get("input", "")
+            bot_output = outcome.return_values.get("output", "")
+            new_history = state.get("conversation_history", "") + f"User: {user_input}\nAssistant: {bot_output}\n"
+            return {"conversation_history": new_history, "intermediate_steps": []}
+        return {"intermediate_steps": []}
+    
+    workflow.add_node("finalize_turn", finalize_turn_node)
 
-# Initial load
+    # STRUCTURE EDGES
+    workflow.set_entry_point("preprocess_input")
+    workflow.add_edge("preprocess_input", "agent_thinking")
+    workflow.add_conditional_edges("agent_thinking", lambda s: "auto_extract" if isinstance(s["agent_outcome"], AgentFinish) else "execute_tool")
+    workflow.add_edge("execute_tool", "agent_thinking")
+    workflow.add_edge("auto_extract", "finalize_turn")
+    workflow.add_edge("finalize_turn", END)
+
+    # Global compilation
+    _master_agent = ReactMasterAgent(
+        definition=AgentDefinition(
+            identity=AgentIdentity(
+                agent_name=agent_id, 
+                display_name="Master Agent",
+                version="1.0.0",
+                status=Status.ACTIVE,
+                owner="admin"
+            ),
+            type=AgentType(
+                role=AgentRole.ORCHESTRATOR,
+                secondary_roles=[],
+                reasoning_level=ReasoningLevel.ANALYTICAL,
+                autonomy=AutonomyLevel.BOUNDED
+            ),
+            system_prompt_override=service.get_formatted_prompt()
+        ),
+        model_provider=model_provider,
+        tools=selected_tools
+    )
+    _master_agent.graph = workflow.compile(checkpointer=_checkpointer)
+    
+    global _active_session_config
+    _active_session_config = {
+        "agent_id": agent_id,
+        "tools": active_tool_meta,
+        "session_id": f"session-{datetime.now().strftime('%m%d%H%M')}"
+    }
+    
+    logger.info(f"Deployed modular agent '{agent_id}'.")
+    return _master_agent
+
+
+# Initial boot-up load
 try:
     load_agent()
 except Exception as e:
@@ -878,7 +569,9 @@ class DeployRequest(BaseModel):
     model_path: Optional[str] = None
     provider: Optional[str] = "local_llama"
     agent_id: Optional[str] = "demo_master_agent"
-    tool_ids: Optional[list] = None  # None = use all available tools
+    tool_ids: Optional[list] = None
+    system_prompt: Optional[str] = None
+    guardrails: Optional[list] = None
 
 @router.get("/available_tools")
 async def get_available_tools():
@@ -999,7 +692,9 @@ async def deploy_config(req: DeployRequest):
             model_path=req.model_path,
             provider=req.provider,
             agent_id=req.agent_id,
-            tool_ids=req.tool_ids
+            tool_ids=req.tool_ids,
+            system_prompt=req.system_prompt,
+            guardrails=req.guardrails
         )
         return {"status": "success", "info": await get_session_info()}
     except Exception as e:

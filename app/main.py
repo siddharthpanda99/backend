@@ -102,6 +102,10 @@ def create_app() -> FastAPI:
     app.include_router(workflows_router, prefix=f"{settings.API_V1_STR}/workflows", tags=["Workflows"], dependencies=[Depends(get_current_active_user)])
     app.include_router(tools_router, prefix=f"{settings.API_V1_STR}/tools", tags=["Tools"], dependencies=[Depends(get_current_active_user)])
     app.include_router(memories_router, prefix=f"{settings.API_V1_STR}/memories", tags=["Memories"], dependencies=[Depends(get_current_active_user)])
+    
+    # New Vision API
+    from app.modules.vision.routes import router as vision_router
+    app.include_router(vision_router, prefix=f"{settings.API_V1_STR}/vision", tags=["Vision"], dependencies=[Depends(get_current_active_user)])
 
     # Demo
     app.include_router(demo_react_router, prefix=f"{settings.API_V1_STR}/demo", tags=["Demo"])

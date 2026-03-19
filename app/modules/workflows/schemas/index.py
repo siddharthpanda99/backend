@@ -22,3 +22,9 @@ class WorkflowRead(WorkflowBase):
     
     class Config:
         from_attributes = True
+
+class WorkflowRunRequest(BaseModel):
+    id: Optional[str] = None
+    nodes: list
+    edges: list
+    inputs: Optional[dict] = {}

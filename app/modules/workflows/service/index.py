@@ -1,7 +1,8 @@
-from typing import List, Optional, Dict, Any
-from fastapi import HTTPException
-from app.modules.workflows.schemas.index import WorkflowCreate, WorkflowUpdate
-from app.core.common_lib_integration import common_memory, sync_entity_to_fs
+from common_lib.modules.orchestration.workflow.execution.executor import GraphExecutor
+from common_lib.modules.orchestration.workflow.execution.core import ExecutionEngine
+from common_lib.modules.orchestration.workflow.execution.context import ExecutionContext
+from common_lib.modules.orchestration.workflow.execution.primitives import Graph, State, Transition
+from common_lib.modules.orchestration.workflow.observability import EventTracer
 
 class WorkflowService:
     def get_all(self, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
@@ -47,5 +48,60 @@ class WorkflowService:
             raise HTTPException(status_code=404, detail="Workflow not found")
         common_memory.delete_workflow_definition(workflow_id)
         return True
+
+    def run_graph(self, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]], inputs: Dict[str, Any] = {}) -> Dict[str, Any]:
+        """
+        Converts a UI Node/Edge JSON graph into a backend State Graph and executes it.
+        """
+        # 1. Build Backend Graph
+        graph_id = f"dynamic_{uuid.uuid4().hex[:8]}"
+        graph = Graph(id=graph_id, name="UI Transient Workflow", version="1.0.0")
+        
+        # Mapping from UI Node ID to Backend State ID
+        state_map = {}
+        
+        # Detect start node (usually one with no incoming edges or marked as start)
+        incoming_counts = {n['id']: 0 for n in nodes}
+        for e in edges:
+            incoming_counts[e['to']] = incoming_counts.get(e['to'], 0) + 1
+        
+        start_node_id = next((nid for nid, count in incoming_counts.items() if count == 0), nodes[0]['id'] if nodes else None)
+        graph.start_state_id = start_node_id
+        
+        for n in nodes:
+            # Create a State for each node
+            state = State(
+                id=n['id'],
+                tool_id=n.get('toolId') or n.get('type'),
+                static_inputs=n.get('properties', {}),
+                description=n.get('title', n['id'])
+            )
+            graph.add_state(state)
+            state_map[n['id']] = state
+
+        # Create transitions for each edge
+        for e in edges:
+            parent_state = state_map.get(e['from'])
+            if parent_state:
+                transition = Transition(
+                    to_state_id=e['to'],
+                    description=f"Link from {e['from']} to {e['to']}"
+                )
+                parent_state.transitions.append(transition)
+
+        # 2. Execute
+        engine = ExecutionEngine()
+        tracer = EventTracer()
+        executor = GraphExecutor(engine, tracer)
+        context = ExecutionContext(agent_id="vision_demo_user", role="tester")
+        
+        results = executor.execute(graph, inputs, context)
+        
+        # 3. Collect Trace
+        return {
+            "status": "success",
+            "results": results,
+            "trace": tracer.get_events()
+        }
 
 workflow_service = WorkflowService()
