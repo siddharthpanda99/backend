@@ -1,0 +1,252 @@
+[
+  {
+    "name": "Hyperreal Elder Portrait",
+    "prompt": "hyper realistic portrait of an elderly man with deep wrinkles and wise eyes BREAK dramatic side lighting, volumetric light, cinematic shadows BREAK ultra detailed skin texture, pores, imperfections, Leica 85mm f1.2, sharp focus",
+    "negative_prompt": "young, smooth skin, cartoon, blurry, lowres",
+    "cfg": 6.5,
+    "steps": 40,
+    "sampler": "dpmpp_2m_karras",
+    "width": 512,
+    "height": 768
+  },
+  {
+    "name": "Futuristic Android Woman",
+    "prompt": "beautiful female android with translucent skin revealing circuits BREAK glowing blue accents, cyberpunk aesthetic, ultra detailed BREAK cinematic lighting, shallow depth of field, photorealistic",
+    "negative_prompt": "human skin only, low detail, blurry, lowres",
+    "cfg": 7.5,
+    "steps": 35,
+    "sampler": "dpmpp_sde_karras",
+    "width": 512,
+    "height": 768
+  },
+  {
+    "name": "Samurai in Rain",
+    "prompt": "lone samurai standing in heavy rain BREAK katana drawn, wet armor reflections BREAK cinematic lighting, dramatic atmosphere, ultra detailed, 8k",
+    "negative_prompt": "sunny, bright, low detail, blurry",
+    "cfg": 8.0,
+    "steps": 45,
+    "sampler": "euler_ancestral",
+    "width": 768,
+    "height": 512
+  },
+  {
+    "name": "Alien Planet Landscape",
+    "prompt": "vast alien landscape with floating rocks and strange flora BREAK purple sky, twin suns, surreal environment BREAK cinematic wide shot, highly detailed, 8k",
+    "negative_prompt": "earth-like, normal sky, lowres",
+    "cfg": 7.0,
+    "steps": 35,
+    "sampler": "heun",
+    "width": 1024,
+    "height": 512
+  },
+  {
+    "name": "Luxury Watch Macro",
+    "prompt": "extreme macro shot of a luxury mechanical watch BREAK visible gears, polished metal, reflections BREAK studio lighting, product photography, ultra sharp",
+    "negative_prompt": "blurry, low detail, cheap, plastic",
+    "cfg": 6.5,
+    "steps": 30,
+    "sampler": "dpm_fast",
+    "width": 512,
+    "height": 512
+  },
+  {
+    "name": "Post Apocalyptic Survivor",
+    "prompt": "rugged survivor in post-apocalyptic wasteland BREAK torn clothes, dust, scars, cinematic lighting BREAK gritty realism, dramatic sky, ultra detailed",
+    "negative_prompt": "clean, modern, bright, lowres",
+    "cfg": 7.5,
+    "steps": 40,
+    "sampler": "dpmpp_2m_karras",
+    "width": 768,
+    "height": 512
+  },
+  {
+    "name": "Neon Samurai Cyberpunk",
+    "prompt": "cyberpunk samurai with glowing neon armor BREAK futuristic katana, city lights, rain reflections BREAK ultra detailed, cinematic, 8k",
+    "negative_prompt": "traditional, old, lowres",
+    "cfg": 8.5,
+    "steps": 45,
+    "sampler": "dpmpp_sde_karras",
+    "width": 768,
+    "height": 512
+  },
+  {
+    "name": "Dark Fantasy Knight",
+    "prompt": "dark fantasy knight in cursed armor BREAK glowing eyes, mist, gothic atmosphere BREAK ultra detailed, dramatic lighting, epic composition",
+    "negative_prompt": "bright, cartoon, low detail",
+    "cfg": 7.5,
+    "steps": 40,
+    "sampler": "euler",
+    "width": 512,
+    "height": 768
+  },
+  {
+    "name": "Underwater City",
+    "prompt": "ancient underwater city ruins BREAK coral covered buildings, light rays through water BREAK cinematic environment, highly detailed",
+    "negative_prompt": "dry, desert, lowres",
+    "cfg": 7.0,
+    "steps": 35,
+    "sampler": "lms",
+    "width": 768,
+    "height": 512
+  },
+  {
+    "name": "Ultra Real Food Photography",
+    "prompt": "close-up gourmet burger with melting cheese BREAK crispy textures, steam, studio lighting BREAK ultra realistic food photography, 8k",
+    "negative_prompt": "burnt, messy, lowres, blurry",
+    "cfg": 6.0,
+    "steps": 25,
+    "sampler": "dpm_fast",
+    "width": 512,
+    "height": 512
+  },
+  {
+    "name": "Space Explorer Suit",
+    "prompt": "astronaut in futuristic suit on alien planet BREAK reflective visor, stars, cinematic lighting BREAK ultra detailed, photorealistic",
+    "negative_prompt": "low detail, blurry, earth",
+    "cfg": 7.5,
+    "steps": 40,
+    "sampler": "heun",
+    "width": 768,
+    "height": 512
+  },
+  {
+    "name": "Haunted Victorian House",
+    "prompt": "old haunted victorian mansion at night BREAK fog, dim lights, eerie atmosphere BREAK cinematic horror, ultra detailed",
+    "negative_prompt": "bright, modern, cheerful",
+    "cfg": 7.0,
+    "steps": 35,
+    "sampler": "euler_ancestral",
+    "width": 768,
+    "height": 512
+  },
+  {
+    "name": "Golden Hour Street Photography",
+    "prompt": "street photography during golden hour BREAK warm lighting, candid people, urban environment BREAK realistic, cinematic composition",
+    "negative_prompt": "night, lowres, blurry",
+    "cfg": 6.5,
+    "steps": 30,
+    "sampler": "dpmpp_2m_karras",
+    "width": 768,
+    "height": 512
+  },
+  {
+    "name": "Mythical Phoenix Rising",
+    "prompt": "phoenix rising from flames BREAK glowing embers, fiery wings, epic composition BREAK ultra detailed, vibrant colors",
+    "negative_prompt": "cold, dark, lowres",
+    "cfg": 8.0,
+    "steps": 45,
+    "sampler": "dpm_2_ancestral",
+    "width": 768,
+    "height": 512
+  },
+  {
+    "name": "Ice Queen Portrait",
+    "prompt": "portrait of an ice queen with frozen crown BREAK icy textures, pale skin, glowing blue eyes BREAK cinematic lighting, ultra detailed",
+    "negative_prompt": "warm tones, low detail, blurry",
+    "cfg": 7.5,
+    "steps": 40,
+    "sampler": "dpmpp_sde_karras",
+    "width": 512,
+    "height": 768
+  },
+  {
+    "name": "Detailed Portrait (Freckles)",
+    "prompt": "detailed and realistic (upper body portrait:1.2) of a woman with a few (freckles:0.8) BREAK round eyes and short messy hair BREAK shot outside, wearing a white t shirt, staring at camera, chapped lips BREAK soft natural lighting, portrait photography, magical photography, dramatic lighting, photo realism, ultra-detailed, intimate portrait composition, Leica 50mm, f1.4",
+    "negative_prompt": "asian, chinese, busty, (epicnegative:0.9) easynegative",
+    "cfg": 5.0,
+    "steps": 50,
+    "sampler": "dpm_fast",
+    "width": 512,
+    "height": 760
+  },
+  {
+    "name": "Strong Warrior Princess",
+    "prompt": "strong warrior princess| centered| key visual| intricate| highly detailed| breathtaking beauty| precise lineart| vibrant| comprehensive| cinematic| carne griffiths| conrad roset",
+    "negative_prompt": "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality",
+    "cfg": 7.0,
+    "steps": 25,
+    "sampler": "Euler a",
+    "width": 512,
+    "height": 512
+  },
+  {
+    "name": "Coal Miner 19th Century",
+    "prompt": "a portrait of an old coal miner in 19th century, beautiful painting with highly detailed face by greg rutkowski and conrad roset, hyperdetailed",
+    "negative_prompt": "lowres, text, error, cropped, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, out of frame, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, username, watermark, signature",
+    "cfg": 7.5,
+    "steps": 30,
+    "sampler": "dpmpp_2m_karras",
+    "width": 512,
+    "height": 768
+  },
+  {
+    "name": "EVA Plugsuit Anime",
+    "prompt": "Hyper realistic painting of a beautiful girl in an EVA plugsuit, hyper detailed, anime, by greg rutkowski, trending on artstation",
+    "negative_prompt": "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality",
+    "cfg": 7.0,
+    "steps": 25,
+    "sampler": "Euler a",
+    "width": 512,
+    "height": 768
+  },
+  {
+    "name": "Cyberpunk Streetscape",
+    "prompt": "cyberpunk city street, neon lights, rainy night, cinematic lighting, futuristic cars, highly detailed, 8k resolution, photorealistic",
+    "negative_prompt": "sunny, day, peaceful, lowres, blurry",
+    "cfg": 8.0,
+    "steps": 40,
+    "sampler": "dpmpp_sde_karras",
+    "width": 768,
+    "height": 512
+  },
+  {
+    "name": "Ancient Temple Ruin",
+    "prompt": "overgrown ancient temple ruins in a dense jungle, sun rays breaking through canopy, cinematic environment, concept art, trending on artstation",
+    "negative_prompt": "modern, urban, city, people, lowres",
+    "cfg": 7.5,
+    "steps": 35,
+    "sampler": "euler",
+    "width": 768,
+    "height": 512
+  },
+  {
+    "name": "Intricate Clockwork Heart",
+    "prompt": "heart made of brass gears and clockwork, glowing blue core, macro photography, steam punk aesthetic, hyper detailed, 8k",
+    "negative_prompt": "organic, biological, flesh, lowres",
+    "cfg": 9.0,
+    "steps": 50,
+    "sampler": "dpm_2_ancestral",
+    "width": 512,
+    "height": 512
+  },
+  {
+    "name": "Cosmic Nebula Dragon",
+    "prompt": "a dragon made of stars and nebula clouds, flying through deep space, ethereal, vibrant colors, epic scale, digital art",
+    "negative_prompt": "earth, ground, solid, lowres",
+    "cfg": 7.0,
+    "steps": 30,
+    "sampler": "euler_ancestral",
+    "width": 1024,
+    "height": 512
+  },
+  {
+    "name": "Gothic Cathedral Interior",
+    "prompt": "inside of a massive gothic cathedral, stained glass windows, light beams, candles, dramatic atmosphere, ultra-realistic",
+    "negative_prompt": "simple, empty, bright, lowres",
+    "cfg": 7.5,
+    "steps": 40,
+    "sampler": "heun",
+    "width": 512,
+    "height": 1024
+  },
+  {
+    "name": "Fantasy Forest Glade",
+    "prompt": "magical forest glade with glowing mushrooms and fireflies, digital painting, soft lighting, peaceful atmosphere",
+    "negative_prompt": "dark, scary, urban, lowres",
+    "cfg": 6.5,
+    "steps": 25,
+    "sampler": "lms",
+    "width": 768,
+    "height": 512
+  }
+]

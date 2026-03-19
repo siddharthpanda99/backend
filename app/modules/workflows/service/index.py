@@ -1,63 +1,118 @@
-import uuid
-import asyncio
-import threading
 import json
 import logging
-from typing import List, Dict, Any, Optional, AsyncGenerator
-from fastapi import HTTPException
+import uuid
+from typing import Any, Dict, List, AsyncGenerator
+import asyncio
 
 from common_lib.modules.orchestration.workflow.execution.executor import GraphExecutor
 from common_lib.modules.orchestration.workflow.execution.core import ExecutionEngine
 from common_lib.modules.orchestration.workflow.execution.context import ExecutionContext
 from common_lib.modules.orchestration.workflow.execution.primitives import Graph, State, Transition
-from common_lib.modules.orchestration.workflow.observability import EventTracer
+from common_lib.modules.orchestration.workflow.observability import EventTracer, EventType
 
 logger = logging.getLogger(__name__)
 
 class WorkflowService:
-    def get_all(self, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
-        # This would usually come from a DB or memory store.
-        # For now, we'll return an empty list or mock data
-        return []
+    def __init__(self):
+        self.workflows = {}
 
-    def get_by_id(self, workflow_id: str) -> Optional[Dict[str, Any]]:
-        return None
+    def get_all(self) -> List[Dict[str, Any]]:
+        return list(self.workflows.values())
 
-    def create(self, workflow_in: Any) -> Dict[str, Any]:
-        return {}
+    def get_by_id(self, workflow_id: str) -> Dict[str, Any]:
+        return self.workflows.get(workflow_id, {})
 
-    def update(self, workflow_id: str, workflow_in: Any) -> Dict[str, Any]:
-        return {}
+    def create(self, workflow: Dict[str, Any]) -> Dict[str, Any]:
+        workflow_id = str(uuid.uuid4())
+        workflow['id'] = workflow_id
+        self.workflows[workflow_id] = workflow
+        return workflow
+
+    def update(self, workflow_id: str, workflow: Dict[str, Any]) -> Dict[str, Any]:
+        self.workflows[workflow_id] = workflow
+        return workflow
 
     def delete(self, workflow_id: str) -> bool:
-        return True
+        if workflow_id in self.workflows:
+            del self.workflows[workflow_id]
+            return True
+        return False
 
     def run_graph(self, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]], inputs: Dict[str, Any] = {}) -> Dict[str, Any]:
         """
         Sync version for backward compatibility.
         """
-        graph_id = f"dynamic_{uuid.uuid4().hex[:8]}"
-        graph = Graph(id=graph_id, name="UI Transient Workflow", version="1.0.0")
-        state_map = {}
+        # 1. Topological Sort for linear execution (since GraphExecutor follows one path)
         incoming_counts = {n['id']: 0 for n in nodes}
+        adj = {n['id']: [] for n in nodes}
         for e in edges:
             incoming_counts[e['to']] = incoming_counts.get(e['to'], 0) + 1
-        start_node_id = next((nid for nid, count in incoming_counts.items() if count == 0), nodes[0]['id'] if nodes else None)
-        graph.start_state_id = start_node_id
+            adj[e['from']].append(e['to'])
+        
+        # Simple Kahn's algorithm for topsort
+        queue = [n['id'] for n in nodes if incoming_counts.get(n['id'], 0) == 0]
+        sorted_nodes = []
+        while queue:
+            u = queue.pop(0)
+            sorted_nodes.append(u)
+            for v in adj[u]:
+                incoming_counts[v] -= 1
+                if incoming_counts[v] == 0:
+                    queue.append(v)
+        
+        # If topsort failed (e.g. cycles), fallback to original list
+        if len(sorted_nodes) < len(nodes):
+            sorted_nodes = [n['id'] for n in nodes]
 
+        start_node_id = sorted_nodes[0] if sorted_nodes else "unknown"
+
+        graph_id = f"dynamic_{uuid.uuid4().hex[:8]}"
+        graph = Graph(id=graph_id, name="UI Transient Workflow", start_state_id=start_node_id)
+        state_map = {}
+        
         for n in nodes:
+            props = n.get('properties') or n.get('data', {}).get('properties') or {}
             state = State(
                 id=n['id'],
                 tool_id=n.get('toolId') or n.get('type'),
-                static_inputs=n.get('properties', {}),
+                static_inputs=props,
                 description=n.get('title', n['id'])
             )
             graph.add_state(state)
             state_map[n['id']] = state
 
+        # 2. Linear Chaining: Ensure GraphExecutor hits every node in dependency order
+        logger.info(f"[WorkflowService] Linearizing {len(sorted_nodes)} nodes: {sorted_nodes}")
+        for i in range(len(sorted_nodes) - 1):
+            curr_id = sorted_nodes[i]
+            next_id = sorted_nodes[i+1]
+            if curr_id in state_map and next_id in state_map:
+                # Add transition to force path
+                state_map[curr_id].transitions.append(Transition(to_state_id=next_id, description="Linear dependency chain"))
+
+        # 3. Dynamic input mapping based on edges (No transitions here, pure data flow)
+
         for e in edges:
             parent_state = state_map.get(e['from'])
-            if parent_state:
+            target_state = state_map.get(e['to'])
+            if parent_state and target_state:
+                # Automatic input mapping based on toPort/targetHandle/targetPort
+                target_handle = e.get('toPort') or e.get('targetHandle') or e.get('targetPort')
+                if target_handle and target_handle in ['positive', 'negative', 'latent', 'latent_image', 'samples', 'model', 'clip', 'vae']:
+                    # Normalize target handle names
+                    normalized_handle = "latent" if target_handle == "latent_image" or target_handle == "samples" else target_handle
+                    
+                    logger.info(f"[Sync] Mapping edge {e['from']} -> {e['to']} (Port: {normalized_handle})")
+                    # Use standard output keys based on source node type
+                    source_node = next((n for n in nodes if n['id'] == e['from']), {})
+                    source_type = source_node.get('toolId') or source_node.get('type', '')
+                    
+                    # GraphExecutor uses {node_id_output.key} for path resolution
+                    output_key = "text" if "clip_encode" in source_type else ("latent" if "latent" in source_type or "ksampler" in source_type else ("image" if "vae_decode" in source_type else "output"))
+                    target_state.static_inputs[normalized_handle] = f"{{{e['from']}_output.{output_key}}}"
+
+                if any(t.to_state_id == e['to'] for t in parent_state.transitions):
+                    continue
                 transition = Transition(
                     to_state_id=e['to'],
                     description=f"Link from {e['from']} to {e['to']}"
@@ -76,32 +131,35 @@ class WorkflowService:
         context = ExecutionContext(agent_id="workflow_system", role="executor")
         results = executor.execute(graph, inputs, context)
         return {
-            "status": "success",
-            "results": results,
-            "trace": [e.model_dump() if hasattr(e, 'model_dump') else e for e in tracer.backends[0].events] if tracer.backends else []
+            "workflow_id": graph_id,
+            "status": "completed",
+            "results": results
         }
 
-    async def run_graph_stream(self, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]], inputs: Dict[str, Any] = {}) -> AsyncGenerator[Dict[str, Any], None]:
+    async def run_graph_stream(self, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]], inputs: Dict[Dict[str, Any], Any] = {}) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        SSE stream version of run_graph.
+        Executes a workflow graph and streams events via AsyncGenerator.
         """
         queue = asyncio.Queue()
-        loop = asyncio.get_running_loop()
+        loop = asyncio.get_event_loop()
 
-        from dataclasses import asdict
-        from common_lib.modules.orchestration.workflow.observability.events import EventType
-
-        class QueueBackend:
+        class QueueTracer(EventTracer):
             def emit(self, event):
                 try:
-                    data = asdict(event)
-                    # Convert EventType enum to string
-                    if 'event_type' in data and isinstance(data['event_type'], EventType):
-                        data['event_type'] = data['event_type'].value
-                    
-                    # Ensure timestamp is ISO format
-                    if 'timestamp' in data and hasattr(data['timestamp'], 'isoformat'):
-                        data['timestamp'] = data['timestamp'].isoformat()
+                    # Robust serialization for Event objects which may contain Enums (EventType)
+                    if hasattr(event, "model_dump"):
+                        data = event.model_dump(mode='json') # Pydantic v2 handles enums here
+                    elif hasattr(event, "__dict__"):
+                        data = {}
+                        for k, v in event.__dict__.items():
+                            if hasattr(v, "value"): # Handle Enums
+                                data[k] = v.value
+                            elif hasattr(v, "isoformat"):
+                                data[k] = v.isoformat()
+                            else:
+                                data[k] = v
+                    else:
+                        data = str(event)
                         
                     loop.call_soon_threadsafe(queue.put_nowait, data)
                 except Exception as e:
@@ -110,72 +168,113 @@ class WorkflowService:
             def flush(self): pass
             def close(self): pass
 
-        # 1. Build Backend Graph
-        graph_id = f"dynamic_{uuid.uuid4().hex[:8]}"
-        
+        # 1. Topological Sort for linear execution (since GraphExecutor follows one path)
         incoming_counts = {n['id']: 0 for n in nodes}
+        adj = {n['id']: [] for n in nodes}
         for e in edges:
             incoming_counts[e['to']] = incoming_counts.get(e['to'], 0) + 1
+            adj[e['from']].append(e['to'])
         
-        start_node_id = next((nid for nid, count in incoming_counts.items() if count == 0), nodes[0]['id'] if nodes else None)
+        # Simple Kahn's algorithm for topsort
+        topsort_queue = [n['id'] for n in nodes if incoming_counts.get(n['id'], 0) == 0]
+        sorted_nodes = []
+        while topsort_queue:
+            u = topsort_queue.pop(0)
+            sorted_nodes.append(u)
+            for v in adj[u]:
+                incoming_counts[v] -= 1
+                if incoming_counts[v] == 0:
+                    topsort_queue.append(v)
         
-        if not start_node_id:
-            raise ValueError("Workflow graph has no nodes or cannot determine a start node.")
+        # If topsort failed (e.g. cycles), fallback to original list
+        if len(sorted_nodes) < len(nodes):
+            sorted_nodes = [n['id'] for n in nodes]
 
+        start_node_id = sorted_nodes[0] if sorted_nodes else "unknown"
+
+        graph_id = f"dynamic_{uuid.uuid4().hex[:8]}"
         graph = Graph(id=graph_id, name="UI Transient Workflow", start_state_id=start_node_id)
         state_map = {}
         
         for n in nodes:
+            props = n.get('properties') or n.get('data', {}).get('properties') or {}
+            # Support node-level timeout overrides from UI or properties
+            node_timeout = n.get('timeout_seconds') or n.get('timeoutSeconds') or props.get('timeout_seconds') or props.get('timeoutSeconds')
+            
             state = State(
                 id=n['id'],
                 tool_id=n.get('toolId') or n.get('type'),
-                static_inputs=n.get('properties', {}),
-                description=n.get('title', n['id'])
+                static_inputs=props,
+                description=n.get('title', n['id']),
+                timeout_seconds=node_timeout
             )
             graph.add_state(state)
             state_map[n['id']] = state
 
+        # 2. Linear Chaining: Ensure GraphExecutor hits every node in dependency order
+        logger.info(f"[WorkflowService] Linearizing {len(sorted_nodes)} nodes: {sorted_nodes}")
+        for i in range(len(sorted_nodes) - 1):
+            curr_id = sorted_nodes[i]
+            next_id = sorted_nodes[i+1]
+            if curr_id in state_map and next_id in state_map:
+                # Add transition to force path
+                state_map[curr_id].transitions.append(Transition(to_state_id=next_id, description="Linear dependency chain"))
+
+        # 3. Dynamic input mapping based on edges (No transitions here, pure data flow)
+
         for e in edges:
             parent_state = state_map.get(e['from'])
-            if parent_state:
+            target_state = state_map.get(e['to'])
+            if parent_state and target_state:
+                # Automatic input mapping based on toPort/targetHandle/targetPort
+                target_handle = e.get('toPort') or e.get('targetHandle') or e.get('targetPort')
+                if target_handle and target_handle in ['positive', 'negative', 'latent', 'latent_image', 'samples', 'model', 'clip', 'vae']:
+                    # Normalize target handle names
+                    normalized_handle = "latent" if target_handle == "latent_image" or target_handle == "samples" else target_handle
+                    
+                    logger.info(f"[Stream] Mapping edge {e['from']} -> {e['to']} (Port: {normalized_handle})")
+                    # Use standard output keys based on source node type
+                    source_node = next((n for n in nodes if n['id'] == e['from']), {})
+                    source_type = source_node.get('toolId') or source_node.get('type', '')
+                    
+                    # GraphExecutor uses {node_id_output.key} for path resolution
+                    output_key = "text" if "clip_encode" in source_type else ("latent" if "latent" in source_type or "ksampler" in source_type else ("image" if "vae_decode" in source_type else "output"))
+                    target_state.static_inputs[normalized_handle] = f"{{{e['from']}_output.{output_key}}}"
+
+                if any(t.to_state_id == e['to'] for t in parent_state.transitions):
+                    continue
                 transition = Transition(
                     to_state_id=e['to'],
                     description=f"Link from {e['from']} to {e['to']}"
                 )
                 parent_state.transitions.append(transition)
 
-        def run_sync():
+        async def run_in_thread():
             try:
-                from common_lib.modules.core_infrastructure.registry import RegistryService
+                from app.modules.demo.routes.react_agent import _engine_manager
+                registry = _engine_manager.registry_svc if _engine_manager else None
+            except ImportError:
                 registry = None
-                try:
-                    from app.modules.demo.routes.react_agent import _engine_manager
-                    if _engine_manager and _engine_manager.registry_svc:
-                        registry = _engine_manager.registry_svc
-                except ImportError:
-                    pass
 
-                if registry is None:
-                    logger.info("Initializing local tool registry for workflow...")
-                    registry = RegistryService()
-                    registry.auto_register_common_lib_tools()
+            engine = ExecutionEngine(registry=registry)
+            tracer = QueueTracer()
+            executor = GraphExecutor(engine, tracer)
+            context = ExecutionContext(agent_id="workflow_system", role="executor")
+            
+            # Run in worker thread
+            await loop.run_in_executor(None, executor.execute, graph, inputs, context)
+            
+            # Signal end of stream
+            loop.call_soon_threadsafe(queue.put_nowait, {"event_type": "DONE"})
 
-                engine = ExecutionEngine(registry=registry)
-                tracer = EventTracer()
-                tracer.add_backend(QueueBackend())
-                executor = GraphExecutor(engine, tracer)
-                context = ExecutionContext(agent_id="workflow_system", role="executor")
-                executor.execute(graph, inputs, context)
-            finally:
-                loop.call_soon_threadsafe(queue.put_nowait, {"event_type": "workflow.finished"})
-
-        # Run execution in a separate thread
-        threading.Thread(target=run_sync, daemon=True).start()
+        task = asyncio.create_task(run_in_thread())
 
         while True:
             event = await queue.get()
-            if event.get("event_type") == "workflow.finished":
+            if isinstance(event, dict) and event.get("event_type") == "DONE":
                 break
             yield event
+
+        await task
 
 workflow_service = WorkflowService()
