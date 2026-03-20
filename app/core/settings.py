@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     PRELOAD_LLM: bool = False
     
+    # Image Generation Performance & Optimization
+    OPTIMIZE_USE_XFORMERS: bool = True
+    OPTIMIZE_USE_TORCH_COMPILE: bool = False
+    OPTIMIZE_USE_STABLE_FAST: bool = False
+    OPTIMIZE_USE_FREEU: bool = True
+    OPTIMIZE_LOW_VRAM: bool = False
+    
     # OpenAPI Customization
     OPENAPI_URL: str = "/openapi.json"
     DOCS_URL: str = "/docs"

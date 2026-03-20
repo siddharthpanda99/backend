@@ -1,4 +1,10 @@
 import os
+# Silence the common 'triton' traceback on Windows before importing any torch-related libs
+os.environ["XFORMERS_FORCE_DISABLE_TRITON"] = "1"
+
+from common_lib.modules.image_processing.core.common.optimizations import set_global_precision
+set_global_precision()
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
