@@ -113,15 +113,26 @@ def create_app() -> FastAPI:
     
     # New Vision API
     from app.modules.vision.routes import router as vision_router
+    print(f"Including Vision router with prefix: {settings.API_V1_STR}/vision")
     app.include_router(vision_router, prefix=f"{settings.API_V1_STR}/vision", tags=["Vision"])
 
     # Demo
     app.include_router(demo_react_router, prefix=f"{settings.API_V1_STR}/demo", tags=["Demo"])
 
     # Serve generated images as static files
-    generated_content_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "generated_content")
-    os.makedirs(generated_content_dir, exist_ok=True)
-    app.mount("/generated", StaticFiles(directory=generated_content_dir), name="generated")
+    from common_lib.paths import GENERATED_CONTENT
+    os.makedirs(GENERATED_CONTENT, exist_ok=True)
+    app.mount("/generated", StaticFiles(directory=str(GENERATED_CONTENT)), name="generated")
+
+    # Serve character profiles for UI previews
+    from common_lib.paths import CHARACTER_PROFILES_DIR
+    if CHARACTER_PROFILES_DIR.exists():
+        app.mount(f"{settings.API_V1_STR}/profiles", StaticFiles(directory=str(CHARACTER_PROFILES_DIR)), name="profiles")
+
+    # Serve assets for UI previews and loading
+    from common_lib.paths import ASSETS_DIR
+    os.makedirs(ASSETS_DIR, exist_ok=True)
+    app.mount(f"{settings.API_V1_STR}/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
     # Exception Handlers
     from fastapi.exceptions import RequestValidationError

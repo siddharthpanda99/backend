@@ -97,18 +97,40 @@ class WorkflowService:
             target_state = state_map.get(e['to'])
             if parent_state and target_state:
                 # Automatic input mapping based on toPort/targetHandle/targetPort
+                # Automatic input mapping based on toPort/targetHandle/targetPort
                 target_handle = e.get('toPort') or e.get('targetHandle') or e.get('targetPort')
-                if target_handle and target_handle in ['positive', 'negative', 'latent', 'latent_image', 'samples', 'model', 'clip', 'vae']:
+                source_handle = e.get('fromPort') or e.get('sourceHandle') or e.get('sourcePort')
+                
+                if target_handle:
                     # Normalize target handle names
-                    normalized_handle = "latent" if target_handle == "latent_image" or target_handle == "samples" else target_handle
+                    normalized_handle = target_handle
+                    if target_handle in ["latent_image", "samples"]:
+                        normalized_handle = "latent"
                     
-                    logger.info(f"[Sync] Mapping edge {e['from']} -> {e['to']} (Port: {normalized_handle})")
-                    # Use standard output keys based on source node type
-                    source_node = next((n for n in nodes if n['id'] == e['from']), {})
-                    source_type = source_node.get('toolId') or source_node.get('type', '')
+                    logger.info(f"[WorkflowService] Mapping edge {e['from']} -> {e['to']} (Port: {normalized_handle})")
                     
-                    # GraphExecutor uses {node_id_output.key} for path resolution
-                    output_key = "text" if "clip_encode" in source_type else ("latent" if "latent" in source_type or "ksampler" in source_type else ("image" if "vae_decode" in source_type else "output"))
+                    # Use fromPort as primary source for output key, fallback to type-based guessing
+                    output_key = source_handle or "output"
+                    
+                    if not source_handle:
+                        source_node = next((n for n in nodes if n['id'] == e['from']), {})
+                        source_type = source_node.get('toolId') or source_node.get('type', '')
+                        
+                        if "clip_encode" in source_type: output_key = "conditioning"
+                        elif "prompt" in source_type: output_key = "text"
+                        elif "ksampler" in source_type: output_key = "latent"
+                        elif "vae_decode" in source_type: output_key = "image"
+                        elif "face_swapper" in source_type: output_key = "image"
+                        elif "load_character" in source_type: output_key = normalized_handle # image/mask/tags fallback
+                    
+                    # 2. Specialized Key mappings (Crucial for Character DNA flow)
+                    if normalized_handle == "tags" and "interrogate" in source_type:
+                        output_key = "tags"
+                    elif normalized_handle == "biography" and "interrogate" in source_type:
+                        output_key = "description"
+                    elif normalized_handle == "silhouette_image_path" and "body_silhouette_extractor" in source_type:
+                        output_key = "mask_path"
+                    
                     target_state.static_inputs[normalized_handle] = f"{{{e['from']}_output.{output_key}}}"
 
                 if any(t.to_state_id == e['to'] for t in parent_state.transitions):
@@ -124,6 +146,12 @@ class WorkflowService:
             registry = _engine_manager.registry_svc if _engine_manager else None
         except ImportError:
             registry = None
+
+        if registry is None:
+            from common_lib.modules.core_infrastructure.registry import RegistryService
+            registry = RegistryService()
+            # If for some reason we have a fresh registry, we MUST register tools
+            registry.auto_register_common_lib_tools()
 
         engine = ExecutionEngine(registry=registry)
         tracer = EventTracer()
@@ -201,9 +229,26 @@ class WorkflowService:
             # Support node-level timeout overrides from UI or properties
             node_timeout = n.get('timeout_seconds') or n.get('timeoutSeconds') or props.get('timeout_seconds') or props.get('timeoutSeconds')
             
+            raw_type = n.get('toolId') or n.get('type', '')
+            # Normalize Tool ID: 'Load Image' -> 'vision.load_image'
+            tool_id = raw_type
+            if not tool_id.startswith('vision.'):
+                norm = raw_type.lower().replace(' ', '_')
+                # Check known mappings
+                mappings = {
+                    'load_image': 'vision.load_image',
+                    'face_analysis': 'vision.face_analysis',
+                    'face_extractor': 'vision.face_extractor',
+                    'controlnet_extractor': 'vision.controlnet_extractor',
+                    'save_character_profile': 'vision.save_character_profile',
+                    'face_swapper': 'vision.face_swapper'
+                }
+                if norm in mappings:
+                    tool_id = mappings[norm]
+            
             state = State(
                 id=n['id'],
-                tool_id=n.get('toolId') or n.get('type'),
+                tool_id=tool_id,
                 static_inputs=props,
                 description=n.get('title', n['id']),
                 timeout_seconds=node_timeout
@@ -228,9 +273,17 @@ class WorkflowService:
             if parent_state and target_state:
                 # Automatic input mapping based on toPort/targetHandle/targetPort
                 target_handle = e.get('toPort') or e.get('targetHandle') or e.get('targetPort')
-                if target_handle and target_handle in ['positive', 'negative', 'latent', 'latent_image', 'samples', 'model', 'clip', 'vae']:
+                # Expand supported ports for vision/reactor
+                vision_ports = ['positive', 'negative', 'latent', 'latent_image', 'samples', 'model', 'clip', 'vae',
+                                'image', 'source_image', 'face_model', 'options', 'face_boost', 'mask',
+                                'image_path', 'face_image_path', 'canny_image_path', 'depth_image_path', 
+                                'pose_image_path', 'tags', 'profile_name']
+                
+                if target_handle and (target_handle.lower() in vision_ports or any(k in target_handle.lower() for k in ['image', 'path', 'tags'])):
                     # Normalize target handle names
-                    normalized_handle = "latent" if target_handle == "latent_image" or target_handle == "samples" else target_handle
+                    normalized_handle = target_handle.lower()
+                    if target_handle in ["latent_image", "samples"]:
+                        normalized_handle = "latent"
                     
                     logger.info(f"[Stream] Mapping edge {e['from']} -> {e['to']} (Port: {normalized_handle})")
                     # Use standard output keys based on source node type
@@ -238,7 +291,41 @@ class WorkflowService:
                     source_type = source_node.get('toolId') or source_node.get('type', '')
                     
                     # GraphExecutor uses {node_id_output.key} for path resolution
-                    output_key = "text" if "clip_encode" in source_type else ("latent" if "latent" in source_type or "ksampler" in source_type else ("image" if "vae_decode" in source_type else "output"))
+                    output_key = "output"
+                    
+                    # 0. Heuristic: if normalized_handle is a standard data type, use it as default key
+                    standard_data_ports = ['image', 'mask', 'latent', 'model', 'clip', 'vae', 'conditioning', 'text']
+                    if normalized_handle in standard_data_ports:
+                        output_key = normalized_handle
+
+                    # 1. Handle specialized output keys by source type
+                    if "clip_encode" in source_type: output_key = "conditioning"
+                    elif "prompt" in source_type: output_key = "text"
+                    elif "string_concatenate" in source_type: output_key = "text"
+                    elif "ksampler" in source_type: output_key = "latent"
+                    elif "vae_decode" in source_type: output_key = "image"
+                    elif "load_character" in source_type: output_key = normalized_handle # image/mask/tags
+                    elif "face_model" in source_type: output_key = "face_model"
+                    elif "reactor_options" in source_type: output_key = "options"
+                    elif "face_boost" in source_type: output_key = "face_boost"
+                    elif "face_swapper" in source_type: output_key = "image"
+                    
+                    # 2. Handle Profile-specific Handle to Key mapping (Crucial for Character DNA flow)
+                    if normalized_handle == "image_path" and "load_image" in source_type:
+                        output_key = "PATH"
+                    elif normalized_handle == "face_image_path" and "face_extractor" in source_type:
+                        output_key = "face_path"
+                    elif "image_path" in normalized_handle and "controlnet_extractor" in source_type:
+                        output_key = "image_path"
+                    elif normalized_handle == "tags" and "interrogate" in source_type:
+                        output_key = "tags"
+                    elif (normalized_handle == "biography" or normalized_handle == "bio") and "interrogate" in source_type:
+                        output_key = "description"
+                    elif normalized_handle == "silhouette_image_path" and "body_silhouette_extractor" in source_type:
+                        output_key = "mask_path"
+                    elif normalized_handle == "tags" and "face_analysis" in source_type:
+                        output_key = "dna_tags"
+                    
                     target_state.static_inputs[normalized_handle] = f"{{{e['from']}_output.{output_key}}}"
 
                 if any(t.to_state_id == e['to'] for t in parent_state.transitions):
@@ -255,6 +342,11 @@ class WorkflowService:
                 registry = _engine_manager.registry_svc if _engine_manager else None
             except ImportError:
                 registry = None
+
+            if registry is None:
+                from common_lib.modules.core_infrastructure.registry import RegistryService
+                registry = RegistryService()
+                registry.auto_register_common_lib_tools()
 
             engine = ExecutionEngine(registry=registry)
             tracer = QueueTracer()

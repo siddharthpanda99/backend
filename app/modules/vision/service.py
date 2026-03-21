@@ -111,7 +111,11 @@ class VisionService:
                     # Fallback: Create a local registry for this vision task
                     logger.info("Initializing local tool registry for vision workflow...")
                     registry = RegistryService()
-                    registry.auto_register_common_lib_tools()
+                
+                # Force discovery to ensure all new YAML-based tools are registered
+                # This ensures Character DNA tools from templates/tools are active
+                logger.info("Forcing Vision Tool Discovery Refresh...")
+                registry.auto_register_common_lib_tools()
                 
                 engine = ExecutionEngine(registry=registry)
                 tracer = EventTracer()
@@ -132,6 +136,49 @@ class VisionService:
             if event.get("event_type") == "workflow.finished":
                 break
             yield event
+
+    def save_upload(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Saves a base64-encoded image to the ASSETS_DIR.
+        """
+        import os
+        import uuid
+        import base64
+        from common_lib.paths import ASSETS_DIR
+        
+        try:
+            os.makedirs(ASSETS_DIR, exist_ok=True)
+            
+            image_data = data.get("image", "")
+            filename = data.get("filename", "upload.png")
+            
+            # Extract actual base64 content if it's a data URL
+            if "," in image_data:
+                image_data = image_data.split(",")[1]
+            
+            img_bytes = base64.b64decode(image_data)
+            
+            name, ext = os.path.splitext(filename)
+            unique_name = f"{name}_{uuid.uuid4().hex[:6]}{ext or '.png'}"
+            save_path = ASSETS_DIR / unique_name
+            
+            with open(save_path, "wb") as f:
+                f.write(img_bytes)
+                
+            logger.info(f"Saved base64 upload to {save_path}")
+            
+            return {
+                "status": "success",
+                "filename": unique_name,
+                "path": f"assets/{unique_name}",
+                "full_path": str(save_path)
+            }
+        except Exception as e:
+            logger.error(f"Failed to save base64 upload: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "message": str(e)
+            }
 
     def get_gallery(self) -> Dict[str, Any]:
         """
