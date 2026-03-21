@@ -68,3 +68,21 @@ logs/
 
 # Database
 *.db
+
+# Models and AI Assets
+**/resources/image_models/**
+**/resources/huggingface_cache/**
+**/*.safetensors
+**/*.ckpt
+**/*.pt
+**/*.bin
+**/*.onnx
+**/*.pth
+
+# Generated Content
+**/assets/**
+**/generated_content/**
+**/outputs/**
+**/renders/**
+**/tmp/**
+
