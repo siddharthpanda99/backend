@@ -72,6 +72,7 @@ def list_characters():
             continue
             
         profile_info = {
+            "id": d.name,
             "name": d.name,
             "cover": None,
             "metadata": {}
@@ -82,11 +83,14 @@ def list_characters():
         if json_files:
             try:
                 with open(json_files[0], "r", encoding="utf-8") as f:
-                    profile_info["metadata"] = json.load(f)
+                    data = json.load(f)
+                    profile_info["metadata"] = data
+                    profile_info["name"] = data.get("name", d.name)
             except Exception as e:
                 print(f"Error loading metadata for {d.name}: {e}")
 
         # 2. Look for cover image (base64)
+
         char_assets = d / "assets"
         cover_path = None
         if char_assets.exists():

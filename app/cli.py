@@ -75,10 +75,16 @@ def dev_server():
     import sys
     from pathlib import Path
     
-    backend_dir = str(Path(__file__).parent.parent.resolve())
+    app_dir = str(Path(__file__).parent.resolve()) # Matches app/
     common_lib_dir = str((Path(__file__).parent.parent.parent / "Python Libs" / "common_lib" / "src").resolve())
     
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True, reload_dirs=[backend_dir, common_lib_dir])
+    uvicorn.run(
+        "app.main:app", 
+        host="0.0.0.0", 
+        port=8000, 
+        reload=True, 
+        reload_dirs=[app_dir, common_lib_dir]
+    )
 
 if __name__ == "__main__":
     main()
