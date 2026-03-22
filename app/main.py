@@ -1,9 +1,23 @@
 import os
+import sys
+from pathlib import Path
+
+# --- BOOTSTRAP: Ensure development common_lib takes precedence ---
+REPO_ROOT = Path(__file__).parent.parent.parent.resolve()
+COMMON_LIB_SRC = str(REPO_ROOT / "Python Libs" / "common_lib" / "src")
+if COMMON_LIB_SRC not in sys.path:
+    sys.path.insert(0, COMMON_LIB_SRC)
+    print(f"!!! [BOOTSTRAP] Injecting dev common_lib: {COMMON_LIB_SRC}")
+
 # Silence the common 'triton' traceback on Windows before importing any torch-related libs
 os.environ["XFORMERS_FORCE_DISABLE_TRITON"] = "1"
 
 from common_lib.modules.image_processing.core.common.optimizations import set_global_precision
 set_global_precision()
+
+# --- FILE LOGGING INITIALIZATION ---
+from app.core.logging_config import setup_logging
+setup_logging("logs/server.log")
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
