@@ -74,35 +74,20 @@ def list_characters():
         profile_info = {
             "id": d.name,
             "name": d.name,
-            "cover": None,
-            "metadata": {}
+            "cover": None
         }
         
-        # 1. Look for metadata (the first .json file we find in the root)
-        json_files = list(d.glob("*.json"))
-        if json_files:
-            try:
-                with open(json_files[0], "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    profile_info["metadata"] = data
-                    profile_info["name"] = data.get("name", d.name)
-            except Exception as e:
-                print(f"Error loading metadata for {d.name}: {e}")
-
-        # 2. Look for cover image (base64)
-
+        # Look for cover image (base64)
         char_assets = d / "assets"
         cover_path = None
         if char_assets.exists():
-            # Try cover.* first
             cover_files = list(char_assets.glob("cover.*"))
-            if not cover_files:
-                # Fallback: any image
+            if cover_files:
+                cover_path = cover_files[0]
+            else:
                 all_imgs = list(char_assets.glob("*.jpg")) + list(char_assets.glob("*.png")) + list(char_assets.glob("*.webp"))
                 if all_imgs:
                     cover_path = all_imgs[0]
-            else:
-                cover_path = cover_files[0]
 
         if cover_path and cover_path.exists():
             try:

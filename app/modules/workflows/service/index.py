@@ -54,7 +54,9 @@ class WorkflowService:
             """Dumps every execution event into the stream queue for the UI."""
             def emit(self, event):
                 try:
-                    if hasattr(event, "model_dump"):
+                    if hasattr(event, "to_dict"):
+                        data = event.to_dict()
+                    elif hasattr(event, "model_dump"):
                         data = event.model_dump(mode='json')
                     elif hasattr(event, "__dict__"):
                         data = {k: (v.value if hasattr(v, "value") else v.isoformat() if hasattr(v, "isoformat") else v) 
