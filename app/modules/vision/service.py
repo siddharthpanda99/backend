@@ -63,7 +63,7 @@ class VisionService:
                 "seed": request.seed
             },
             "postprocess": {"upscale_by": request.upscale_by, "denoise": request.denoise},
-            "output": {"output_dir": "generated_content/upscale", "filename_pattern": f"high_res_{request.seed or 'auto'}"}
+            "output": {"output_dir": "generated_content/{workflow}/{date}/{model}", "filename_pattern": f"high_res_{request.seed or 'auto'}"}
         }
 
         # 2. Resolve Graph Path from common_lib templates

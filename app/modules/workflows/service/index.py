@@ -54,15 +54,10 @@ class WorkflowService:
             """Dumps every execution event into the stream queue for the UI."""
             def emit(self, event):
                 try:
-                    if hasattr(event, "to_dict"):
-                        data = event.to_dict()
-                    elif hasattr(event, "model_dump"):
-                        data = event.model_dump(mode='json')
-                    elif hasattr(event, "__dict__"):
-                        data = {k: (v.value if hasattr(v, "value") else v.isoformat() if hasattr(v, "isoformat") else v) 
-                               for k, v in event.__dict__.items()}
-                    else:
-                        data = str(event)
+                    data = event.to_dict()
+                    logger.info(f"[QueueTracer] EMIT: {data.get('event_type')} (state_id={data.get('state_id')})")
+                    if "error" in data:
+                        logger.error(f"[QueueTracer] ERROR EVENT DETECTED: {data['error']}")
                     loop.call_soon_threadsafe(event_queue.put_nowait, data)
                 except Exception as e:
                     logger.error(f"[QueueTracer] Serialization Failed: {e}")
@@ -202,8 +197,9 @@ class WorkflowService:
                     registry = RegistryService()
                     registry.auto_register_common_lib_tools()
 
-                engine = ExecutionEngine(registry=registry)
-                executor = GraphExecutor(engine, QueueTracer())
+                shared_tracer = QueueTracer()
+                engine = ExecutionEngine(registry=registry, tracer=shared_tracer)
+                executor = GraphExecutor(engine, shared_tracer)
                 context = ExecutionContext(agent_id="workflow_system", role="executor")
                 
                 # Execute graph in worker thread to prevent loop blocking

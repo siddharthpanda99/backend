@@ -193,3 +193,49 @@ def list_schedulers():
             "bestFor": desc
         })
     return results
+@router.get("/filesystem/pick")
+def pick_directory():
+    """
+    Triggers a native OS folder picker via PowerShell, starting at GENERATED_CONTENT.
+    Returns the absolute path selected.
+    """
+    from common_lib.paths import GENERATED_CONTENT
+    import subprocess
+    import json
+    
+    start_path = str(GENERATED_CONTENT.resolve()).replace("/", "\\")
+    
+    # PowerShell script to open a folder browser dialog
+    # We use -WindowStyle Hidden to hide the console window, but it doesn't always work perfectly for the GUI child.
+    # However, this is the most robust way without extra pip packages.
+    ps_cmd = rf"""
+Add-Type -AssemblyName System.Windows.Forms
+$f = New-Object System.Windows.Forms.FolderBrowserDialog
+$f.Description = 'Select Output Directory'
+$f.RootFolder = 'Desktop'
+$f.SelectedPath = '{start_path}'
+$res = $f.ShowDialog((New-Object System.Windows.Forms.Form -Property @{{TopMost=$true}}))
+if ($res -eq 'OK') {{
+    Write-Output $f.SelectedPath
+}}
+"""
+    try:
+        # Run PowerShell and capture output
+        res = subprocess.run(
+            ["powershell", "-Command", ps_cmd],
+            capture_output=True,
+            text=True,
+            encoding='utf-8'
+        )
+        selected_path = res.stdout.strip()
+        
+        if selected_path:
+            # Standardize for frontend
+            standard_path = selected_path.replace("\\", "/")
+            return {"path": standard_path}
+        else:
+            return {"path": None}
+            
+    except Exception as e:
+        logger.error(f"Native picker failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
