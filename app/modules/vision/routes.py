@@ -157,7 +157,8 @@ def list_checkpoints_by_category(category: str = "sd15"):
     from common_lib.modules.image_processing.core.common.loading.files import get_model_catalog
     models = get_model_catalog(category)
     # Extract just the filenames/ids for UI select box
-    return sorted([m.get("model_id") for m in models if m.get("model_id")])
+    # Return full objects to allow UI to show descriptions/tooltips
+    return models
 @router.get("/samplers")
 def list_samplers():
     """
