@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from typing import Any, Dict
 from .schemas import VisionGenerateRequest, VisionGenerateResponse
 from .service import vision_service
+from common_lib.modules.orchestration.workflow.execution.signals import execution_signals, ExecutionSignal
 from app.modules.common.types.index import APIResponse
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -240,3 +241,223 @@ if ($res -eq 'OK') {{
     except Exception as e:
         logger.error(f"Native picker failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─────────────────────────────────────────────────────────────────
+# YAML-Driven Node & Workflow Definitions — Option B Runtime Loader
+# ─────────────────────────────────────────────────────────────────
+
+import yaml
+import logging
+logger = logging.getLogger(__name__)
+
+def _load_all_node_definitions() -> Dict[str, dict]:
+    """Internal helper to load and index all node definitions."""
+    from common_lib.paths import REPO_ROOT
+    nodes_dir = REPO_ROOT / "resources" / "nodes"
+    registry = {}
+    if not nodes_dir.exists():
+        return registry
+
+    for yaml_file in sorted(nodes_dir.glob("*.yaml")):
+        try:
+            with open(yaml_file, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            if data and isinstance(data.get("nodes"), list):
+                for node in data["nodes"]:
+                    remapped = _remap_node(node)
+                    registry[remapped["type"]] = remapped
+        except Exception as e:
+            logger.error(f"[NodeDefinitions] Failed to load {yaml_file}: {e}")
+    return registry
+
+@router.get("/node-definitions")
+def get_node_definitions():
+    """
+    Returns all node definitions as a flat list.
+    """
+    registry = _load_all_node_definitions()
+    return list(registry.values())
+
+
+def _remap_node(node: dict) -> dict:
+    """Converts snake_case YAML keys to camelCase NodeDefinition fields."""
+    # If this is a nested node instance, it already has a 'type'. 
+    # If it's a top-level definition, the 'id' is the 'type'.
+    node_type = node.get("type", node.get("id"))
+    
+    result = {
+        "type": node_type,
+        "label": node.get("label", node.get("title")),
+        "category": node.get("category", "subflow_internal"),
+        "inputs": [_remap_port(p) for p in node.get("inputs", [])],
+        "outputs": [_remap_port(p) for p in node.get("outputs", [])],
+    }
+    
+    # Standard metadata remapping
+    for opt_key, ts_key in [
+        ("id", "id"), # Preserve instance ID for nested nodes
+        ("title", "title"),
+        ("version", "version"),
+        ("description", "description"),
+        ("color", "color"),
+        ("tags", "tags"),
+        ("shape", "shape"),
+        ("initialX", "initialX"),
+        ("initialY", "initialY"),
+        ("initial_x", "initialX"),
+        ("initial_y", "initialY"),
+        ("allow_multiple_edges", "allowMultipleEdges"),
+        ("isSubflow", "isSubflow"),
+    ]:
+        if opt_key in node:
+            result[ts_key] = node[opt_key]
+            
+    if "nodes" in node:
+        # Recursively remap internal nodes
+        result["nodes"] = [_remap_node(n) for n in node["nodes"]]
+            
+    if "edges" in node:
+        result["edges"] = node["edges"]
+
+    if "default_properties" in node:
+        result["defaultProperties"] = node["default_properties"]
+    if "properties" in node:
+        # For definitions, these are property declarations. 
+        # For instances, these are actual values.
+        if isinstance(node["properties"], list):
+            result["propertyDefinitions"] = [_remap_property(p) for p in node["properties"]]
+        else:
+            result["properties"] = node["properties"]
+            
+    if "dynamic_options" in node:
+        result["dynamicOptions"] = node["dynamic_options"]
+    return result
+
+
+def _remap_port(port: dict) -> dict:
+    result = {
+        "id": port.get("id"),
+        "label": port.get("label"),
+        "type": port.get("type", "any"),
+    }
+    for k in ("required", "color", "description"):
+        if k in port:
+            result[k] = port[k]
+    return result
+
+
+def _remap_property(prop: dict) -> dict:
+    result = {
+        "name": prop.get("name"),
+        "label": prop.get("label"),
+        "type": prop.get("type", "text"),
+    }
+    for k in ("options", "required", "description", "placeholder"):
+        if k in prop:
+            result[k] = prop[k]
+    for snake, camel in [("default", "defaultValue"), ("min", "min"), ("max", "max"), ("step", "step")]:
+        if snake in prop:
+            result[camel] = prop[snake]
+    return result
+
+
+@router.get("/workflow-presets")
+def get_workflow_presets():
+    """
+    Returns a list of workflow preset metadata (id, name, description),
+    loaded from Backend Monorepo/resources/workflows/templates/*.yaml.
+    """
+    from common_lib.modules.image_processing.core.common.loading.templates import (
+        list_workflow_templates,
+        load_workflow_template,
+    )
+
+    results = []
+    for name in list_workflow_templates():
+        # Load metadata first (non-recursive)
+        data = load_workflow_template(name, recursive=False)
+        if data is not None:
+            results.append({
+                "id": name,
+                "name": data.get("page_title") or data.get("name") or name,
+                "description": data.get("description", ""),
+                "category": data.get("category", "General"),
+                "icon": data.get("icon")
+            })
+
+    return results
+
+
+@router.get("/workflow-presets/{id}")
+def get_workflow_preset(id: str):
+    """
+    Returns a single full workflow preset by ID, hydrated with node definitions.
+    """
+    from common_lib.modules.image_processing.core.common.loading.templates import load_workflow_template
+
+    data = load_workflow_template(id, recursive=True)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"Workflow preset '{id}' not found")
+
+    # HYDRATION: Merge node definitions into the response
+    registry = _load_all_node_definitions()
+    if "nodes" in data:
+        hydrated_nodes = []
+        for node in data["nodes"]:
+            node_type = node.get("type")
+            definition = registry.get(node_type, {})
+            
+            # Merge: Registry provides defaults, Workflow provides overrides
+            hydrated = {
+                **definition,
+                **node,
+                "id": str(node.get("id")), # Ensure ID is string
+                "properties": {
+                    **(definition.get("defaultProperties") or {}),
+                    **(node.get("properties") or {})
+                }
+            }
+            hydrated_nodes.append(hydrated)
+        data["nodes"] = hydrated_nodes
+
+    return data
+
+@router.get("/model-registry/loras")
+def get_lora_registry():
+    """
+    Returns the LoRA model registry loaded from
+    Backend Monorepo/resources/image_models/registry/loras.yaml.
+    """
+    from common_lib.paths import REPO_ROOT
+    import yaml
+
+    yaml_path = REPO_ROOT / "resources" / "image_models" / "registry" / "loras.yaml"
+    if not yaml_path.exists():
+        return {"models": []}
+
+    try:
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+            return data if data else {"models": []}
+    except Exception as e:
+        logger.error(f"[LoraRegistry] Failed to load {yaml_path}: {e}")
+        return {"models": []}
+
+@router.post("/control")
+def control_execution(payload: Dict[str, Any]):
+    """
+    Sends a signal (stop, skip, pause) to a running workflow by trace_id.
+    """
+    trace_id = payload.get("trace_id")
+    action = payload.get("action")
+    
+    if not trace_id or not action:
+        raise HTTPException(status_code=400, detail="Missing trace_id or action")
+        
+    try:
+        signal = ExecutionSignal(action.lower())
+        execution_signals.set_signal(trace_id, signal)
+        return {"status": "success", "message": f"Signal {action} sent to {trace_id}"}
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid action: {action}")

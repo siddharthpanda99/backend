@@ -56,13 +56,13 @@ class VisionService:
             "prompt": {"positive": request.prompt, "negative": request.negative_prompt, "clip_skip": 2},
             "latent": {"width": 512, "height": 512},
             "sampler": {
-                "steps": 30, 
-                "cfg": 8.0, 
-                "sampler_name": "dpmpp_2m_karras", 
+                "steps": request.steps if request.steps else 25, 
+                "cfg": 7.0, 
+                "sampler_name": "dpmpp_2m_sde", 
                 "scheduler": "karras",
                 "seed": request.seed
             },
-            "postprocess": {"upscale_by": request.upscale_by, "denoise": request.denoise},
+            "postprocess": {"upscale_by": request.upscale_by, "denoise": 0.55 if not request.denoise else request.denoise},
             "output": {"output_dir": "generated_content/{workflow}/{date}/{model}", "filename_pattern": f"high_res_{request.seed or 'auto'}"}
         }
 

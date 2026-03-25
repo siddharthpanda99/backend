@@ -56,10 +56,18 @@ class WorkflowService:
                 try:
                     data = event.to_dict()
                     logger.info(f"[QueueTracer] EMIT: {data.get('event_type')} (state_id={data.get('state_id')})")
-                    if "error" in data:
-                        logger.error(f"[QueueTracer] ERROR EVENT DETECTED: {data['error']}")
+                    
+                    # Extract error for debugging
+                    error_msg = data.get("error") or (data.get("metadata") or {}).get("error")
+                    if error_msg:
+                        import sys
+                        print(f"\n[QueueTracer] CRITICAL ERROR DETECTED: {error_msg}", file=sys.stderr)
+                        logger.error(f"[QueueTracer] ERROR EVENT DETECTED: {error_msg}")
+                    
                     loop.call_soon_threadsafe(event_queue.put_nowait, data)
                 except Exception as e:
+                    import sys
+                    print(f"\n[QueueTracer] Serialization Failed: {e}", file=sys.stderr)
                     logger.error(f"[QueueTracer] Serialization Failed: {e}")
 
             def flush(self): pass
