@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Optional, Tuple, Union, AsyncGenerator
 from langchain_core.tools import tool, StructuredTool, BaseTool
 from langchain_core.agents import AgentAction, AgentFinish
 from langchain_core.prompts import PromptTemplate
+from common_lib.modules.ai_models.llm.base import AgentStrategy
 
 # Re-use existing agent logic and structures
 from common_lib.modules.orchestration.agent.react_master_agent import ReactMasterAgent, ReActState
@@ -44,6 +45,48 @@ Action Input: the precise input for the tool
 Begin!
 Question: {input}
 Thought: {agent_scratchpad}"""
+
+# --- GEMINI AGENT PROMPT (Phase 6) ---
+GEMINI_AGENT_PROMPT = """You are a helpful and efficient AI Assistant. 
+
+### CONTEXT:
+Recent conversation:
+{conversation_history}
+
+Current structured knowledge:
+{structured_state}
+
+Long-term Labeled Context (Hints):
+{hints_state}
+
+### STRATEGY:
+{strategy}
+
+### TOOLS:
+You have access to the following tools:
+{tools}
+
+### INSTRUCTION:
+You may use tools to fulfill the user's request.
+When using a tool, you must respond ONLY with a JSON object in this format (no other text):
+{{
+  "thought": "brief reasoning",
+  "tool": "tool_name",
+  "input": {{ ... }}
+}}
+
+If you have the final answer, respond ONLY with a JSON object in this format (no other text):
+{{
+  "thought": "I have finished.",
+  "final_answer": "your response"
+}}
+
+### CORE RULES (Guardrails):
+{guardrails}
+
+Begin!
+Question: {input}
+JSON Result:"""
 
 DEFAULT_GUARDRAILS = [
     "Handle greetings and introductions naturally. For simple phrases like 'hi' or 'hello', provide a direct 'Final Answer' acknowledging the user.",
@@ -85,10 +128,16 @@ class MasterAgent:
         self.guardrails = guardrails or DEFAULT_GUARDRAILS
         self.tool_map = {}
         
-    def get_formatted_prompt(self) -> str:
+    def get_formatted_prompt(self, strategy: AgentStrategy = AgentStrategy.REACT) -> str:
         """Constructs the final prompt string with guardrails injected."""
+        prompt = self.system_prompt
+        # Phase 6 & Strategy Refactor: Ensure JSON instructions are present if strategy is JSON_TOOL
+        if strategy == AgentStrategy.JSON_TOOL and "JSON Result:" not in prompt:
+            # Phase 13: Escape braces for PromptTemplate.format
+            prompt = prompt + "\n\nIMPORTANT: Respond ONLY with a valid JSON object. You must include either a 'tool' call (with 'input') OR a 'final_answer'.\nFormat 1: {{ \"thought\": \"...\", \"tool\": \"...\", \"input\": {{...}} }}\nFormat 2: {{ \"thought\": \"...\", \"final_answer\": \"...\" }}\nJSON Result:"
+            
         guardrails_str = "\n".join([f"{i+1}. {rule}" for i, rule in enumerate(self.guardrails)])
-        return self.system_prompt.replace("{guardrails}", guardrails_str)
+        return prompt.replace("{guardrails}", guardrails_str)
 
     def query_capability_inventory(self, query: str = "current") -> str:
         """Search for advanced or specialized tools NOT currently listed in your prompt."""
@@ -164,10 +213,18 @@ JSON Result:"""
             res = await self.model_provider.ainvoke(prompt)
             content = str(res.content if hasattr(res, 'content') else res).strip()
             if "{" in content and "}" in content:
-                found_json = json.loads(content[content.find("{"):content.rfind("}")+1])
-                new_hints = found_json.get("hints", [])
-                intent = found_json.get("intent", "other")
-                strategy = found_json.get("strategy", "Proceed with standard ReAct reasoning.")
+                json_part = content[content.find("{"):content.rfind("}")+1]
+                found_json = json.loads(json_part)
+                
+                # Robust key mapping (strip quotes, spaces, and case)
+                def clean_key(k):
+                    return str(k).strip().strip('"').strip("'").lower()
+                
+                norm_json = {clean_key(k): v for k, v in found_json.items()}
+                
+                new_hints = norm_json.get("hints", [])
+                intent = norm_json.get("intent", "other")
+                strategy = norm_json.get("strategy", "Proceed with standard ReAct reasoning.")
                 
                 meta = state.get("operational_metadata", {}) or {}
                 meta["last_intent"] = intent
@@ -188,57 +245,141 @@ JSON Result:"""
             return {}
 
     async def run_agent(self, state: Dict[str, Any], prompt_tools: List[Any]) -> Dict[str, Any]:
-        """Execution Node: ReAct loop with feedback and loop prevention."""
+        """Execution Node: ReAct loop with Strategy-based dispatch (Phase 6 & 11)."""
+        strategy = self.model_provider.get_agent_strategy()
+        
         try:
+            history = state.get("conversation_history", "")
+            intermediate_steps = state.get("intermediate_steps", [])
+            
+            # 1. Loop Guard
+            if len(intermediate_steps) >= 8:
+                return {"agent_outcome": AgentFinish(
+                    return_values={"output": "I've stopped to prevent an infinite loop. How else can I help?"},
+                    log="Loop limit (8) reached."
+                )}
+
+            # 2. Format Context
+            hist_lines = history.split("\n")
+            if len(hist_lines) > 20: history = "\n".join(hist_lines[-20:])
+            
+            tools_str = "\n".join([f"- {getattr(t, 'name', str(t))}: {getattr(t, 'description', '')}" for t in prompt_tools])
+            tool_names = ", ".join([getattr(t, 'name', str(t)) for t in prompt_tools])
+
+            chain_input = {
+                "input": state["input"],
+                "conversation_history": history,
+                "intermediate_steps": intermediate_steps, # Required for ReAct runnable
+                "structured_state": json.dumps(state.get("structured_state", {}), indent=2),
+                "hints_state": json.dumps(state.get("hints", []), indent=2),
+                "strategy": (state.get("operational_metadata", {}) or {}).get("current_strategy", "Use tools."),
+                "tools": tools_str,
+                "tool_names": tool_names,
+                "agent_scratchpad": format_scratchpad(intermediate_steps)
+            }
+
+            # 3. Optimized JSON Tool Handling (Modular Adapter)
+            if strategy == AgentStrategy.JSON_TOOL:
+                prompt_template = PromptTemplate.from_template(self.get_formatted_prompt(strategy=strategy))
+                full_prompt = prompt_template.format(**chain_input)
+                
+                last_error = None
+                for attempt in range(2): # Phase 10: Retry rule
+                    try:
+                        # Phase 13: Enable native JSON mode for Gemini
+                        res = await self.model_provider.ainvoke(
+                            full_prompt, 
+                            response_mime_type="application/json"
+                        )
+                        content = str(res.content if hasattr(res, 'content') else res).strip()
+                        logger.info(f"LLM Raw Output ({strategy.value}): {content}")
+                        
+                        # Robust parsing for JSON-first models
+                        if content.startswith("ERROR:"):
+                            return {"agent_outcome": AgentFinish(
+                                return_values={"output": content},
+                                log=f"Provider Error: {content}"
+                            )}
+
+                        try:
+                            # With response_mime_type, content should be pure JSON
+                            json_start = content.find("{")
+                            json_end = content.rfind("}")
+                            if json_start != -1 and json_end != -1:
+                                content = content[json_start:json_end+1]
+                                
+                            raw_payload = json.loads(content)
+                            if isinstance(raw_payload, list) and len(raw_payload) > 0:
+                                raw_payload = raw_payload[0] # Handle array wrap
+                            
+                            if not isinstance(raw_payload, dict):
+                                raise ValueError(f"Expected JSON object, got {type(raw_payload).__name__}")
+
+                            # Clean keys (remove LLM-inserted quotes/spaces/extra chars)
+                            def clean_key(k):
+                                return str(k).strip().strip('"').strip("'").lower()
+
+                            payload = {clean_key(k): v for k, v in raw_payload.items()}
+                                
+                            thought = payload.get("thought") or payload.get("reasoning") or "Proceeding..."
+                            
+                            if "tool" in payload and payload["tool"]:
+                                return {"agent_outcome": AgentAction(
+                                    tool=payload["tool"],
+                                    tool_input=payload.get("input", {}),
+                                    log=f"Thought: {thought}\nAction: {payload['tool']}\nAction Input: {payload.get('input', {})}"
+                                )}
+                            elif "final_answer" in payload:
+                                return {"agent_outcome": AgentFinish(
+                                    return_values={"output": payload["final_answer"]},
+                                    log=f"Thought: {thought}\nFinal Answer: {payload['final_answer']}"
+                                )}
+                            else:
+                                # Fallback for smaller models (like Gemini Flash) that might only return thought
+                                return {"agent_outcome": AgentFinish(
+                                    return_values={"output": thought},
+                                    log=f"Thought: {thought} (Fallback as Final Answer)"
+                                )}
+                        except Exception as parse_err:
+                            logger.error(f"JSON Parse error: {parse_err}")
+                            if attempt == 1:
+                                return {"agent_outcome": AgentFinish(return_values={"output": content}, log=content)}
+                        
+                        # Phase 10: Fallback to text if JSON parse fails
+                        logger.warning(f"JSON strategy attempt {attempt+1} parse failed, falling back to text.")
+                        if attempt == 1:
+                            return {"agent_outcome": AgentFinish(return_values={"output": content}, log=content)}
+                    except Exception as e:
+                        last_error = e
+                        logger.error(f"JSON strategy attempt {attempt+1} failed: {e}")
+                        if attempt == 1:
+                            return {"agent_outcome": AgentFinish(return_values={"output": f"Engine error: {last_error}"}, log=str(last_error))}
+                
+                return {"agent_outcome": AgentFinish(return_values={"output": content}, log=content)}
+
+            # 4. Standard ReAct for Common Providers
             try:
                 from langchain_classic.agents import create_react_agent
             except ImportError:
                 from langchain.agents import create_react_agent
-            prompt_template = PromptTemplate.from_template(self.get_formatted_prompt())
-            
+                
+            prompt_template = PromptTemplate.from_template(self.get_formatted_prompt(strategy=strategy))
             react_runnable = create_react_agent(
                 llm=self.model_provider,
                 tools=prompt_tools,
                 prompt=prompt_template
             )
             
-            history = state.get("conversation_history", "")
-            intermediate_steps = state.get("intermediate_steps", [])
-            
-            # Context window management
-            hist_lines = history.split("\n")
-            if len(hist_lines) > 20: history = "\n".join(hist_lines[-20:])
-            
-            # Loop Guard
-            if len(intermediate_steps) >= 8:
-                return {"agent_outcome": AgentFinish(
-                    return_values={"output": "I've stopped to prevent a reasoning loop. How else can I help?"},
-                    log="Loop limit (8) reached."
-                )}
-
-            # Repetition feedback
-            if len(intermediate_steps) >= 2:
-                last_act, last_obs = intermediate_steps[-1]
-                prev_act, prev_obs = intermediate_steps[-2]
-                if isinstance(last_act, AgentAction) and isinstance(prev_act, AgentAction):
-                    if last_act.tool == prev_act.tool and last_act.tool_input == prev_act.tool_input:
-                        if len(intermediate_steps) < 5:
-                            return {"agent_outcome": AgentAction(tool="feedback", tool_input="feedback", 
-                                log=f"ALERT: Repeating tool '{last_act.tool}'. Result: {last_obs}. change query.")}
-                        return {"agent_outcome": AgentFinish(return_values={"output": "Stuck in repetition loop. Try rephrasing."}, log="Stuck.")}
-
-            chain_input = {
-                "input": state["input"],
-                "conversation_history": history,
-                "structured_state": json.dumps(state.get("structured_state", {}), indent=2),
-                "hints_state": json.dumps(state.get("hints", []), indent=2),
-                "strategy": (state.get("operational_metadata", {}) or {}).get("current_strategy", "Use tools."),
-                "agent_scratchpad": format_scratchpad(intermediate_steps),
-                "intermediate_steps": intermediate_steps
-            }
-
             outcome = await react_runnable.ainvoke(chain_input)
             return {"agent_outcome": outcome}
+            
         except Exception as e:
+            import traceback
             logger.error(f"Agent Engine Error: {e}")
-            return {"agent_outcome": AgentFinish(return_values={"output": f"Engine error: {e}"}, log=str(e))}
+            logger.error(traceback.format_exc())
+            # Phase 13: Robust error reporting
+            final_err_msg = str(e)
+            return {"agent_outcome": AgentFinish(
+                return_values={"output": f"Engine error: {final_err_msg}"}, 
+                log=f"Full Traceback: {traceback.format_exc()}"
+            )}

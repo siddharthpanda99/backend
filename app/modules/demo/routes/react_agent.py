@@ -10,6 +10,39 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+def _load_keys_file():
+    """Load API keys from resources/keys.txt into the environment."""
+    # Robust path discovery: Start from CWD and look for 'Backend Monorepo/resources/keys.txt'
+    # or just '../resources/keys.txt' relative to the expected 'Backend' folder.
+    cwd = os.getcwd()
+    # Option 1: Current folder is 'Backend', so go up one
+    p1 = os.path.abspath(os.path.join(cwd, "..", "resources", "keys.txt"))
+    # Option 2: Current folder is 'Backend Monorepo', so look directly in 'resources'
+    p2 = os.path.abspath(os.path.join(cwd, "resources", "keys.txt"))
+    # Option 3: Current folder is monorepo root
+    p3 = os.path.abspath(os.path.join(cwd, "Backend Monorepo", "resources", "keys.txt"))
+    
+    keys_path = p1 if os.path.exists(p1) else (p2 if os.path.exists(p2) else (p3 if os.path.exists(p3) else None))
+    
+    if keys_path:
+        try:
+            with open(keys_path, "r") as f:
+                count = 0
+                for line in f:
+                    line = line.strip()
+                    if "=" in line and not line.startswith("#"):
+                        key, val = line.split("=", 1)
+                        os.environ[key.strip()] = val.strip()
+                        count += 1
+            print(f"Successfully loaded {count} API keys from {keys_path}")
+        except Exception as e:
+            print(f"Error loading keys file: {e}")
+    else:
+        # Fallback search
+        print(f"CRITICAL: Keys file not found! CWD: {cwd}. Checked paths: {p1}, {p2}, {p3}")
+
+_load_keys_file()
+
 from langchain_core.tools import tool, StructuredTool
 
 from common_lib.modules.orchestration.agent.react_master_agent import ReactMasterAgent, ReActState, AgentAction, AgentFinish
@@ -388,7 +421,7 @@ def load_agent(
     preload: bool = True
 ) -> ReactMasterAgent:
     """Dynamically loads or reloads the master agent using the Modular service."""
-    global _engine_manager, _master_agent
+    global _engine_manager, _master_agent, _active_session_config
     
     # 1. Setup Engine & LLM
     if _engine_manager is None:
@@ -398,13 +431,21 @@ def load_agent(
                 self.service = None
         _engine_manager = EngineManager(DummyContext())
     
-    env_model = os.getenv("LOCAL_LLM_MODEL_PATH") or os.getenv("LOCAL_HF_MODEL_PATH")
-    env_provider = os.getenv("LLM_PROVIDER_TYPE", provider)
+    # Priority: Explicitly passed provider/model from UI, then Env Vars, then defaults
+    selected_provider = provider
+    if not provider or provider == "local_llama":
+        env_provider = os.getenv("LLM_PROVIDER_TYPE")
+        if env_provider:
+             selected_provider = env_provider
     
+    selected_model = model_path
+    if not selected_model:
+        selected_model = os.getenv("LOCAL_LLM_MODEL_PATH") or os.getenv("LOCAL_HF_MODEL_PATH")
+
     _engine_manager.setup(
         target_files=[], 
-        model_path=env_model or model_path, 
-        provider_type=env_provider,
+        model_path=selected_model, 
+        provider_type=selected_provider,
         preload=preload
     )
     model_provider = LangChainModelAdapter(provider=_engine_manager.main_llm)
@@ -542,21 +583,23 @@ JSON Result:"""
                 reasoning_level=ReasoningLevel.ANALYTICAL,
                 autonomy=AutonomyLevel.BOUNDED
             ),
-            system_prompt_override=service.get_formatted_prompt()
+            system_prompt_override=service.get_formatted_prompt(strategy=model_provider.get_agent_strategy())
         ),
         model_provider=model_provider,
         tools=selected_tools
     )
     _master_agent.graph = workflow.compile(checkpointer=_checkpointer)
     
-    global _active_session_config
     _active_session_config = {
         "agent_id": agent_id,
+        "agent_display_name": _master_agent.definition.identity.display_name,
+        "model_path": model_provider.config.model_path,
+        "provider": model_provider.config.provider_type,
         "tools": active_tool_meta,
         "session_id": f"session-{datetime.now().strftime('%m%d%H%M')}"
     }
     
-    logger.info(f"Deployed modular agent '{agent_id}'.")
+    logger.info(f"Deployed modular agent '{agent_id}' with provider '{selected_provider}'.")
     return _master_agent
 
 
@@ -564,11 +607,10 @@ JSON Result:"""
 try:
     from app.core.settings import get_settings
     _settings = get_settings()
-    # Always call load_agent to initialize engine_manager/registry, 
-    # but only preload model if setting is enabled.
-    load_agent(preload=_settings.PRELOAD_LLM)
-    if not _settings.PRELOAD_LLM:
-        logger.info("Engine initialized; skipping initial LLM preload per settings.")
+    # Always call load_agent with preload=False for initial registry sync.
+    # LLMs will only be loaded when the explicit Deploy button is pressed.
+    load_agent(preload=False)
+    logger.info("Agent engine initialized; LLM preloading deferred to manual deployment.")
 except Exception as e:
     logger.error(f"Initial agent load check failed: {e}")
 
@@ -674,6 +716,32 @@ async def get_available_workflows():
         logger.error(f"Failed to fetch workflows: {e}")
         return []
 
+@router.get("/gemini_available_models")
+async def list_gemini_models():
+    """Retrieve the live list of available Google Gemini models from the cloud provider."""
+    if not _engine_manager:
+         return []
+    
+    # Check if a Gemini provider is currently used
+    # If not, we can try to initialize a temporary one to fetch the list 
+    # but for simplicity, we assume we've already deployed or are about to.
+    
+    # If already deployed as gemini, use it
+    if _engine_manager.main_llm and hasattr(_engine_manager.main_llm, "list_models"):
+         return _engine_manager.main_llm.list_models()
+    
+    # Otherwise, try to satisfy the request if we have keys
+    from common_lib.modules.ai_models.llm.gemini import GeminiProvider
+    from common_lib.modules.orchestration.inference.schemas import ModelConfiguration
+    try:
+        temp_provider = GeminiProvider(ModelConfiguration(provider_id="temp", provider_type="gemini", model_name="gemini-1.5-pro"))
+        models = temp_provider.list_models()
+        logger.info(f"Retrieved {len(models)} Gemini models from cloud.")
+        return models
+    except Exception as e:
+        logger.error(f"Failed to list gemini models: {e}")
+        return []
+
 @router.get("/available_config")
 async def get_available_config():
     if not _engine_manager:
@@ -687,9 +755,38 @@ async def get_available_config():
 async def get_session_info():
     if not _engine_manager:
         return {"status": "inactive"}
-    base = _engine_manager.get_session_info()
+    
+    # Base info from engine
+    base = {
+        "model": _active_session_config.get("model_path", "None"),
+        "provider": _active_session_config.get("provider", "local_llama"),
+        "agent": _active_session_config.get("agent_id", "None"),
+        "context_window": 16384, # Default or from config
+    }
+    
     # Overlay the demo-layer config (tools, system_prompt, persona)
-    return {**base, **_active_session_config}
+    res = {**base, **_active_session_config}
+    
+    # Add dynamic provider info (e.g. quota)
+    if _master_agent and _master_agent.model_provider:
+        # LangChainModelAdapter.get_info() relays the underlying provider's metadata
+        res.update(_master_agent.model_provider.get_info())
+        
+    return res
+
+
+@router.post("/set_quota_tier")
+async def set_quota_tier(tier: str):
+    from common_lib.modules.ai_models.llm.quota import quota_manager
+    quota_manager.set_tier(tier)
+    return {"status": "success", "tier": tier}
+
+
+@router.post("/sync_quota")
+async def sync_quota(usage_data: Dict[str, Any]):
+    from common_lib.modules.ai_models.llm.quota import quota_manager
+    quota_manager.sync_from_client(usage_data)
+    return {"status": "success"}
 
 
 @router.post("/deploy")
@@ -711,6 +808,7 @@ async def deploy_config(req: DeployRequest):
 class MessageRequest(BaseModel):
     message: str
     session_id: str
+    provider: Optional[str] = None
 
 async def stream_agent_generator(request_data: MessageRequest) -> AsyncGenerator[str, None]:
     try:
