@@ -3,6 +3,7 @@ import json
 import logging
 import traceback
 import sys
+import yaml
 import importlib
 from datetime import datetime
 from typing import AsyncGenerator, Optional, List, Dict, Any
@@ -680,26 +681,44 @@ async def get_available_workflows():
         for w in workflows:
             artifacts = w.get("artifacts", {})
             yaml_path = artifacts.get("yaml_path", "")
+            definition = w.get("definition", {})
             
-            # Categorize by parent folder in templates/workflows/
-            # Expected path: workflows/<category_name>/<filename>.yaml
-            category = "General"
-            if yaml_path and "/" in yaml_path:
-                parts = yaml_path.split("/")
+            # 1. Prioritize explicit metadata from DB artifacts (synced from YAML)
+            category = artifacts.get("category") or definition.get("category") or definition.get("group") or "General"
+            
+            # 2. Path-based fallback if no explicit category
+            if not artifacts.get("category") and not definition.get("category") and yaml_path:
+                # Normalize path separators for robust splitting
+                norm_path = yaml_path.replace("\\", "/")
+                parts = norm_path.split("/")
+                
                 # If path starts with workflows/, the next part is the category
                 if parts[0] == "workflows" and len(parts) >= 3:
                     category = parts[1].replace("_", " ").title()
-                elif len(parts) >= 2:
+                elif len(parts) >= 2 and parts[0] != "workflows":
                     # Fallback to direct parent if not in workflows/ subfolder
                     category = parts[-2].replace("_", " ").title()
             
             if category not in groups:
                 groups[category] = []
+            
+            # Standardize category name
+            display_category = category.replace("_", " ").title()
                 
+            # Final name resolution: prefer definition-level human names over technical slugs
+            raw_def_name = definition.get("name") or definition.get("title")
+            db_name = w.get("name")
+            
+            # Use definition name if present, else use db_name (if not purely an ID), else title-case ID
+            display_name = raw_def_name or (db_name if db_name and db_name != w["id"] else None) or w["id"].replace("_", " ").title()
+
             groups[category].append({
                 "id": w["id"],
-                "name": w.get("name") or w["id"].replace("_", " ").title(),
-                "description": w.get("definition", {}).get("description", "Workflow execution graph.")
+                "name": display_name,
+                "description": definition.get("description", "Workflow execution graph."),
+                "tags": artifacts.get("tags") or definition.get("tags") or [],
+                "status": artifacts.get("status") or definition.get("status") or "ACTIVE",
+                "category": display_category
             })
             
         result = []
@@ -715,6 +734,83 @@ async def get_available_workflows():
     except Exception as e:
         logger.error(f"Failed to fetch workflows: {e}")
         return []
+
+@router.get("/workflow/{workflow_id}")
+async def get_workflow_detail(workflow_id: str):
+    """Returns the full definition of a specific workflow, resolving variables and prompts.
+    Enforces YAML as the source of truth by reloading from disk if yaml_path is available."""
+    try:
+        from common_lib.modules.orchestration.workflow.loaders.workflow_loader import WorkflowLoader
+        from common_lib.paths import COMMON_LIB_TEMPLATES, RESOURCES_ROOT
+        from dataclasses import asdict
+        import os
+        
+        wf = common_memory.get_workflow_definition(workflow_id)
+        if not wf:
+            return {"error": "Workflow not found"}
+            
+        # 1. Identify Source YAML if possible
+        artifacts = wf.get("artifacts", {})
+        yaml_rel_path = artifacts.get("yaml_path")
+        definition = wf.get("definition", {})
+        
+        if yaml_rel_path:
+            # Check common_lib templates first, then resources
+            p1 = os.path.join(str(COMMON_LIB_TEMPLATES), yaml_rel_path)
+            p2 = os.path.join(str(RESOURCES_ROOT), yaml_rel_path)
+            
+            # Normalize for current OS
+            p1 = os.path.abspath(p1)
+            p2 = os.path.abspath(p2)
+            
+            target_path = p1 if os.path.exists(p1) else (p2 if os.path.exists(p2) else None)
+            
+            if target_path:
+                try:
+                    with open(target_path, "r", encoding="utf-8") as f:
+                        file_data = yaml.safe_load(f)
+                        if isinstance(file_data, list) and len(file_data) > 0:
+                            definition = file_data[0]
+                        else:
+                            definition = file_data
+                    logger.info(f"Refreshed workflow '{workflow_id}' from source truth: {target_path}")
+                except Exception as ex:
+                    logger.warning(f"Failed to reload YAML from {target_path}, using DB fallback: {ex}")
+
+        # 2. Perform dynamic loading and interpolation using the centralized loader
+        loader = WorkflowLoader()
+        graph = loader.load_from_dict(definition or {})
+        
+        # 3. Serialize back for UI
+        loaded_def = asdict(graph)
+        
+        # Diagnostic logging for instructions
+        if graph.instruction:
+            logger.info(f"Interpolated Graph Instruction (first 50 chars): {graph.instruction[:50]}...")
+        else:
+            logger.warning(f"Graph instruction is EMPTY after interpolation for {workflow_id}")
+            
+        # Ensure 'steps' alias is preserved for UI if it came from a step-based workflow
+        if (definition or {}).get("steps"):
+            loaded_def["steps"] = [asdict(s) for s in graph.states.values()]
+            for s in loaded_def["steps"]:
+                if s.get("instruction"):
+                    logger.info(f"Step {s.get('id')} Instruction: {s.get('instruction')[:50]}...")
+                else:
+                    logger.warning(f"Step {s.get('id')} Instruction is EMPTY!")
+            
+        return {
+            **wf,
+            "definition": loaded_def
+        }
+    except Exception as e:
+        logger.error(f"Error fetching workflow {workflow_id}: {e}")
+        logger.error(traceback.format_exc())
+        return {"error": str(e)}
+    except Exception as e:
+        logger.error(f"Error fetching workflow {workflow_id}: {e}")
+        logger.error(traceback.format_exc())
+        return {"error": str(e)}
 
 @router.get("/gemini_available_models")
 async def list_gemini_models():
