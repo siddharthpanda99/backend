@@ -1,12 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session
 from typing import List
+from fastapi import APIRouter, HTTPException
 from app.modules.common.types.index import APIResponse
-from app.modules.database.service.connection import get_session
-from app.modules.agents.service.index import agent_service
 from app.modules.agents.schemas.index import AgentRead, AgentCreate, AgentUpdate
+from app.modules.agents.service.index import agent_service
+from app.modules.agents.routes.registry import router as registry_router
 
 router = APIRouter()
+router.include_router(registry_router, prefix="/registry", tags=["Registry"])
 
 @router.get("/", response_model=APIResponse[List[AgentRead]])
 def list_agents(skip: int = 0, limit: int = 100):
