@@ -9,9 +9,10 @@ from langchain_core.prompts import PromptTemplate
 from common_lib.modules.ai_models.llm.base import AgentStrategy
 
 # Re-use existing agent logic and structures
-from common_lib.modules.orchestration.agent.react_master_agent import ReactMasterAgent, ReActState
 from common_lib.modules.orchestration.agent.schemas import AgentDefinition, AgentIdentity, AgentType
 from common_lib.modules.core_infrastructure.shared.enums import Status, AgentRole, ReasoningLevel, AutonomyLevel
+from common_lib.modules.orchestration.sync.resolver import EntityResolverService
+from app.core.common_lib_integration import common_memory
 
 logger = logging.getLogger(__name__)
 
@@ -120,17 +121,38 @@ class MasterAgent:
         model_provider, 
         engine_manager=None, 
         system_prompt: str = None,
-        guardrails: List[str] = None
+        guardrails: List[str] = None,
+        use_mcp_discovery: bool = False,
+        whitelist: List[str] = None,
+        global_search_enabled: bool = False
     ):
         self.model_provider = model_provider
         self.engine_manager = engine_manager
         self.system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
         self.guardrails = guardrails or DEFAULT_GUARDRAILS
+        self.use_mcp_discovery = use_mcp_discovery
+        self.whitelist = whitelist or []
+        self.global_search_enabled = global_search_enabled
         self.tool_map = {}
+        # Gold Standard: Dynamic Entity Resolver
+        self.resolver = EntityResolverService(common_memory)
         
     def get_formatted_prompt(self, strategy: AgentStrategy = AgentStrategy.REACT) -> str:
-        """Constructs the final prompt string with guardrails injected."""
-        prompt = self.system_prompt
+        """Constructs the final prompt string with guardrails, cross-references, and MCP state."""
+        # 1. Recursive Entity Resolution (Depth: 5)
+        # This replaces {{instruction:id}} with actual content from the DB
+        prompt = self.resolver.resolve_text(self.system_prompt)
+        
+        # Phase 14: Dynamic MCP Discovery Integration (with cleanup)
+        if self.use_mcp_discovery:
+            import re
+            # Aggressively strip existing tool sections to prevent 'loading all tools' bloat
+            prompt = re.sub(r'# INTEGRATED TOOLS.*?(?=\n#|\n###|$)', '', prompt, flags=re.DOTALL | re.IGNORECASE)
+            prompt = re.sub(r'### TOOLS:.*?(?=\n#|\n###|$)', '', prompt, flags=re.DOTALL | re.IGNORECASE)
+            
+            mcp_instruction = "\n### STANDARDIZED TOOL DISCOVERY (MCP):\n- You have 507 specialized functions available via an MCP Registry.\n- To optimize context, ONLY search/discovery tools are pre-loaded.\n- Use 'tool_search_mcp(query: string)' to browse the 500+ capabilities on-demand."
+            prompt = prompt.strip() + "\n" + mcp_instruction
+
         # Phase 6 & Strategy Refactor: Ensure JSON instructions are present if strategy is JSON_TOOL
         if strategy == AgentStrategy.JSON_TOOL and "JSON Result:" not in prompt:
             # Phase 13: Escape braces for PromptTemplate.format
@@ -171,10 +193,19 @@ class MasterAgent:
 
         if is_search:
             keywords = [k for k in query_lc.replace("-", " ").replace(".", " ").split() if len(k) > 1]
-            matches = []
+            enabled_matches = []
+            available_matches = []
+            
+            # Exact ID match (detailed view)
             exact = next((c for c in all_capabilities if c['id'].lower() == query_lc), None)
             if exact: 
-                res = f"### Detailed Capability: {exact['name']} (`{exact['id']}`)\n"
+                is_enabled = exact['id'] in self.whitelist or not self.use_mcp_discovery
+                status_label = "[ENABLED]" if is_enabled else "[AVAILABLE - ADMIN ACTION REQUIRED]"
+                
+                res = f"### {status_label} Detailed Capability: {exact['name']} (`{exact['id']}`)\n"
+                if not is_enabled:
+                    res += "> [!IMPORTANT]\n> This tool is currently DISABLED. Please ask an admin to enable it in the Agent Orchestration panel.\n\n"
+                    
                 res += f"**Description**: {exact['description']}\n\n**Input Arguments**:\n"
                 for arg in exact.get("schema", []): 
                     res += f"- `{arg.get('name')}` ({arg.get('type')}): {arg.get('description')}\n"
@@ -182,11 +213,31 @@ class MasterAgent:
 
             for cap in all_capabilities:
                 text = (cap['id'] + " " + cap['name'] + " " + cap['description']).lower()
-                if any(kw in text for kw in keywords): matches.append(cap)
+                if any(kw in text for kw in keywords):
+                    if cap['id'] in self.whitelist or not self.use_mcp_discovery:
+                        enabled_matches.append(cap)
+                    elif self.global_search_enabled:
+                        available_matches.append(cap)
             
-            if not matches: return f"No specialized capabilities found matching '{query_lc}'."
-            res = f"Found {len(matches)} matching capabilities:\n"
-            for m in matches: res += f"- **{m['name']}** (`{m['id']}`): {m['description'][:100]}...\n"
+            if not enabled_matches and not available_matches:
+                msg = f"No specialized capabilities found matching '{query_lc}'."
+                if not self.global_search_enabled:
+                    msg += " (Note: Global Capability Search is OFF. Try enabling it to see more results.)"
+                return msg
+                
+            res = f"### Discovery Results for '{query_lc}'\n"
+            if enabled_matches:
+                res += "\n#### [ENABLED - AUTHORIZED FOR USE]\n"
+                for m in enabled_matches[:8]:
+                    res += f"- **{m['name']}** (`{m['id']}`): {m['description'][:100]}...\n"
+            
+            if available_matches:
+                res += "\n#### [AVAILABLE - ADMIN ACTION REQUIRED]\n"
+                res += "*These match your intent but are currently NOT enabled. Ask an admin to whitelist them.*\n"
+                for m in available_matches[:8]:
+                    res += f"- **{m['name']}** (`{m['id']}`): {m['description'][:100]}...\n"
+            
+            res += "\nTo see full input requirements for an enabled tool, call `query_capability_inventory` with its unique ID."
             return res
         return "Search using common keywords to find specialized tools or workflows."
 

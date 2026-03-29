@@ -22,6 +22,7 @@ dependencies = [
     "xformers>=0.0.29.post3",
     "tomesd>=0.1.3",
     "google-genai>=0.1.0",
+    "mcp>=1.0.0",
 ]
 
 

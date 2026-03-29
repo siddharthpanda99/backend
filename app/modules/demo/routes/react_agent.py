@@ -170,16 +170,26 @@ def query_capability_inventory(query: str = "current") -> str:
                 })
         except Exception: pass
 
-    # 2. If it's a search, filter the results
+    # 2. Access Discovery Config
+    whitelist = _active_session_config.get("whitelist", [])
+    global_search = _active_session_config.get("global_search_enabled", False)
+    use_discovery = _active_session_config.get("use_mcp_discovery", False)
+
+    # 3. If it's a search, filter and categorize
     if is_search:
         matches = []
-        # Support full query match OR keyword match
         keywords = [k for k in query_lc.replace("-", " ").replace(".", " ").split() if len(k) > 1]
         
-        # Check for exact ID match first (detailed view)
+        # Exact ID match (detailed view) - ALWAYS ALLOWED if found, but mark status
         exact_match = next((c for c in all_capabilities if c['id'].lower() == query_lc), None)
         if exact_match:
-            res = f"### Detailed Capability: {exact_match['name']} (`{exact_match['id']}`)\n"
+            is_enabled = exact_match['id'] in whitelist or not use_discovery
+            status_label = "[ENABLED]" if is_enabled else "[AVAILABLE - ADMIN ACTION REQUIRED]"
+            
+            res = f"### {status_label} Detailed Capability: {exact_match['name']} (`{exact_match['id']}`)\n"
+            if not is_enabled:
+                res += "> [!IMPORTANT]\n> This tool is currently DISABLED. Please ask an admin to enable it in the Agent Orchestration panel.\n\n"
+            
             res += f"**Description**: {exact_match['description']}\n"
             res += f"**Type**: {exact_match['type'].title()}\n\n"
             
@@ -194,30 +204,43 @@ def query_capability_inventory(query: str = "current") -> str:
                         res += f"- `{name}` ({a_type}): {a_desc}\n"
                 else:
                     res += f"```json\n{json.dumps(schema, indent=2)}\n```\n"
-            else:
-                 res += "*No detailed schema available for this capability.*\n"
             return res
 
-        # Fallback to general search
+        # General Search logic
+        enabled_matches = []
+        available_matches = []
+        
         for cap in all_capabilities:
             text = f"{cap['id']} {cap['name']} {cap['description']}".lower()
             if any(k in text for k in keywords):
-                matches.append(cap)
+                if cap['id'] in whitelist or not use_discovery:
+                    enabled_matches.append(cap)
+                elif global_search:
+                    available_matches.append(cap)
         
-        if not matches:
-            return f"No specialized capabilities found matching '{query}'. If it is not here, it is currently unavailable."
+        if not enabled_matches and not available_matches:
+            msg = f"No specialized capabilities found matching '{query}'."
+            if not global_search:
+                msg += " (Note: Global Capability Search is currently OFF. Try enabling it to see more results.)"
+            return msg
             
-        res = f"### Search Results for '{query}'\n"
-        for m in matches[:10]: # Limit to 10 for prompt efficiency
-            res += f"- {m['name']} (`{m['id']}`): {m['description']}\n"
-            # If search is specific and few matches, include schema summary
-            if len(matches) <= 3 and m.get("schema"):
-                res += "  *Arguments*: " + ", ".join([a.get('name', '') for a in m['schema'] if isinstance(a, dict)]) + "\n"
+        res = f"### Discovery Results for '{query}'\n"
         
-        res += "\nTo see full input requirements for a tool, call `query_capability_inventory` with its unique ID."
+        if enabled_matches:
+            res += "\n#### [ENABLED - AUTHORIZED FOR USE]\n"
+            for m in enabled_matches[:8]:
+                res += f"- {m['name']} (`{m['id']}`): {m['description']}\n"
+        
+        if available_matches:
+            res += "\n#### [AVAILABLE - ADMIN ACTION REQUIRED]\n"
+            res += "*The following tools match your request but are currently NOT enabled for this agent session. Ask an admin to whitelist these in the UI.*\n"
+            for m in available_matches[:8]:
+                res += f"- {m['name']} (`{m['id']}`): {m['description']}\n"
+        
+        res += "\nTo see full input requirements for an enabled tool, call `query_capability_inventory` with its unique ID."
         return res
 
-    # 3. Default: Show active session tools
+    # 4. Default: Show active session tools
     if not _active_session_config:
         agent_name = "Master Agent"
         active_tools = DEMO_TOOL_REGISTRY
@@ -419,6 +442,8 @@ def load_agent(
     tool_ids: list = None,
     system_prompt: str = None,
     guardrails: list = None,
+    use_mcp_discovery: bool = False,
+    global_search_enabled: bool = False,
     preload: bool = True
 ) -> ReactMasterAgent:
     """Dynamically loads or reloads the master agent using the Modular service."""
@@ -451,33 +476,55 @@ def load_agent(
     )
     model_provider = LangChainModelAdapter(provider=_engine_manager.main_llm)
     
+    # --- MCP Discovery Tool Definition ---
+    @tool
+    def tool_search_mcp(query: str) -> str:
+        """Search the 507 specialized functions available via the MCP Registry. 
+        Returns tool names, IDs, and descriptions matching the query.
+        """
+        # Bridge to the existing system search
+        return query_capability_inventory(query)
+
     # 2. Configure Service (Modular Prompts/Guardrails)
     service = MasterAgent(
         model_provider=model_provider, 
         engine_manager=_engine_manager,
         system_prompt=system_prompt,
-        guardrails=guardrails
+        guardrails=guardrails,
+        use_mcp_discovery=use_mcp_discovery
     )
     
     # 3. Tool Preparation
     selected_tools = []
     active_tool_meta = []
-    for e in DEMO_TOOL_REGISTRY:
-        if not tool_ids or e["id"] in tool_ids:
-            if e.get("handler"):
-                selected_tools.append(e["handler"])
-                active_tool_meta.append({"id": e["id"], "name": e["name"], "description": e["description"]})
-            
-    if tool_ids and _engine_manager.registry_svc:
-        _engine_manager.sync_registry()
-        for tid in tool_ids:
-            if any(m["id"] == tid for m in active_tool_meta): continue
-            schema = _engine_manager.registry_svc.get_tool(tid)
-            if schema:
-                lc_tool = tool_schema_to_langchain(schema)
-                if lc_tool:
-                    selected_tools.append(lc_tool)
-                    active_tool_meta.append({"id": tid, "name": schema.name, "description": schema.capability.description})
+    
+    # If MCP is enabled, we ONLY provide the discovery tools to start
+    if use_mcp_discovery:
+        selected_tools.append(tool_search_mcp)
+        active_tool_meta.append({"id": "tool_search_mcp", "name": "MCP Tool Search", "description": "Search 507 integrated functions."})
+        # Add a few core system tools
+        for e in DEMO_TOOL_REGISTRY:
+             if e["category"] == "system":
+                 selected_tools.append(e["handler"])
+                 active_tool_meta.append({"id": e["id"], "name": e["name"], "description": e["description"]})
+    else:
+        # Standard static tool loading
+        for e in DEMO_TOOL_REGISTRY:
+            if not tool_ids or e["id"] in tool_ids:
+                if e.get("handler"):
+                    selected_tools.append(e["handler"])
+                    active_tool_meta.append({"id": e["id"], "name": e["name"], "description": e["description"]})
+        
+        if tool_ids and _engine_manager.registry_svc:
+            _engine_manager.sync_registry()
+            for tid in tool_ids:
+                if any(m["id"] == tid for m in active_tool_meta): continue
+                schema = _engine_manager.registry_svc.get_tool(tid)
+                if schema:
+                    lc_tool = tool_schema_to_langchain(schema)
+                    if lc_tool:
+                        selected_tools.append(lc_tool)
+                        active_tool_meta.append({"id": tid, "name": schema.name, "description": schema.capability.description})
 
     # 4. COMPILE LANGGRAPH (Modular Reasoning nodes)
     from langgraph.graph import StateGraph, END
@@ -587,7 +634,10 @@ JSON Result:"""
             system_prompt_override=service.get_formatted_prompt(strategy=model_provider.get_agent_strategy())
         ),
         model_provider=model_provider,
-        tools=selected_tools
+        tools=selected_tools,
+        use_mcp_discovery=use_mcp_discovery,
+        whitelist=tool_ids or [],
+        global_search_enabled=global_search_enabled
     )
     _master_agent.graph = workflow.compile(checkpointer=_checkpointer)
     
@@ -597,6 +647,9 @@ JSON Result:"""
         "model_path": model_provider.config.model_path,
         "provider": model_provider.config.provider_type,
         "tools": active_tool_meta,
+        "whitelist": tool_ids or [],
+        "use_mcp_discovery": use_mcp_discovery,
+        "global_search_enabled": global_search_enabled,
         "session_id": f"session-{datetime.now().strftime('%m%d%H%M')}"
     }
     
@@ -622,10 +675,13 @@ class DeployRequest(BaseModel):
     tool_ids: Optional[list] = None
     system_prompt: Optional[str] = None
     guardrails: Optional[list] = None
+    use_mcp_discovery: Optional[bool] = False
+    global_search_enabled: Optional[bool] = False
 
 @router.get("/available_tools")
 async def get_available_tools():
-    """Returns all tools that can be selected, grouped by category."""
+    """DEPRECATED: Use /api/v1/entities/registry/ instead."""
+    logger.warning("DEPRECATED: /api/v1/demo/available_tools called. Use /api/v1/entities/registry/ instead.")
     groups = {}
     
     # 1. Add hardcoded tools
@@ -673,7 +729,12 @@ async def get_available_tools():
 
 @router.get("/available_workflows")
 async def get_available_workflows():
-    """Returns all workflow definitions grouped by category."""
+    """DEPRECATED: Use /api/v1/entities/registry/ instead."""
+    logger.warning("DEPRECATED: /api/v1/demo/available_workflows called. Use /api/v1/entities/registry/ instead.")
+    return await consolidated_workflows()
+
+async def consolidated_workflows():
+    """Internal helper for workflow discovery."""
     try:
         workflows = common_memory.list_workflow_definitions()
         groups = {}
@@ -840,6 +901,8 @@ async def list_gemini_models():
 
 @router.get("/available_config")
 async def get_available_config():
+    """DEPRECATED: Use /api/v1/entities/registry/ instead."""
+    logger.warning("DEPRECATED: /api/v1/demo/available_config called. Use /api/v1/entities/registry/ instead.")
     if not _engine_manager:
         return {"models": [], "agents": []}
     return {
@@ -894,7 +957,9 @@ async def deploy_config(req: DeployRequest):
             agent_id=req.agent_id,
             tool_ids=req.tool_ids,
             system_prompt=req.system_prompt,
-            guardrails=req.guardrails
+            guardrails=req.guardrails,
+            use_mcp_discovery=req.use_mcp_discovery,
+            global_search_enabled=req.global_search_enabled
         )
         return {"status": "success", "info": await get_session_info()}
     except Exception as e:

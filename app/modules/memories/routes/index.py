@@ -5,32 +5,34 @@ from app.modules.common.types.index import APIResponse
 from app.modules.database.service.connection import get_session
 from app.modules.memories.service.index import memory_service
 from app.modules.memories.schemas.index import MemoryRead, MemoryCreate, MemoryUpdate
+from app.modules.auth.dependencies.index import get_current_active_user
 
 router = APIRouter()
 
 @router.get("/", response_model=APIResponse[List[MemoryRead]])
 def list_memories(skip: int = 0, limit: int = 100):
+    # Note: Opened for Platform Demo unauthenticated discovery
     items = memory_service.get_all(skip=skip, limit=limit)
     return APIResponse(data=items, message="Retrieved list of memories")
 
 @router.post("/", response_model=APIResponse[MemoryRead])
-def create_memory(memory_in: MemoryCreate):
+def create_memory(memory_in: MemoryCreate, current_user = Depends(get_current_active_user)):
     item = memory_service.create(memory_in)
     return APIResponse(data=item, message="Memory created successfully")
 
 @router.get("/{id}", response_model=APIResponse[MemoryRead])
-def get_memory(id: str):
+def get_memory(id: str, current_user = Depends(get_current_active_user)):
     item = memory_service.get_by_id(id)
     if not item:
         raise HTTPException(status_code=404, detail="Memory not found")
     return APIResponse(data=item, message="Memory retrieved successfully")
 
 @router.put("/{id}", response_model=APIResponse[MemoryRead])
-def update_memory(id: str, memory_in: MemoryUpdate):
+def update_memory(id: str, memory_in: MemoryUpdate, current_user = Depends(get_current_active_user)):
     item = memory_service.update(id, memory_in)
     return APIResponse(data=item, message="Memory updated successfully")
 
 @router.delete("/{id}", response_model=APIResponse[dict])
-def delete_memory(id: str):
+def delete_memory(id: str, current_user = Depends(get_current_active_user)):
     memory_service.delete(id)
     return APIResponse(data={"success": True}, message="Memory deleted successfully")

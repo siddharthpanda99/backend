@@ -1,14 +1,16 @@
-import os
-import yaml
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Body
 from pathlib import Path
+import yaml
 from app.modules.common.types.index import APIResponse
 
 router = APIRouter()
 
 # --- CONFIGURATION ---
-REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent.resolve()
+# Correctly resolve to the 'Backend Monorepo' root
+# Current: Monorepo/Backend Monorepo/Backend/app/modules/agents/routes/registry.py
+# Target: Monorepo/Backend Monorepo/
+REPO_ROOT = Path(__file__).resolve().parents[5]
 TEMPLATES_DIR = REPO_ROOT / "Python Libs" / "common_lib" / "src" / "common_lib" / "templates" / "prompts" / "simple"
 
 CATEGORY_MAP = {
@@ -91,5 +93,37 @@ def get_template(template_id: str):
                         return APIResponse(data=data, message="Template retrieved successfully")
             except Exception:
                 continue
-                
     raise HTTPException(status_code=404, detail=f"Template with ID '{template_id}' not found")
+
+@router.post("/save", response_model=APIResponse[Dict[str, Any]])
+def save_template(
+    payload: Dict[str, Any] = Body(...),
+    category: str = Query(..., description="Logical category: instructions, guardrails, etc.")
+):
+    """
+    Save a new template or update an existing one in the registry.
+    """
+    if not TEMPLATES_DIR.exists():
+        raise HTTPException(status_code=500, detail="Templates directory not found")
+
+    mapped_folder = CATEGORY_MAP.get(category.lower())
+    if not mapped_folder:
+        raise HTTPException(status_code=400, detail=f"Invalid category '{category}'")
+
+    target_dir = TEMPLATES_DIR / mapped_folder
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    template_id = payload.get("id")
+    if not template_id:
+        # Generate ID from name
+        name = payload.get("name", "unnamed_template")
+        template_id = name.lower().replace(" ", "_")
+        payload["id"] = template_id
+
+    file_path = target_dir / f"{template_id}.yaml"
+    
+    # Save as YAML
+    with open(file_path, "w", encoding="utf-8") as f:
+        yaml.dump(payload, f, sort_keys=False, allow_unicode=True)
+
+    return APIResponse(data=payload, message=f"Template '{template_id}' saved successfully to {category}")

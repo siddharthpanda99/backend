@@ -36,6 +36,7 @@ from app.modules.authorization.routes.permissions import router as permissions_r
 from app.modules.users.routes.users import router as users_router
 from app.modules.projects.routes.projects import router as projects_router
 from app.modules.agents.routes.index import router as agents_router
+from app.modules.entities.routes.registry import router as entities_router
 from app.modules.workflows.routes.index import router as workflows_router
 from app.modules.tools.routes.index import router as tools_router
 from app.modules.memories.routes.index import router as memories_router
@@ -79,7 +80,30 @@ async def lifespan(app: FastAPI):
                 print(f"Detailed Error: {e}")
                 print("="*60)
                 sys.exit(1)
+    
+    # --- SYNC: Import all entities from file system to database ---
+    print("Startup: Synchronizing file system entities to database...")
+    try:
+        from app.core.common_lib_integration import sync_manager, common_memory
         
+        # Perform sync
+        report = sync_manager.sync_all_from_files()
+        
+        # Fetch counts for verification
+        t_count = len(common_memory.list_tool_definitions())
+        w_count = len(common_memory.list_workflow_definitions())
+        a_count = len(common_memory.list_agent_definitions())
+        
+        print("="*60)
+        print(f"Registry Sync Complete:")
+        print(f"- Tools Indexed: {t_count}")
+        print(f"- Workflows Indexed: {w_count}")
+        print(f"- Agents Indexed: {a_count}")
+        print(f"Sync Report: {report.entities_processed} entities processed.")
+        print("="*60)
+    except Exception as e:
+        print(f"Warning: Initial sync failed: {e}")
+
     yield
     # Shutdown
     engine.dispose()
@@ -119,11 +143,12 @@ def create_app() -> FastAPI:
     app.include_router(users_router, prefix=f"{settings.API_V1_STR}/users", tags=["Users"], dependencies=[Depends(get_current_active_user)])
     app.include_router(projects_router, prefix=f"{settings.API_V1_STR}/projects", tags=["Projects"], dependencies=[Depends(get_current_active_user)])
 
-    # Entities
-    app.include_router(agents_router, prefix=f"{settings.API_V1_STR}/agents", tags=["Agents"], dependencies=[Depends(get_current_active_user)])
+    # Entities & Orchestration
+    app.include_router(entities_router, prefix=f"{settings.API_V1_STR}/entities/registry", tags=["Entities Registry"])
+    app.include_router(agents_router, prefix=f"{settings.API_V1_STR}/agents", tags=["Agents (Management)"])
     app.include_router(workflows_router, prefix=f"{settings.API_V1_STR}/workflows", tags=["Workflows"])
     app.include_router(tools_router, prefix=f"{settings.API_V1_STR}/tools", tags=["Tools"], dependencies=[Depends(get_current_active_user)])
-    app.include_router(memories_router, prefix=f"{settings.API_V1_STR}/memories", tags=["Memories"], dependencies=[Depends(get_current_active_user)])
+    app.include_router(memories_router, prefix=f"{settings.API_V1_STR}/memories", tags=["Memories"])
     
     # New Vision API
     from app.modules.vision.routes import router as vision_router
@@ -132,6 +157,10 @@ def create_app() -> FastAPI:
 
     # Demo
     app.include_router(demo_react_router, prefix=f"{settings.API_V1_STR}/demo", tags=["Demo"])
+
+    # MCP (Model Context Protocol)
+    from app.modules.mcp.routes import router as mcp_router
+    app.include_router(mcp_router, prefix=f"{settings.API_V1_STR}/mcp", tags=["MCP Ecosystem"])
 
     # Serve generated images as static files
     from common_lib.paths import GENERATED_CONTENT
