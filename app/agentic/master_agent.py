@@ -124,7 +124,8 @@ class MasterAgent:
         guardrails: List[str] = None,
         use_mcp_discovery: bool = False,
         whitelist: List[str] = None,
-        global_search_enabled: bool = False
+        global_search_enabled: bool = False,
+        max_steps: int = 8
     ):
         self.model_provider = model_provider
         self.engine_manager = engine_manager
@@ -133,6 +134,7 @@ class MasterAgent:
         self.use_mcp_discovery = use_mcp_discovery
         self.whitelist = whitelist or []
         self.global_search_enabled = global_search_enabled
+        self.max_steps = max_steps
         self.tool_map = {}
         # Gold Standard: Dynamic Entity Resolver
         self.resolver = EntityResolverService(common_memory)
@@ -304,10 +306,10 @@ JSON Result:"""
             intermediate_steps = state.get("intermediate_steps", [])
             
             # 1. Loop Guard
-            if len(intermediate_steps) >= 8:
+            if len(intermediate_steps) >= self.max_steps:
                 return {"agent_outcome": AgentFinish(
-                    return_values={"output": "I've stopped to prevent an infinite loop. How else can I help?"},
-                    log="Loop limit (8) reached."
+                    return_values={"output": f"I've stopped after {self.max_steps} steps to prevent an infinite loop. How else can I help?"},
+                    log=f"Loop limit ({self.max_steps}) reached."
                 )}
 
             # 2. Format Context

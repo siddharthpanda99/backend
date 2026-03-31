@@ -40,7 +40,6 @@ from app.modules.entities.routes.registry import router as entities_router
 from app.modules.workflows.routes.index import router as workflows_router
 from app.modules.tools.routes.index import router as tools_router
 from app.modules.memories.routes.index import router as memories_router
-from app.modules.demo.routes.react_agent import router as demo_react_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -155,8 +154,6 @@ def create_app() -> FastAPI:
     print(f"Including Vision router with prefix: {settings.API_V1_STR}/vision")
     app.include_router(vision_router, prefix=f"{settings.API_V1_STR}/vision", tags=["Vision"])
 
-    # Demo
-    app.include_router(demo_react_router, prefix=f"{settings.API_V1_STR}/demo", tags=["Demo"])
 
     # MCP (Model Context Protocol)
     from app.modules.mcp.routes import router as mcp_router
