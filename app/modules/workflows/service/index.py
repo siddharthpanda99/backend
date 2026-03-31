@@ -195,9 +195,10 @@ class WorkflowService:
             try:
                 # Resolve registry
                 try:
-                    from app.modules.demo.routes.react_agent import _engine_manager
-                    registry = _engine_manager.registry_svc if _engine_manager else None
-                except ImportError:
+                    from app.modules.agents.runtime.core import get_engine_manager
+                    em = get_engine_manager()
+                    registry = em.registry_svc if em else None
+                except Exception:
                     registry = None
 
                 if not registry:

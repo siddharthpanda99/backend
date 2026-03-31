@@ -101,10 +101,11 @@ class VisionService:
                 # to save memory and skip discovery, but we don't block on it.
                 registry = None
                 try:
-                    from app.modules.demo.routes.react_agent import _engine_manager
-                    if _engine_manager and _engine_manager.registry_svc:
-                         registry = _engine_manager.registry_svc
-                except ImportError:
+                    from app.modules.agents.runtime.core import get_engine_manager
+                    em = get_engine_manager()
+                    if em and em.registry_svc:
+                        registry = em.registry_svc
+                except Exception:
                     pass
                 
                 if registry is None:
