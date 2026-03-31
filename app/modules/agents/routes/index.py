@@ -4,10 +4,12 @@ from app.modules.common.types.index import APIResponse
 from app.modules.agents.schemas.index import AgentRead, AgentCreate, AgentUpdate
 from app.modules.agents.service.index import agent_service
 from app.modules.agents.routes.registry import router as registry_router
+from app.modules.agents.runtime.routes import router as runtime_router
 from app.modules.auth.dependencies.index import get_current_active_user
 
 router = APIRouter()
 router.include_router(registry_router, prefix="/registry", tags=["Registry"])
+router.include_router(runtime_router,  prefix="/runtime",  tags=["Agent Runtime"])
 
 @router.get("/", response_model=APIResponse[List[AgentRead]])
 def list_agents(skip: int = 0, limit: int = 100, current_user = Depends(get_current_active_user)):
