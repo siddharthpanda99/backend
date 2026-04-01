@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     # BACKEND_CORS_ORIGINS: list[str] = ["*"]
     API_V1_STR: str = "/api/v1"
     PRELOAD_LLM: bool = False
+    SKIP_REGISTRY_SYNC: bool = True
     
     # Image Generation Performance & Optimization
     OPTIMIZE_USE_XFORMERS: bool = True

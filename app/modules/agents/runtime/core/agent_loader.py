@@ -33,6 +33,7 @@ from app.agentic.master_agent import MasterAgent
 from app.modules.agents.runtime.utils.logging import get_logger
 from app.modules.agents.runtime.tools.builtins import build_builtin_tools, RuntimeContext
 from app.modules.agents.runtime.tools.registry import BUILTIN_TOOL_REGISTRY
+from app.core.settings import get_settings
 
 logger = get_logger(__name__)
 
@@ -238,7 +239,7 @@ def load_agent(
                     })
 
         # Dynamic registry tools
-        if tool_ids and _engine_manager.registry_svc:
+        if tool_ids and _engine_manager.registry_svc and not get_settings().SKIP_REGISTRY_SYNC:
             _engine_manager.sync_registry()
             for tid in tool_ids:
                 if any(m["id"] == tid for m in active_tool_meta):

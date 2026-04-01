@@ -81,27 +81,30 @@ async def lifespan(app: FastAPI):
                 sys.exit(1)
     
     # --- SYNC: Import all entities from file system to database ---
-    print("Startup: Synchronizing file system entities to database...")
-    try:
-        from app.core.common_lib_integration import sync_manager, common_memory
-        
-        # Perform sync
-        report = sync_manager.sync_all_from_files()
-        
-        # Fetch counts for verification
-        t_count = len(common_memory.list_tool_definitions())
-        w_count = len(common_memory.list_workflow_definitions())
-        a_count = len(common_memory.list_agent_definitions())
-        
-        print("="*60)
-        print(f"Registry Sync Complete:")
-        print(f"- Tools Indexed: {t_count}")
-        print(f"- Workflows Indexed: {w_count}")
-        print(f"- Agents Indexed: {a_count}")
-        print(f"Sync Report: {report.entities_processed} entities processed.")
-        print("="*60)
-    except Exception as e:
-        print(f"Warning: Initial sync failed: {e}")
+    if not settings.SKIP_REGISTRY_SYNC:
+        print("Startup: Synchronizing file system entities to database...")
+        try:
+            from app.core.common_lib_integration import sync_manager, common_memory
+            
+            # Perform sync
+            report = sync_manager.sync_all_from_files()
+            
+            # Fetch counts for verification
+            t_count = len(common_memory.list_tool_definitions())
+            w_count = len(common_memory.list_workflow_definitions())
+            a_count = len(common_memory.list_agent_definitions())
+            
+            print("="*60)
+            print(f"Registry Sync Complete:")
+            print(f"- Tools Indexed: {t_count}")
+            print(f"- Workflows Indexed: {w_count}")
+            print(f"- Agents Indexed: {a_count}")
+            print(f"Sync Report: {report.entities_processed} entities processed.")
+            print("="*60)
+        except Exception as e:
+            print(f"Warning: Initial sync failed: {e}")
+    else:
+        print("Startup: Skipping registry sync (SKIP_REGISTRY_SYNC=True)")
 
     yield
     # Shutdown
