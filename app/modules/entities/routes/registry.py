@@ -8,6 +8,8 @@ from common_lib.modules.orchestration.workflow.schemas import WorkflowDefinition
 from common_lib.modules.orchestration.agent.prompt_resolver import PromptResolver
 from app.modules.agents.runtime.core import get_engine_manager
 from app.modules.agents.runtime.tools.registry import BUILTIN_TOOL_REGISTRY
+from common_lib.modules.orchestration.sd.models import SdWildcardRecord, SdWeightedPromptRecord, SdKeywordRecord
+from sqlalchemy import select
 import logging
 
 logger = logging.getLogger(__name__)
@@ -198,17 +200,80 @@ async def list_entities(
                 
             results["skills"] = sorted(db_skills, key=lambda x: x.get("name", x.get("id", "")))
             
-            # Additional prompt-based entities
-            all_prompts = common_memory.list_prompt_definitions()
+            from app.core.common_lib_integration import sync_manager
+            
+            # Additional prompt-based entities — Unified DB + Filesystem
+            all_prompts = []
+            
+            # 1. Standard Prompts
+            db_prompts = common_memory.list_prompt_definitions()
+            for p in db_prompts:
+                p["type"] = "prompt"
+                all_prompts.append(p)
+            
+            # 2. Template Prompts
+            try:
+                db_templates = common_memory.list_template_definitions()
+                for t in db_templates:
+                    t["type"] = "template"
+                    all_prompts.append(t)
+            except Exception as _t_err:
+                logger.debug(f"Template definitions lookup failed: {_t_err}")
+
+            # 3. SD Artifacts (Direct Query)
+            try:
+                with common_memory._get_session() as session:
+                    # Wildcards
+                    wildcards = session.execute(select(SdWildcardRecord)).scalars().all()
+                    for w in wildcards:
+                        all_prompts.append({
+                            "id": w.id,
+                            "name": w.name or w.id,
+                            "content": ", ".join(w.choices) if isinstance(w.choices, list) else str(w.choices),
+                            "type": "wildcard",
+                            "logical_category": "prompts",
+                            "metadata": {"type": "sd_wildcard", "is_nested": w.is_nested}
+                        })
+                    
+                    # Weighted Prompts
+                    weighted = session.execute(select(SdWeightedPromptRecord)).scalars().all()
+                    for wp in weighted:
+                        all_prompts.append({
+                            "id": wp.id,
+                            "name": wp.id,
+                            "content": wp.positive_fragment,
+                            "negative_fragment": wp.negative_fragment,
+                            "type": "weighted_prompt",
+                            "logical_category": "prompts",
+                            "metadata": {"type": "sd_weighted", "category": wp.category}
+                        })
+            except Exception as _sd_err:
+                 logger.warning(f"Failed to query SD entities: {_sd_err}")
+                
             # Normalize for frontend (it expects 'content' or 'text')
             for p in all_prompts:
+                p["description"] = normalize_description(p.get("description"))
                 if 'system_prompt' in p and 'content' not in p:
                     p['content'] = p['system_prompt']
+                
+                # Ensure type is explicitly set for grouping
+                if "logical_category" not in p:
+                    # Default categorized mapping
+                    cat = p.get("category", "")
+                    if "instruction" in cat.lower() or "role" in cat.lower(): p["logical_category"] = "instructions"
+                    elif "guardrail" in cat.lower(): p["logical_category"] = "guardrails"
+                    elif "test" in cat.lower() or "example" in cat.lower(): p["logical_category"] = "examples"
+                    elif "memory" in cat.lower() or "knowledge" in cat.lower(): p["logical_category"] = "knowledge"
+                    else: p["logical_category"] = "prompts"
 
-            results["instructions"] = [p for p in all_prompts if p.get("logical_category") == "instructions"]
-            results["guardrails"] = [p for p in all_prompts if p.get("logical_category") == "guardrails"]
+            # Return all prompts as a master list for the UI (Resolves 500+ mismatch)
+            results["prompts"] = all_prompts
+            
+            # Explicit sub-categories
+            results["instructions"] = [p for p in all_prompts if p.get("logical_category") == "instructions" or p.get("type") == "instructions"]
+            results["guardrails"] = [p for p in all_prompts if p.get("logical_category") == "guardrails" or p.get("type") == "guardrails"]
             results["preferences"] = [p for p in all_prompts if p.get("logical_category") == "preferences"]
-            results["knowledge"] = [p for p in all_prompts if p.get("logical_category") == "knowledge"]
+            results["memories"] = [p for p in all_prompts if p.get("logical_category") == "knowledge" or p.get("logical_category") == "memories"]
             results["examples"] = [p for p in all_prompts if p.get("logical_category") == "examples"]
             
         # 4. MODELS — always available, even before an agent is deployed
@@ -246,6 +311,10 @@ async def create_entity(
         e_id = definition.get("id")
         if not e_id:
             raise HTTPException(status_code=400, detail="Entity ID is required")
+
+        # Strip redundant, backend-only or legacy keys
+        definition.pop("skill_yaml", None)
+        definition.pop("fs_artifact", None)
 
         # Common extraction
         category = definition.get("category")
@@ -323,6 +392,10 @@ async def update_entity(
     """Updates an existing entity in the database."""
     try:
         definition["id"] = entity_id # Enforce ID consistency
+        
+        # Strip redundant, backend-only or legacy keys
+        definition.pop("skill_yaml", None)
+        definition.pop("fs_artifact", None)
         
         # Common extraction
         category = definition.get("category")
