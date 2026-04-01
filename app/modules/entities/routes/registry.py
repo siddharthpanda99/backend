@@ -49,18 +49,7 @@ def normalize_description(desc: Any) -> str:
         return desc.get("short") or desc.get("long") or str(desc)
     return str(desc)
 
-def is_modern_agent(agent_dict: Dict[str, Any]) -> bool:
-    """Checks if an agent definition satisfies the 16+ section architectural standard."""
-    definition = agent_dict.get("definition") or {}
-    if not definition:
-        return False
-    
-    # Heuristic: Modern agents have specific architectural blocks + significant section count
-    core_sections = {"memory", "planning", "policies", "runtime", "routing", "registry"}
-    keys = set(definition.keys())
-    
-    # Must have at least 12 keys and some core architectural blocks
-    return len(keys) >= 12 and core_sections.intersection(keys)
+# is_modern_agent removed: V3 Gold Standard validator now handles all legacy migration.
 
 router = APIRouter()
 
@@ -133,6 +122,8 @@ async def list_entities(
                         "id": w_id,
                         "name": wf.get("name") or w_id,
                         "description": normalize_description(wf.get("description")),
+                        "input_schema": wf.get("input_schema"),
+                        "output_schema": wf.get("output_schema"),
                         "metadata": metadata,
                         "artifacts": wf.get("artifacts", {})
                     }
@@ -184,12 +175,14 @@ async def list_entities(
                 if a.get("artifacts", {}).get("entity_type") == "skill": continue
                 agent_map[a["id"]] = a
             
+            from common_lib.modules.orchestration.agent.schemas import AgentDefinition
             results["agents"] = sorted(
-                [a for a in agent_map.values() if is_modern_agent(a)], 
+                [AgentDefinition.model_validate(a).model_dump() for a in agent_map.values()], 
                 key=lambda x: x.get("name", x.get("id", ""))
             )
             
             # UNIFY SKILLS
+            from common_lib.modules.orchestration.skill.schemas import CapabilityDefinition
             for s in db_skills:
                 s["description"] = normalize_description(s.get("description"))
                 meta = s.get("metadata") or {}
@@ -198,7 +191,10 @@ async def list_entities(
                 if "subtype" not in meta: meta["subtype"] = "skill"
                 s["metadata"] = meta
                 
-            results["skills"] = sorted(db_skills, key=lambda x: x.get("name", x.get("id", "")))
+            results["skills"] = sorted(
+                [CapabilityDefinition.model_validate(s).model_dump() for s in db_skills], 
+                key=lambda x: x.get("name", x.get("id", ""))
+            )
             
             from app.core.common_lib_integration import sync_manager
             
@@ -323,10 +319,12 @@ async def create_entity(
         description = normalize_description(definition.get("description"))
 
         if entity_type == "agent":
-            # Validate
-            AgentDefinition(**definition)
+            # Validate & Hydrate via V3 Gold Standard
+            agent_obj = AgentDefinition.model_validate(definition)
+            definition = agent_obj.model_dump()
+
             # Extract raw prompt template and resolve it for Live Preview
-            prompt_template = definition.get("system_prompt_override")
+            prompt_template = agent_obj.logic.system_prompt or definition.get("system_prompt_override")
             resolved_prompt = None
             if prompt_template:
                 try:
@@ -334,6 +332,7 @@ async def create_entity(
                     resolved_prompt = resolver.resolve(definition, prompt_template)
                 except Exception as exc:
                     logger.warning("[Registry] PromptResolver failed for %s: %s", e_id, exc)
+
             result = common_memory.save_agent_definition(
                 e_id, 
                 definition.get("identity", {}), 
@@ -346,7 +345,8 @@ async def create_entity(
                 resolved_prompt=resolved_prompt,
             )
         elif entity_type == "skill":
-            CapabilityDefinition(**definition)
+            skill_obj = CapabilityDefinition.model_validate(definition)
+            definition = skill_obj.model_dump()
             result = common_memory.save_skill_definition(
                 e_id, 
                 definition,
@@ -404,9 +404,12 @@ async def update_entity(
         description = normalize_description(definition.get("description"))
 
         if entity_type == "agent":
-            AgentDefinition(**definition)
+            # Validate & Hydrate via V3 Gold Standard
+            agent_obj = AgentDefinition.model_validate(definition)
+            definition = agent_obj.model_dump()
+
             # Extract raw prompt template and resolve it for Live Preview
-            prompt_template = definition.get("system_prompt_override")
+            prompt_template = agent_obj.logic.system_prompt or definition.get("system_prompt_override")
             resolved_prompt = None
             if prompt_template:
                 try:
@@ -426,7 +429,8 @@ async def update_entity(
                 resolved_prompt=resolved_prompt,
             )
         elif entity_type == "skill":
-            CapabilityDefinition(**definition)
+            skill_obj = CapabilityDefinition.model_validate(definition)
+            definition = skill_obj.model_dump()
             result = common_memory.save_skill_definition(
                 entity_id, 
                 definition,
