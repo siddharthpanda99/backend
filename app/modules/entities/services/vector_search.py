@@ -35,13 +35,18 @@ class RegistrySearchService:
         # Format results nicely for API
         formatted = []
         for r in results:
+            # Safely extract from metadata or fallback to QueryResult fields
+            doc_id = r.metadata.get("id") or r.document_id
+            name = r.metadata.get("name") or r.metadata.get("title") or "Unnamed Entity"
+            desc = r.metadata.get("description") or ""
+            
             formatted.append({
-                "id": r.metadata.get("id"),
-                "name": r.metadata.get("name"),
+                "id": doc_id,
+                "name": name,
                 "content": r.content,
-                "entity_type": r.metadata.get("entity_type"),
-                "description": r.metadata.get("description"),
-                "score": 1.0 - r.score # Convert distance to similarity
+                "entity_type": r.metadata.get("entity_type") or "prompt",
+                "description": desc,
+                "score": 1.0 - r.score if hasattr(r, 'score') else 1.0
             })
         return formatted
 
