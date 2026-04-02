@@ -53,6 +53,23 @@ def normalize_description(desc: Any) -> str:
 
 router = APIRouter()
 
+@router.get("/search", response_model=APIResponse[List[Dict[str, Any]]])
+async def search_registry(
+    q: str = Query(..., description="Search query"),
+    type: Optional[str] = Query(None, description="Filter by entity type"),
+    limit: int = Query(10, description="Max results")
+):
+    """
+    Search registry entities using vector similarity and keywords.
+    """
+    try:
+        search_svc = get_search_service()
+        results = await search_svc.search(query=q, entity_type=type, limit=limit)
+        return APIResponse(data=results, message="Search results retrieved")
+    except Exception as e:
+        logger.error(f"Registry search failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/", response_model=APIResponse[Dict[str, Any]])
 async def list_entities(
     entity_type: Optional[str] = Query(None, description="Filter by entity type: tools, workflows, agents, skills, instructions, etc.")
