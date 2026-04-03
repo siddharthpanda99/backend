@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, text
 import sys
 
-engine = create_engine('postgresql://agent_user:agent_password@localhost:5433/agentic_data')
+engine = create_engine('postgresql://nexus:nexus_password@localhost:5432/nexus_db')
 try:
     with engine.connect() as conn:
         # 1. Count by Type

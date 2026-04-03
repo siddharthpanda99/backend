@@ -5,16 +5,7 @@ import os
 sys.path.append(r"c:\Users\91797\Documents\Dev\JS\Monorepo\Backend Monorepo\Python Libs\common_lib\src")
 sys.path.append(r"c:\Users\91797\Documents\Dev\JS\Monorepo\Backend Monorepo\Python Libs\inference-platform\src")
 
-# Pre-load keys for the script
-def _load_keys():
-    keys_path = r"c:\Users\91797\Documents\Dev\JS\Monorepo\Backend Monorepo\resources\keys.txt"
-    if os.path.exists(keys_path):
-        with open(keys_path, "r") as f:
-            for line in f:
-                if "=" in line and not line.strip().startswith("#"):
-                    key, val = line.strip().split("=", 1)
-                    os.environ[key.strip()] = val.strip()
-_load_keys()
+# Keys are now expected to be in the environment or set via common_lib.config.
 
 from inference_platform.core.engine_manager import EngineManager
 from common_lib.modules.ai_models.llm.gemini import GeminiProvider

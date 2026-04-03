@@ -2,7 +2,7 @@ import sys
 import os
 
 # Set environment variables for DB if needed, though app.core.common_lib_integration usually handles it
-os.environ["DATABASE_URL"] = "postgresql://agent_user:agent_password@localhost:5433/agentic_data"
+os.environ["DATABASE_URL"] = "postgresql://nexus:nexus_password@localhost:5432/nexus_db"
 
 # Add paths to sys.path
 sys.path.append(r"c:\Users\91797\Documents\Dev\JS\Monorepo\Backend Monorepo\Backend")
