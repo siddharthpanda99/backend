@@ -13,6 +13,7 @@ Endpoints:
     POST /session_state/{id}       — override state (history, hints, etc.)
     GET  /available_tools          — list all available tools (builtins + registry)
     GET  /available_workflows      — list available workflows
+    POST /upload                  — upload a file for the current session
     POST /set_quota_tier           — update quota tier
     POST /sync_quota               — sync client-side quota counters
     GET  /gemini_models            — live Gemini model list
@@ -20,27 +21,36 @@ Endpoints:
 from __future__ import annotations
 
 import traceback
+import asyncio
+import time
+import json
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+import os
+import shutil
+from pathlib import Path
 
 from app.modules.agents.runtime.core import (
-    load_keys,
     load_agent,
+    load_agent_generator,
     get_master_agent,
     get_engine_manager,
     get_active_session,
+    clear_checkpointer,
+    get_system_vram_gb,
+    get_vram_usage,
     stream_agent_generator,
 )
+from inference_platform.core.vllm_fleet_manager import vllm_fleet as vllm_manager
 from app.modules.agents.runtime.tools.registry import BUILTIN_TOOL_REGISTRY
 from app.modules.agents.runtime.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Load API keys at import time (non-blocking)
-load_keys()
+# API keys are now handled via environment variables/config by the base library.
 
 router = APIRouter()
 
@@ -51,7 +61,7 @@ router = APIRouter()
 
 class DeployRequest(BaseModel):
     model_path:            Optional[str]       = None
-    provider:              Optional[str]       = "local_llama"
+    provider:              Optional[str]       = None
     agent_id:              Optional[str]       = "master_agent"
     agent_display_name:    Optional[str]       = "Master Agent"
     tool_ids:              Optional[List[str]] = None
@@ -62,10 +72,27 @@ class DeployRequest(BaseModel):
     workflow_ids:          Optional[List[str]] = None
 
 
+class FleetDeployRequest(BaseModel):
+    model_path:            str
+    engine_id:             Optional[str]  = "main"
+    gpu_memory_utilization: Optional[float] = 0.85
+    max_model_len:         Optional[int]   = 4096
+    quantization:          Optional[str]   = "none"
+
+class AgentConnectRequest(BaseModel):
+    agent_id:              str
+    engine_id:             Optional[str]  = "main"
+    tool_ids:              Optional[List[str]] = None
+    system_prompt:         Optional[str]       = None
+    template_ids:          Optional[List[str]] = None
+    use_mcp_discovery:     Optional[bool]      = False
+    global_search_enabled: Optional[bool]      = False
+
 class StreamRequest(BaseModel):
     message:    str
     session_id: str
     provider:   Optional[str] = None
+    attachments: Optional[List[str]] = None
 
 
 class StateUpdateRequest(BaseModel):
@@ -82,9 +109,9 @@ class StateUpdateRequest(BaseModel):
 
 @router.post("/deploy")
 async def deploy(req: DeployRequest):
-    """Compile and activate a custom agent for the given configuration."""
-    try:
-        load_agent(
+    """Compile and activate a custom agent with live SSE progress streaming (Unified)."""
+    return StreamingResponse(
+        load_agent_generator(
             model_path=req.model_path,
             provider=req.provider,
             agent_id=req.agent_id,
@@ -95,27 +122,165 @@ async def deploy(req: DeployRequest):
             use_mcp_discovery=req.use_mcp_discovery,
             global_search_enabled=req.global_search_enabled,
             workflow_ids=req.workflow_ids,
+        ),
+        media_type="text/event-stream"
+    )
+
+@router.post("/fleet/deploy")
+async def fleet_deploy(req: FleetDeployRequest):
+    """Deploy or reconfigure an inference node (Engine Only)."""
+    return StreamingResponse(
+        vllm_manager.deploy_engine_node(
+            model_path=req.model_path,
+            engine_id=req.engine_id,
+            gpu_memory_utilization=req.gpu_memory_utilization,
+            max_model_len=req.max_model_len,
+            quantization=req.quantization
+        ),
+        media_type="text/event-stream"
+    )
+
+@router.post("/agent/connect")
+async def agent_connect(req: AgentConnectRequest):
+    """Bind a persona to an existing engine node (Agent Only)."""
+    # This calls the load_agent logic but skips engine deployment if already ready
+    return StreamingResponse(
+        load_agent_generator(
+            agent_id=req.agent_id,
+            engine_id=req.engine_id,
+            tool_ids=req.tool_ids,
+            system_prompt=req.system_prompt,
+            template_ids=req.template_ids,
+            use_mcp_discovery=req.use_mcp_discovery,
+            global_search_enabled=req.global_search_enabled,
+            skip_engine_deploy=True # New flag to bypass vLLM check
+        ),
+        media_type="text/event-stream"
+    )
+
+@router.post("/fleet/sync")
+async def fleet_sync():
+    """Syncs the registry with Docker state and prunes ghost containers."""
+    vllm_manager.sync_registry_with_docker()
+    vllm_manager.prune_ghost_containers()
+    return {"status": "success", "message": "Fleet synchronized and ghost containers pruned."}
+
+@router.get("/fleet/logs/{engine_id}")
+async def fleet_logs(engine_id: str):
+    """Streams live container logs via SSE."""
+    container_name = f"vllm-server-{engine_id}"
+    return StreamingResponse(
+        vllm_manager.stream_container_logs(container_name),
+        media_type="text/event-stream"
+    )
+
+@router.get("/fleet/status/stream")
+async def fleet_status_stream():
+    """SSE stream for real-time fleet health (VRAM, Node states with probing)."""
+    async def event_generator():
+        while True:
+            try:
+                payload = vllm_manager.get_cached_status()
+                yield f"data: {json.dumps(payload)}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            await asyncio.sleep(2)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+def get_system_vram_gb() -> float:
+    """Detect total VRAM on the host using nvidia-smi."""
+    try:
+        import subprocess
+        # Query total memory for all GPUs
+        output = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            encoding="utf-8",
+            stderr=subprocess.DEVNULL
         )
-        return {"status": "success", "info": await get_session()}
+        vrams = [float(x.strip()) for x in output.strip().split("\n") if x.strip()]
+        return sum(vrams) / 1024.0 # MB -> GB
+    except Exception:
+        # Fallback to a safe default if nvidia-smi is unavailable
+        return 8.0
+
+@router.get("/config")
+async def get_config():
+    """
+    Returns available models, agent definitions, and system hardware info for the UI.
+    """
+    try:
+        # Probing registry for models
+        from common_lib.modules.ai_models.container import AIModelsContainer
+        container = AIModelsContainer()
+        models = container.registry_service.list_models()
+        
+        # Probing for agents
+        from app.core.common_lib_integration import common_memory
+        agents = common_memory.list_agent_definitions()
+        
+        # Mapping for UI compatibility
+        ui_models = []
+        for m in models:
+            m_dict = m.model_dump()
+            m_dict["path"] = m.id
+            m_dict["type"] = m.provider
+            ui_models.append(m_dict)
+            
+        return {
+            "models": ui_models,
+            "agents": agents,
+            "system_vram_gb": get_system_vram_gb(),
+            "available_provisioning_engines": vllm_manager.discover_engines()
+        }
     except Exception as exc:
-        logger.error(traceback.format_exc())
-        return {"status": "error", "message": str(exc)}
+        logger.error("Failed to fetch runtime config: %s", exc)
+        return {"models": [], "agents": [], "system_vram_gb": 8.0, "available_provisioning_engines": []}
 
 
 @router.get("/session")
 async def get_session():
     """Return the currently active agent session metadata."""
-    em    = get_engine_manager()
-    agent = get_master_agent()
     sess  = get_active_session()
 
-    if not em:
+    if sess.get("status") == "inactive":
         return {"status": "inactive"}
 
+    agent = get_master_agent()
     info = {**sess}
-    if agent and agent.model_provider:
+    if agent and hasattr(agent, "model_provider") and agent.model_provider:
         info.update(agent.model_provider.get_info())
     return info
+
+
+@router.post("/clear_session")
+async def clear_session(req: ClearSessionRequest):
+    """
+    Clears the current session.
+    hard_reset=true  -> Restarts the vLLM container.
+    hard_reset=false -> Wipes LangGraph checkpoints (history).
+    """
+    try:
+        if req.hard_reset:
+            sess = get_active_session()
+            if sess.get("provider") == "vllm" and sess.get("model"):
+                logger.info("[Routes] Triggering Hard Reset for model: %s", sess["model"])
+                return StreamingResponse(
+                    load_agent_generator(
+                        model_path=sess["model"],
+                        provider="vllm"
+                    ),
+                    media_type="text/event-stream"
+                )
+            else:
+                return {"status": "error", "message": "No active vLLM model to reset."}
+        else:
+            clear_checkpointer()
+            return {"status": "success", "message": "Session history cleared."}
+    except Exception as exc:
+        logger.error("Failed to clear session: %s", exc)
+        return {"status": "error", "message": str(exc)}
 
 
 @router.post("/stream")
@@ -146,6 +311,28 @@ async def read_session_state(session_id: str):
         "last_input":          v.get("input", ""),
         "checkpoint_id":       str(state.config.get("configurable", {}).get("checkpoint_id", "initial")),
     }
+
+
+@router.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """Upload a file to the server and return its local path."""
+    try:
+        upload_dir = Path("assets/uploads")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        file_path = upload_dir / file.filename
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "local_path": str(file_path.absolute()),
+            "url": f"/assets/uploads/{file.filename}"
+        }
+    except Exception as exc:
+        logger.error("Upload failed: %s", exc)
+        return {"status": "error", "message": str(exc)}
 
 
 @router.post("/session_state/{session_id}")

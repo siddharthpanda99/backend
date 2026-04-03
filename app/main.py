@@ -86,6 +86,11 @@ async def lifespan(app: FastAPI):
         try:
             from app.core.common_lib_integration import sync_manager, common_memory
             
+            # --- SYNC: AI Models Registry ---
+            from common_lib.modules.ai_models.container import AIModelsContainer
+            AIModelsContainer().seed_defaults()
+            print("AI Model Registry synchronized.")
+            
             # Perform sync
             report = sync_manager.sync_all_from_files()
             
@@ -161,6 +166,10 @@ def create_app() -> FastAPI:
     # MCP (Model Context Protocol)
     from app.modules.mcp.routes import router as mcp_router
     app.include_router(mcp_router, prefix=f"{settings.API_V1_STR}/mcp", tags=["MCP Ecosystem"])
+
+    # SOTA Debug (Simulating Parallel Spans)
+    from app.modules.debug.routes import router as debug_router
+    app.include_router(debug_router, prefix=f"{settings.API_V1_STR}/debug", tags=["Debug Simulator"])
 
     # Serve generated images as static files
     from common_lib.paths import GENERATED_CONTENT

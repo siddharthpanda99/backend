@@ -23,5 +23,30 @@ if __name__ == "__main__":
         host="0.0.0.0", 
         port=8000, 
         reload=True, 
-        reload_dirs=[app_dir, common_lib_dir]
+        reload_dirs=[app_dir, common_lib_dir],
+        reload_excludes=[
+            "logs/*", 
+            "**/logs/*",
+            "resources/*",
+            "**/resources/*",
+            "**/resources/**/*",
+            "**/resources/*.yaml", 
+            "**/resources/*.json",
+            "CHARACTER_PROFILES_DIR/*",
+            "**/character_profiles/*",
+            "**/__pycache__/*",
+            "**/__pycache__/**",
+            "**/*.pyc",
+            "**/*.pyo",
+            "**/*.pyd",
+            "**/*.db*",      # SQLite databases, journals, WAL files
+            "**/.db*",
+            "**/.pytest_cache/*",
+            ".antigrav-history/*",
+            "**/.idea/*",    # JetBrains
+            "**/.vscode/*",  # VS Code
+            "**/.git/*",     # Git
+            "*.log"
+        ]
+
     )
