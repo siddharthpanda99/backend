@@ -81,6 +81,30 @@ The API will be available at:
 - **Docs**: <http://localhost:8000/docs>
 - **ReDoc**: <http://localhost:8000/redoc>
 
+## Recent Progress & Daily Milestones
+
+Detailed daily records are maintained in the root `CHANGELOG.md`. Below is a summary of recent backend milestones:
+
+### [2026-04-04] - Agentic Runtime Stabilization
+- **Orchestration**: Hardened `execute_tool_node` for raw string input normalization.
+- **Entity Loading**: Implemented `agent_loader.py` for dynamic registry-driven instruction flows.
+- **Inference**: Integrated **vLLM local provider** with OpenAI-compatible streaming.
+- **Maintenance**: Added `sync_registry.py` and `verify_registry.py` for unified lifecycle management.
+
+### [2026-04-02] - V3 Gold Standard Refactor
+- **Registry**: Synchronized all 14 core agents and skills with the **V3 Gold Standard** (Purified identity/instruct/flows).
+- **Search**: Stabilized `pgvector` storage with 384-dimension cross-module consistency.
+
+### [2026-04-01] - Recursive Tooling & Skill Handlers
+- **Registry**: Implemented **Recursive Tooling** (Nested tool rendering and cross-toolkit migration).
+- **Seed System**: Added high-fidelity seeding for prompts, shared sections, and load testing data.
+
+### [2026-03-31] - Modular Runtime & SD Integration
+- **Architecture**: Decoupled vision and workflow services; implemented modular agent runtime (V2).
+- **Entities**: Implemented **Stable Diffusion** entity schemas and metadata builders.
+
+*For historical changes prior to March 2026, refer to the `common_lib/docs/CHANGELOG.md`.*
+
 ## Verification
 
 To verify the setup and RBAC system:
