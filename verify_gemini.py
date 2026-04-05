@@ -3,11 +3,12 @@ import os
 
 # Add paths to sys.path
 sys.path.append(r"c:\Users\91797\Documents\Dev\JS\Monorepo\Backend Monorepo\Python Libs\common_lib\src")
-sys.path.append(r"c:\Users\91797\Documents\Dev\JS\Monorepo\Backend Monorepo\Python Libs\inference-platform\src")
+# Add paths to sys.path
+sys.path.append(r"c:\Users\91797\Documents\Dev\JS\Monorepo\Backend Monorepo\Python Libs\common_lib\src")
 
 # Keys are now expected to be in the environment or set via common_lib.config.
 
-from inference_platform.core.engine_manager import EngineManager
+from common_lib.modules.orchestration.inference.manager import EngineManager
 from common_lib.modules.ai_models.llm.gemini import GeminiProvider
 
 class MockContextProvider:

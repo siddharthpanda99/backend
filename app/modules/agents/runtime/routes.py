@@ -44,7 +44,7 @@ from app.modules.agents.runtime.core import (
     get_vram_usage,
     stream_agent_generator,
 )
-from inference_platform.core.vllm_fleet_manager import vllm_fleet as vllm_manager
+from common_lib.modules.ai_models.llm.vllm_fleet_manager import vllm_fleet as vllm_manager
 from app.modules.agents.runtime.tools.registry import BUILTIN_TOOL_REGISTRY
 from app.modules.agents.runtime.utils.logging import get_logger
 
@@ -65,11 +65,13 @@ class DeployRequest(BaseModel):
     agent_id:              Optional[str]       = "master_agent"
     agent_display_name:    Optional[str]       = "Master Agent"
     tool_ids:              Optional[List[str]] = None
+    template_ids:          Optional[List[str]] = None
     system_prompt:         Optional[str]       = None
     guardrails:            Optional[List]      = None
     use_mcp_discovery:     Optional[bool]      = False
     global_search_enabled: Optional[bool]      = False
     workflow_ids:          Optional[List[str]] = None
+    engine_id:             Optional[str]       = None  # Fleet node to connect; None = smart-fallback
 
 
 class FleetDeployRequest(BaseModel):
@@ -117,11 +119,13 @@ async def deploy(req: DeployRequest):
             agent_id=req.agent_id,
             agent_display_name=req.agent_display_name,
             tool_ids=req.tool_ids,
+            template_ids=req.template_ids,
             system_prompt=req.system_prompt,
             guardrails=req.guardrails,
             use_mcp_discovery=req.use_mcp_discovery,
             global_search_enabled=req.global_search_enabled,
             workflow_ids=req.workflow_ids,
+            engine_id=req.engine_id or "main",
         ),
         media_type="text/event-stream"
     )
@@ -164,6 +168,11 @@ async def fleet_sync():
     vllm_manager.sync_registry_with_docker()
     vllm_manager.prune_ghost_containers()
     return {"status": "success", "message": "Fleet synchronized and ghost containers pruned."}
+
+@router.post("/fleet/terminate/{engine_id}")
+async def fleet_terminate(engine_id: str):
+    """Hard shutdown of an inference node."""
+    return vllm_manager.terminate_engine_node(engine_id)
 
 @router.get("/fleet/logs/{engine_id}")
 async def fleet_logs(engine_id: str):
@@ -209,34 +218,47 @@ def get_system_vram_gb() -> float:
 async def get_config():
     """
     Returns available models, agent definitions, and system hardware info for the UI.
+    All model dicts include standardized type metadata (is_llm, modality, tasks) so
+    the Agent Gateway can filter to text/chat models without guessing by display_group.
     """
+    # Canonical text-generation providers
+    LLM_PROVIDERS = {'vllm', 'openrouter', 'groq', 'gemini', 'huggingface', 'mock', 'local_llama'}
+
     try:
-        # Probing registry for models
         from common_lib.modules.ai_models.container import AIModelsContainer
         container = AIModelsContainer()
         models = container.registry_service.list_models()
-        
-        # Probing for agents
+
         from app.core.common_lib_integration import common_memory
         agents = common_memory.list_agent_definitions()
-        
-        # Mapping for UI compatibility
+
         ui_models = []
         for m in models:
+            modality = getattr(m, 'modality', None) or 'text'
+            tasks    = list(getattr(m, 'tasks', None) or [])
+            provider = getattr(m, 'provider', None) or 'unknown'
+            is_llm   = bool(
+                provider in LLM_PROVIDERS or
+                (modality == 'text' and any(t in tasks for t in ('text_generation', 'chat')))
+            )
             m_dict = m.model_dump()
-            m_dict["path"] = m.id
-            m_dict["type"] = m.provider
+            m_dict['path']     = m.id
+            m_dict['type']     = provider
+            m_dict['modality'] = modality
+            m_dict['tasks']    = tasks
+            m_dict['is_llm']   = is_llm
+            m_dict.setdefault('display_group', provider.capitalize())
             ui_models.append(m_dict)
-            
+
         return {
-            "models": ui_models,
-            "agents": agents,
-            "system_vram_gb": get_system_vram_gb(),
-            "available_provisioning_engines": vllm_manager.discover_engines()
+            'models': ui_models,
+            'agents': agents,
+            'system_vram_gb': get_system_vram_gb(),
+            'available_provisioning_engines': vllm_manager.discover_engines()
         }
     except Exception as exc:
-        logger.error("Failed to fetch runtime config: %s", exc)
-        return {"models": [], "agents": [], "system_vram_gb": 8.0, "available_provisioning_engines": []}
+        logger.error('Failed to fetch runtime config: %s', exc)
+        return {'models': [], 'agents': [], 'system_vram_gb': 8.0, 'available_provisioning_engines': []}
 
 
 @router.get("/session")

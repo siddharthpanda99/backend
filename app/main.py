@@ -40,6 +40,7 @@ from app.modules.entities.routes.registry import router as entities_router
 from app.modules.workflows.routes.index import router as workflows_router
 from app.modules.tools.routes.index import router as tools_router
 from app.modules.memories.routes.index import router as memories_router
+from app.modules.models.routes import router as models_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -156,6 +157,7 @@ def create_app() -> FastAPI:
     app.include_router(workflows_router, prefix=f"{settings.API_V1_STR}/workflows", tags=["Workflows"])
     app.include_router(tools_router, prefix=f"{settings.API_V1_STR}/tools", tags=["Tools"], dependencies=[Depends(get_current_active_user)])
     app.include_router(memories_router, prefix=f"{settings.API_V1_STR}/memories", tags=["Memories"])
+    app.include_router(models_router, prefix=f"{settings.API_V1_STR}/models", tags=["Models Hub"])
     
     # New Vision API
     from app.modules.vision.routes import router as vision_router

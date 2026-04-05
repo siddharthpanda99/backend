@@ -13,7 +13,7 @@ if COMMON_LIB_SRC not in sys.path:
 from common_lib.modules.orchestration.agent_loader import AgentLoader
 from common_lib.modules.orchestration.agent.master_agent import MasterAgent, ExecutionSpan
 from common_lib.modules.orchestration.workflow.observability.tracer import EventTracer
-from inference_platform.core.vllm_fleet_manager import VLLMFleetManager
+from common_lib.modules.ai_models.vllm.fleet_manager import VLLMFleetManager
 
 async def run_parallel_demo():
     print("\n" + "="*60)

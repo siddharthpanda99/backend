@@ -13,7 +13,6 @@ dependencies = [
     "python-jose[cryptography]>=3.3.0",
     "argon2-cffi>=25.1.0",
     "common_lib",
-    "inference_platform",
     "langchain>=0.3.0",
     "langchain-openai>=0.1.0",
     "langchain-core>=0.3.0",
@@ -43,4 +42,3 @@ allow-direct-references = true
 
 [tool.uv.sources]
 common_lib = { path = "../Python Libs/common_lib", editable = true }
-inference_platform = { path = "../Python Libs/inference-platform", editable = true }

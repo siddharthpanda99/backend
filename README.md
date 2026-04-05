@@ -85,21 +85,32 @@ The API will be available at:
 
 Detailed daily records are maintained in the root `CHANGELOG.md`. Below is a summary of recent backend milestones:
 
-### [2026-04-04] - Agentic Runtime Stabilization
+### [0.9.5] - 2026-04-04 - Platform Master Consolidation
+
+- **Architecture**: Fully consolidated core platform logic from `inference-platform` and `agent-platform` into the centralized **`common_lib`** package.
+- **Orchestration**: Migrated `EngineManager` and `agent_loader` to `common_lib.modules.orchestration.inference`.
+- **Fleet Management**: Standardized `vLLMFleetManager` and integrated node termination via `fleet_manager.py`.
+- **Refactoring**: Updated all repository-wide imports to use absolute `common_lib` paths, ensuring production-ready stability.
+
+### [0.9.0] - 2026-04-04 - Agentic Runtime Stabilization
+
 - **Orchestration**: Hardened `execute_tool_node` for raw string input normalization.
 - **Entity Loading**: Implemented `agent_loader.py` for dynamic registry-driven instruction flows.
 - **Inference**: Integrated **vLLM local provider** with OpenAI-compatible streaming.
 - **Maintenance**: Added `sync_registry.py` and `verify_registry.py` for unified lifecycle management.
 
-### [2026-04-02] - V3 Gold Standard Refactor
+### [0.8.2] - 2026-04-02 - V3 Gold Standard Refactor
+
 - **Registry**: Synchronized all 14 core agents and skills with the **V3 Gold Standard** (Purified identity/instruct/flows).
 - **Search**: Stabilized `pgvector` storage with 384-dimension cross-module consistency.
 
-### [2026-04-01] - Recursive Tooling & Skill Handlers
+### [0.8.1] - 2026-04-01 - Recursive Tooling & Skill Handlers
+
 - **Registry**: Implemented **Recursive Tooling** (Nested tool rendering and cross-toolkit migration).
 - **Seed System**: Added high-fidelity seeding for prompts, shared sections, and load testing data.
 
 ### [2026-03-31] - Modular Runtime & SD Integration
+
 - **Architecture**: Decoupled vision and workflow services; implemented modular agent runtime (V2).
 - **Entities**: Implemented **Stable Diffusion** entity schemas and metadata builders.
 

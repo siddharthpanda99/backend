@@ -41,22 +41,23 @@ def load_agent(
     preload: bool                 = True,
     skip_engine_deploy: bool      = False,
     engine_id: str                = "main",
+    auto_deploy_llm: bool         = False,
 ) -> Any:
     """
     Proxy to common_lib.load_agent with backend-specific context (common_memory).
     If provider is vLLM and skip_engine_deploy is False, triggers container redeploy.
     """
     # Orchestrate vLLM Container Lifecycle
-    if provider == "vllm" and model_path and not skip_engine_deploy:
+    # auto_deploy_llm=False (default): never touch Docker during agent deploy.
+    # auto_deploy_llm=True: trigger deploy_engine_node if selected config not found.
+    if provider == "vllm" and model_path and not skip_engine_deploy and auto_deploy_llm:
         from common_lib.modules.ai_models.container import AIModelsContainer
-        from inference_platform.core.vllm_fleet_manager import vllm_fleet as vllm_manager
+        from common_lib.modules.ai_models.llm.vllm_fleet_manager import vllm_fleet as vllm_manager
         
         container = AIModelsContainer()
-        # model_path here is the registry ID (e.g. qwen-2.5-7b-awq)
         model_meta = container.repository.get_model(model_path)
         
         if model_meta and model_meta.file_path:
-            # Sync-like consumption of the generator for background deployment
             list(vllm_manager.deploy_engine_node(
                 model_path=model_meta.file_path,
                 engine_id=engine_id,
@@ -77,7 +78,8 @@ def load_agent(
         use_mcp_discovery=use_mcp_discovery,
         global_search_enabled=global_search_enabled,
         workflow_ids=workflow_ids,
-        preload=preload,
+        # preload=True triggers vLLM deploy inside EngineManager — only allow when auto_deploy_llm
+        preload=auto_deploy_llm,
         memory_store=common_memory,
         engine_id=engine_id
     )
@@ -97,15 +99,18 @@ def load_agent_generator(
     preload: bool                 = True,
     skip_engine_deploy: bool      = False,
     engine_id: str                = "main",
+    auto_deploy_llm: bool         = False,
 ) -> Any:
     """
     Generator version of load_agent for streaming deployment status.
     Yields strings formatted for SSE: data: <payload>\n\n
     """
     # Orchestrate vLLM Container Lifecycle
-    if provider == "vllm" and model_path:
+    # When auto_deploy_llm=False (default), skip Docker entirely and connect to
+    # whatever vLLM node is already running via the fleet registry smart fallback.
+    if provider == "vllm" and model_path and auto_deploy_llm:
         from common_lib.modules.ai_models.container import AIModelsContainer
-        from inference_platform.core.vllm_fleet_manager import vllm_fleet as vllm_manager
+        from common_lib.modules.ai_models.llm.vllm_fleet_manager import vllm_fleet as vllm_manager
         
         container = AIModelsContainer()
         model_meta = container.repository.get_model(model_path)
@@ -171,7 +176,8 @@ def load_agent_generator(
             workflow_ids=workflow_ids,
             preload=preload,
             skip_engine_deploy=skip_engine_deploy,
-            engine_id=engine_id
+            engine_id=engine_id,
+            auto_deploy_llm=auto_deploy_llm,
         )
         yield "data: STATUS:READY:Agent successfully deployed.\n\n"
     except Exception as e:

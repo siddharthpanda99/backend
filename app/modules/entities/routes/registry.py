@@ -291,19 +291,24 @@ async def list_entities(
             
         # 4. MODELS — always available, even before an agent is deployed
         if not entity_type or entity_type == "models":
-            em = get_engine_manager()
-            if not em:
-                # No active agent yet — spin up a bare EngineManager just for
-                # the filesystem scan. list_available_models() only needs
-                # __init__; it never calls setup(), so this is safe and fast.
+            try:
+                from common_lib.modules.ai_models.container import AIModelsContainer
+                model_container = AIModelsContainer()
+                # Ensure health is checked first
+                model_container.health_monitor.verify_all_models()
+                models = model_container.registry_service.list_models()
+                results["models"] = [m.model_dump() for m in models]
+            except Exception as _m_err:
+                logger.warning("Failed to fetch models from AIModelsContainer: %s", _m_err)
+                # Fallback to old EngineManager scan if absolute disaster
                 try:
-                    from inference_platform.core.engine_manager import EngineManager
+                    from common_lib.modules.orchestration.inference.manager import EngineManager
                     class _DummyCtx:
                         adapter = service = None
                     em = EngineManager(_DummyCtx())
-                except Exception as _em_err:
-                    logger.warning("Could not create bare EngineManager for model scan: %s", _em_err)
-            results["models"] = em.list_available_models() if em else []
+                    results["models"] = em.list_available_models()
+                except Exception:
+                    results["models"] = []
 
         return APIResponse(data=results, message="Unified entity registry retrieved successfully")
     except Exception as e:

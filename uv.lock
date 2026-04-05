@@ -47,17 +47,6 @@ wheels = [
 ]
 
 [[package]]
-name = "agent-platform"
-version = "0.1.0"
-source = { editable = "../Python Libs/agent-platform" }
-dependencies = [
-    { name = "common-lib" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "common-lib", editable = "../Python Libs/common_lib" }]
-
-[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -496,7 +485,6 @@ dependencies = [
     { name = "common-lib" },
     { name = "fastapi", extra = ["standard"] },
     { name = "google-genai" },
-    { name = "inference-platform" },
     { name = "langchain" },
     { name = "langchain-community" },
     { name = "langchain-core" },
@@ -518,7 +506,6 @@ requires-dist = [
     { name = "common-lib", editable = "../Python Libs/common_lib" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.128.0" },
     { name = "google-genai", specifier = ">=0.1.0" },
-    { name = "inference-platform", editable = "../Python Libs/inference-platform" },
     { name = "langchain", specifier = ">=0.3.0" },
     { name = "langchain-community", specifier = ">=0.3.0" },
     { name = "langchain-core", specifier = ">=0.3.0" },
@@ -2395,37 +2382,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c0/bd/fa8ce65b0a7d4b6d143ec23b0f5fd3f7ab80121078c465bc02baeaab22dc/importlib_metadata-8.4.0.tar.gz", hash = "sha256:9a547d3bc3608b025f93d403fdd1aae741c24fbb8314df4b155675742ce303c5", size = 54320, upload-time = "2024-08-20T17:11:42.348Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c0/14/362d31bf1076b21e1bcdcb0dc61944822ff263937b804a79231df2774d28/importlib_metadata-8.4.0-py3-none-any.whl", hash = "sha256:66f342cc6ac9818fc6ff340576acd24d65ba0b3efabb2b4ac08b598965a4a2f1", size = 26269, upload-time = "2024-08-20T17:11:41.102Z" },
-]
-
-[[package]]
-name = "inference-platform"
-version = "0.1.0"
-source = { editable = "../Python Libs/inference-platform" }
-dependencies = [
-    { name = "agent-platform" },
-    { name = "common-lib" },
-    { name = "huggingface-hub" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-jaeger" },
-    { name = "opentelemetry-exporter-otlp-proto-grpc" },
-    { name = "opentelemetry-sdk" },
-    { name = "pydantic" },
-    { name = "pypdf" },
-    { name = "rich" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "agent-platform", editable = "../Python Libs/agent-platform" },
-    { name = "common-lib", editable = "../Python Libs/common_lib" },
-    { name = "huggingface-hub" },
-    { name = "opentelemetry-api", specifier = ">=1.20.0" },
-    { name = "opentelemetry-exporter-jaeger", specifier = ">=1.20.0" },
-    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.20.0" },
-    { name = "opentelemetry-sdk", specifier = ">=1.20.0" },
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "pypdf", specifier = ">=5.0.0" },
-    { name = "rich", specifier = ">=13.0.0" },
 ]
 
 [[package]]
