@@ -4,15 +4,22 @@ import json
 from datetime import datetime
 
 # Add common_lib and app to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Python Libs", "common_lib", "src")))
+sys.path.append(
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "Python Libs", "common_lib", "src"
+        )
+    )
+)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "app")))
 
 from common_lib.modules.orchestration.memory.services import SQLAlchemyMemoryStore
 
+
 def seed_router_agent():
     print("--- Starting AgentIQ Master Skill-Router Seeding ---")
     store = SQLAlchemyMemoryStore()
-    
+
     # 1. Initialize Shared Sections (Reference Entities)
     sections = [
         {
@@ -24,7 +31,7 @@ def seed_router_agent():
                     "# CORE IDENTITY: SKILL-ROUTER\n"
                     "You are AgentIQ Master, a high-fidelity 'Router Agent'. Your primary objective is to solve user queries by dynamically discovering and orchestrating specialized skills.\n\n"
                     "## RECONNAISSANCE & ROUTING\n"
-                    "- If the user's request requires a capability you don't have, your FIRST step is to use `tool_search_mcp`.\n"
+                    "- If the user's request requires a capability you don't have, your FIRST step is to use `entity_search_mcp`.\n"
                     "- Use **Snippets** for quick utility/context and **Complex Skills** for deep dives.\n"
                     "- **Instructional Workflows** are your reasoning blueprints. If a task is multi-step, look for a matching flow.\n\n"
                     "## STRICT REACT LOOP\n"
@@ -36,8 +43,8 @@ def seed_router_agent():
                     "... (repeat until solved)\n"
                     "Final Answer: <the response to user>\n\n"
                     "**CRITICAL**: NEVER include greetings (Hi, Hello) or conversational filler before an Action block. The parser will FAIL if you do."
-                )
-            }
+                ),
+            },
         },
         {
             "id": "instruction:conversation_intent_classifier",
@@ -52,8 +59,8 @@ def seed_router_agent():
                     "3. TROUBLESHOOTING: Debugging.\n"
                     "4. SYSTEM: Deployment.\n\n"
                     "Adopting a tactical tone based on domain classification."
-                )
-            }
+                ),
+            },
         },
         {
             "id": "instruction:memory_context_harvesting",
@@ -63,8 +70,8 @@ def seed_router_agent():
                 "text": (
                     "# CONTEXT HARVESTING (SNIPPET)\n"
                     "Proactively use `extract_and_remember_hints` for preferences/paths/jargon.\n"
-                )
-            }
+                ),
+            },
         },
         {
             "id": "instruction_flow:research_synthesis_standard",
@@ -78,20 +85,22 @@ def seed_router_agent():
                     "2. **Search**: Execute broad queries to gather multi-source data.\n"
                     "3. **Synthesize**: Use reasoning to extract core facts.\n"
                     "4. **Refine**: If gaps remain, iterate. Finalize with a structured response."
-                )
-            }
-        }
+                ),
+            },
+        },
     ]
-    
+
     for sec in sections:
         try:
             store.save_shared_section(
                 section_id=sec["id"],
                 section_type=sec["type"],
                 content=sec["content"],
-                is_system=True
+                is_system=True,
             )
-            print(f"Successfully seeded/updated {sec['id']} ({sec.get('content', {}).get('complexity_level')})")
+            print(
+                f"Successfully seeded/updated {sec['id']} ({sec.get('content', {}).get('complexity_level')})"
+            )
         except Exception as e:
             print(f"Failed to seed {sec['id']}: {e}")
 
@@ -108,7 +117,7 @@ def seed_router_agent():
             master_id = master["id"]
             master_name = master["name"]
             master_identity = master["identity"]
-            master_identity["version"] = "1.2.0" # Bump version
+            master_identity["version"] = "1.2.0"  # Bump version
             master_definition = master["definition"]
 
         # Compose recursive prompt with the new workflow included
@@ -126,9 +135,11 @@ def seed_router_agent():
             definition=master_definition,
             instructions_text=composite_prompt,
             prompt_template=composite_prompt,
-            category="System"
+            category="System",
         )
-        print("Successfully updated AgentIQ Master with recursive entity-based prompting and Instructional Flows.")
+        print(
+            "Successfully updated AgentIQ Master with recursive entity-based prompting and Instructional Flows."
+        )
     except Exception as e:
         print(f"Failed to update master_agent: {e}")
 
@@ -138,17 +149,19 @@ def seed_router_agent():
         {"id": "registry", "cat": "Registry"},
         {"id": "file_ops", "cat": "System"},
         {"id": "deployment", "cat": "System"},
-        {"id": "code_analysis", "cat": "Code"}
+        {"id": "code_analysis", "cat": "Code"},
     ]
     for tk in toolkits:
         try:
-            # We don't have a direct upsert for ToolDefinitionRecord category yet, 
+            # We don't have a direct upsert for ToolDefinitionRecord category yet,
             # but we can use save_tool_definition with metadata or just wait for the registry update.
             # For now, let's just confirm registry categories via instructions.
             pass
-        except Exception: pass
+        except Exception:
+            pass
 
     print("--- Seeding Complete ---")
+
 
 if __name__ == "__main__":
     seed_router_agent()
