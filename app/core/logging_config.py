@@ -1,7 +1,21 @@
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import os
+import sys
 from pathlib import Path
+
+class SafeTimedRotatingFileHandler(TimedRotatingFileHandler):
+    """
+    Subclass of TimedRotatingFileHandler that handles PermissionError on Windows
+    when multiple processes/threads are accessing the log file.
+    """
+    def doRollover(self):
+        try:
+            super().doRollover()
+        except (PermissionError, OSError):
+            # On Windows, if the file is locked, we just skip rotation for now
+            # and continue logging to the current file.
+            pass
 
 def setup_logging(log_file: str = "logs/server.log"):
     """
@@ -13,9 +27,8 @@ def setup_logging(log_file: str = "logs/server.log"):
     
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     
-    # Using TimedRotatingFileHandler for hourly ('H') and daily intervals. 
-    # 'H' rotates every hour, keep history for a few days (e.g. 72 hours).
-    handler = TimedRotatingFileHandler(
+    # Using SafeTimedRotatingFileHandler for hourly ('H') and daily intervals. 
+    handler = SafeTimedRotatingFileHandler(
         log_file, 
         when='H', 
         interval=1, 
@@ -31,8 +44,9 @@ def setup_logging(log_file: str = "logs/server.log"):
         format=log_format,
         handlers=[
             handler,
-            logging.StreamHandler()
-        ]
+            logging.StreamHandler(sys.stdout)
+        ],
+        force=True # Ensure we override any existing basicConfig
     )
     
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)

@@ -15,7 +15,7 @@ connect_args = {"connect_timeout": 5}
 
 engine = create_engine(
     DATABASE_URL,
-    echo=False,
+    echo=True,
     pool_pre_ping=True, # Verify connection before usage
     pool_size=10,       # Number of connections to keep open
     max_overflow=20,    # Max extra connections to create
