@@ -416,7 +416,7 @@ def _remap_property(prop: dict) -> dict:
 def get_workflow_presets():
     """
     Returns a list of workflow preset metadata (id, name, description),
-    loaded from Backend Monorepo/resources/workflows/templates/*.yaml.
+    loaded from root resources/workflows/templates/*.yaml.
     """
     from common_lib.modules.image_processing.core.common.loading.templates import (
         list_workflow_templates,
@@ -482,7 +482,7 @@ def get_workflow_preset(id: str):
 def get_lora_registry():
     """
     Returns the LoRA model registry loaded from
-    Backend Monorepo/resources/image_models/registry/loras.yaml.
+    root resources/image_models/registry/loras.yaml.
     """
     from common_lib.paths import REPO_ROOT
     import yaml

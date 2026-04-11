@@ -151,7 +151,7 @@ async def deploy(req: DeployRequest):
 async def fleet_deploy(req: FleetDeployRequest):
     """Deploy or reconfigure an inference node (Engine Only)."""
     from common_lib.modules.ai_models.container import AIModelsContainer
-    storage = AIModelsContainer().storage_adapter
+    mirror = AIModelsContainer().mirror_service
 
     return StreamingResponse(
         vllm_manager.deploy_engine_node(
@@ -160,7 +160,7 @@ async def fleet_deploy(req: FleetDeployRequest):
             gpu_memory_utilization=req.gpu_memory_utilization,
             max_model_len=req.max_model_len,
             quantization=req.quantization,
-            storage_adapter=storage
+            mirror_service=mirror
         ),
         media_type="text/event-stream",
     )
@@ -310,16 +310,25 @@ async def get_config():
             "stablelm",
         }
 
+        from common_lib.modules.ai_models.domain.enums import ModelStatus
+
         ui_models = []
         for m in models:
+            # Skip models that are not fully downloaded/local
+            # Based on user feedback: hide non-completed models
+            if not getattr(m, "is_local", False) or getattr(m, "status", None) != ModelStatus.COMPLETED:
+                continue
+
             modality = getattr(m, "modality", None) or "text"
             tasks = list(getattr(m, "tasks", None) or [])
             provider = getattr(m, "provider", None) or "unknown"
+            
+            # Refined LLM detection: Text or Multimodal with Chat/Gen tasks
             is_llm = bool(
                 provider in LLM_PROVIDERS
                 or (
-                    modality == "text"
-                    and any(t in tasks for t in ("text_generation", "chat"))
+                    modality in ("text", "multimodal")
+                    and any(t in tasks for t in ("text_generation", "chat", "multimodal_chat"))
                 )
             )
 

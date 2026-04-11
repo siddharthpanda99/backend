@@ -8,7 +8,7 @@ from common_lib.paths import get_repo_root
 class SystemService:
     def __init__(self):
         self.repo_root = get_repo_root()
-        self.deploy_dir = self.repo_root / "deploy"
+        self.deploy_dir = self.repo_root / "resources"
         self.config_path = self.deploy_dir / "config.ini"
         self.infra_manager = InfraManager(repo_root=self.repo_root)
 
@@ -28,7 +28,7 @@ class SystemService:
             self.config_path.write_text(content)
             
             # Trigger sync to .env
-            from deploy.sync_config import sync_config
+            from resources.sync_config import sync_config
             sync_config()
             return True
         except Exception as e:
@@ -65,7 +65,7 @@ class SystemService:
                 parser.write(f)
             
             # Trigger sync to .env
-            from deploy.sync_config import sync_config
+            from resources.sync_config import sync_config
             sync_config()
             return True
         except Exception as e:

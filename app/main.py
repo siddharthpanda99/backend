@@ -45,6 +45,7 @@ from app.modules.workflows.routes.index import router as workflows_router
 from app.modules.tools.routes.index import router as tools_router
 from app.modules.memories.routes.index import router as memories_router
 from app.modules.models.routes import router as models_router
+from app.modules.models.external_routes import router as external_models_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -236,6 +237,12 @@ def create_app() -> FastAPI:
         models_router,
         prefix=f"{settings.API_V1_STR}/models",
         tags=["Models Hub"],
+        dependencies=global_deps,
+    )
+    app.include_router(
+        external_models_router,
+        prefix=f"{settings.API_V1_STR}/models/external",
+        tags=["External Models Discovery"],
         dependencies=global_deps,
     )
 

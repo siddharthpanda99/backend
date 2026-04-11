@@ -64,7 +64,8 @@ def load_agent(
                 quantization=model_meta.quantization,
                 gpu_memory_utilization=model_meta.gpu_memory_utilization,
                 max_model_len=model_meta.max_model_len,
-                trust_remote_code=model_meta.trust_remote_code
+                trust_remote_code=model_meta.trust_remote_code,
+                mirror_service=container.mirror_service
             ))
 
     return cl_loader.load_agent(
@@ -126,7 +127,8 @@ def load_agent_generator(
                 quantization=model_meta.quantization,
                 gpu_memory_utilization=gpu_util_override if gpu_util_override is not None else model_meta.gpu_memory_utilization,
                 max_model_len=max_len_override if max_len_override is not None else model_meta.max_model_len,
-                trust_remote_code=model_meta.trust_remote_code
+                trust_remote_code=model_meta.trust_remote_code,
+                mirror_service=container.mirror_service
             )
 
         # PASS 1: Attempt with registry settings
