@@ -44,14 +44,18 @@ def _get_registry_svc():
     if _shared_registry is None:
         try:
             from common_lib.modules.core_infrastructure.registry import RegistryService
+            from app.core.settings import get_settings
 
+            settings = get_settings()
             _shared_registry = RegistryService()
 
             # Inject search provider immediately
             search_svc = get_search_service()
             _shared_registry.search_provider = search_svc.search
 
-            _shared_registry.auto_register_common_lib_tools()
+            _shared_registry.auto_register_common_lib_tools(
+                exclude_categories=set(settings.EXCLUDE_TOOL_CATEGORIES)
+            )
             logger.info(
                 "[EntityRegistry] Shared RegistryService initialised (%d tools)",
                 len(_shared_registry.list_tools()),
@@ -895,20 +899,32 @@ async def get_registry_stats():
 
 
 @router.post("/sync", response_model=APIResponse[Dict[str, Any]])
-async def sync_registry(background_tasks: BackgroundTasks, force: bool = False):
+async def sync_registry(
+    background_tasks: BackgroundTasks,
+    force: bool = False,
+    force_sync: bool = False,
+    force_reindex: bool = False,
+):
     """
     Triggers a full background synchronization lifecycle (Filesystem -> DB -> Vector Index).
-    Returns immediately to avoid blocking the API flow.
-    Status can be monitored via the SSE progress endpoint.
+    Supports granular bypassing of checksums for both DB sync and Vector indexing.
     """
     try:
         search_svc = get_search_service()
         registry_svc = _get_registry_svc()
 
+        # Handle backward compatibility: if force is True, both specialized flags become True
+        effective_force_sync = force or force_sync
+        effective_force_reindex = force or force_reindex
+
         # Offload the entire lifecycle to background
         background_tasks.add_task(
-            search_svc.run_full_lifecycle, registry_svc=registry_svc, force=force
+            search_svc.run_full_lifecycle,
+            registry_svc=registry_svc,
+            force_sync=effective_force_sync,
+            force_reindex=effective_force_reindex,
         )
+
 
         return APIResponse(
             data={"status": "started"},

@@ -150,6 +150,9 @@ async def deploy(req: DeployRequest):
 @router.post("/fleet/deploy")
 async def fleet_deploy(req: FleetDeployRequest):
     """Deploy or reconfigure an inference node (Engine Only)."""
+    from common_lib.modules.ai_models.container import AIModelsContainer
+    storage = AIModelsContainer().storage_adapter
+
     return StreamingResponse(
         vllm_manager.deploy_engine_node(
             model_path=req.model_path,
@@ -157,6 +160,7 @@ async def fleet_deploy(req: FleetDeployRequest):
             gpu_memory_utilization=req.gpu_memory_utilization,
             max_model_len=req.max_model_len,
             quantization=req.quantization,
+            storage_adapter=storage
         ),
         media_type="text/event-stream",
     )

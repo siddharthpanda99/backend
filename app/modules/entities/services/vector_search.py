@@ -251,25 +251,28 @@ class RegistrySearchService:
             self.tracker.update(0, 0, "error", str(e))
 
     def run_full_lifecycle(
-        self, registry_svc: Optional[Any] = None, force: bool = False
+        self,
+        registry_svc: Optional[Any] = None,
+        force_sync: bool = False,
+        force_reindex: bool = False,
     ):
         """
         Complete registry lifecycle:
-        1. Sync Filesystem -> Database
-        2. Rebuild Vector Index
+        1. Sync Filesystem -> Database (Selective or Forced)
+        2. Rebuild Vector Index (Incremental or Forced)
         """
         try:
             from common_lib.modules.orchestration.db_operations import import_files
 
             logger.info("Starting background registry sync lifecycle...")
-            # We don't know total yet for importing, so stick to 0/0
-            self.tracker.update(0, 0, "importing", "Syncing filesystem to database...")
+            self.tracker.update(
+                0, 0, "importing", "Syncing filesystem to database (force=%s)..." % force_sync
+            )
 
             # 1. Import Files (FS -> DB)
-            result = import_files(force=force)
+            result = import_files(force=force_sync)
 
-            # Relax check: proceed if any files were imported, even if some errors/warnings occurred
-            # This handles cases where 99% of entities are fine but 1% have resolution warnings
+            # Relax check: proceed if any files were imported
             files_count = result.get("data", {}).get("files_imported", 0)
 
             if not result.get("success") and files_count == 0:
@@ -284,7 +287,8 @@ class RegistrySearchService:
 
             # 2. Re-indexing (DB -> Vector)
             # This method updates tracker to 'indexing' internally
-            self.reindex_all(registry_svc, force=force)
+            self.reindex_all(registry_svc, force=force_reindex)
+
 
         except Exception as e:
             logger.error(f"Registry lifecycle failed: {e}")

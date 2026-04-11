@@ -52,6 +52,10 @@ async def list_models(container: AIModelsContainer = Depends(get_container)):
         return APIResponse(data=result, message="Models retrieved successfully")
     except Exception as e:
         logger.error(f"Failed to list models: {e}")
+        try:
+            container.session.rollback()
+        except:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -223,6 +227,44 @@ async def download_model_files(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/tasks/stream")
+async def stream_all_downloads(container: AIModelsContainer = Depends(get_container)):
+    """
+    SSE stream for all active download tasks.
+    """
+
+    async def event_generator():
+        # Subscribe to the global event bus
+        q = container.downloader.event_bus.subscribe("__global__")
+        logger.info(
+            f"SSE: Client subscribed to GLOBAL download tasks. Subscribers: {container.downloader.event_bus.subscribers}"
+        )
+
+        try:
+            # Yield heartbeat immediately
+            yield ": heartbeat\n\n"
+
+            while True:
+                try:
+                    event = await asyncio.get_event_loop().run_in_executor(
+                        None, lambda: q.get(timeout=15.0)
+                    )
+                    logger.info(
+                        f"SSE: Got event: {event.get('status') if isinstance(event, dict) else event}"
+                    )
+                    yield f"data: {json.dumps(event)}\n\n"
+                except queue.Empty:
+                    yield ": heartbeat\n\n"
+                except Exception as e:
+                    logger.error(f"SSE global stream error: {e}")
+                    break
+        finally:
+            container.downloader.event_bus.unsubscribe("__global__", q)
+            logger.info("SSE: Client unsubscribed from GLOBAL download tasks")
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 @router.get("/tasks/{task_id}", response_model=APIResponse[Dict[str, Any]])
 async def get_download_status(
     task_id: str, container: AIModelsContainer = Depends(get_container)
@@ -239,6 +281,7 @@ async def get_download_status(
         container.health_monitor.verify_all_models()
 
     return APIResponse(data=progress, message="Task status retrieved")
+
 
 
 @router.get("/tasks/{task_id}/stream")
@@ -294,13 +337,18 @@ async def stream_download_status(
 
 
 @router.post("/sync", response_model=APIResponse[Dict[str, Any]])
-async def sync_registry(container: AIModelsContainer = Depends(get_container)):
+async def sync_registry(
+    force_sync: bool = False,
+    force_reindex: bool = False,
+    container: AIModelsContainer = Depends(get_container),
+):
     """
     Sync models from YAML registry files to the database.
     """
     try:
-        sync_results = container.registry_sync.sync()
-        container.health_monitor.verify_all_models()
+        sync_results = container.registry_sync.sync(force=force_sync)
+        if force_reindex:
+            container.health_monitor.verify_all_models()
         return APIResponse(
             data=sync_results,
             message=f"Registry synchronized ({sync_results['total']} models) and health verified",
@@ -346,19 +394,21 @@ async def cancel_download(
 
 @router.delete("/{model_id}", response_model=APIResponse[Dict[str, Any]])
 async def delete_model(
-    model_id: str, container: AIModelsContainer = Depends(get_container)
+    model_id: str,
+    permanent: bool = False,
+    container: AIModelsContainer = Depends(get_container),
 ):
     model = container.registry_service.get_model(model_id)
     if not model:
         raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
-    success = container.downloader.delete_local_model(model)
+    success = container.downloader.delete_local_model(model, permanent=permanent)
     if success:
         # Update health/status in registry
         container.health_monitor.verify_all_models()
         return APIResponse(
-            data={"status": "deleted"},
-            message=f"Model {model.name} deleted successfully",
+            data={"status": "deleted", "permanent": permanent},
+            message=f"Model {model.name} deleted successfully ({'Permanent' if permanent else 'Cache cleared'})",
         )
     else:
         raise HTTPException(
