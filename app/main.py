@@ -1,6 +1,11 @@
 import os
 import sys
+import time
+import json
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # --- BOOTSTRAP: Ensure development common_lib takes precedence ---
 REPO_ROOT = Path(__file__).parent.parent.parent.resolve()
@@ -46,6 +51,8 @@ from app.modules.tools.routes.index import router as tools_router
 from app.modules.memories.routes.index import router as memories_router
 from app.modules.models.routes import router as models_router
 from app.modules.models.external_routes import router as external_models_router
+from app.modules.data_forge.routes import router as data_forge_router
+from app.modules.grid.routes import router as grid_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -127,6 +134,175 @@ async def lifespan(app: FastAPI):
             print(f"Warning: Initial sync failed: {e}")
     else:
         print("Startup: Skipping registry sync (SKIP_REGISTRY_SYNC=True)")
+
+    # --- RESUME: Pending model downloads ---
+    try:
+        import json
+        from pathlib import Path
+        from common_lib.modules.ai_models.container import AIModelsContainer
+
+        queue_dir = Path(os.environ.get("MODEL_QUEUE_DIR", "/tmp/model_downloads"))
+        if queue_dir.exists():
+            pending_tasks = list(queue_dir.glob("*.json"))
+            if pending_tasks:
+                print(
+                    f"Startup: Found {len(pending_tasks)} pending downloads to resume..."
+                )
+
+                container = AIModelsContainer()
+                event_bus = container.downloader.event_bus
+                downloader_factory = CivitAIDownloader
+
+                for task_file in pending_tasks:
+                    try:
+                        with open(task_file) as f:
+                            task_data = json.load(f)
+
+                        task_id = task_data.get("task_id")
+                        model_id = task_data.get("model_id")
+                        version_id = task_data.get("version_id")
+                        file_id = task_data.get("file_id")
+                        dest_folder = task_data.get("destination_subfolder")
+                        model_type = task_data.get("model_type", "Checkpoint")
+                        expected_size = task_data.get("expected_size")
+
+                        logger.info(f"Resuming download: {task_id}")
+
+                        # Determine target path for disk progress checking
+                        from common_lib.paths import IMAGE_MODELS_ROOT
+
+                        target_path = IMAGE_MODELS_ROOT / dest_folder
+
+                        # Resume in background
+                        def resume_download():
+                            try:
+                                import time
+
+                                event_bus.publish(
+                                    task_id,
+                                    {
+                                        "task_id": task_id,
+                                        "status": "resuming",
+                                        "progress": 0,
+                                        "model_id": model_id,
+                                        "version_id": version_id,
+                                        "expected_size": expected_size,
+                                    },
+                                )
+
+                                # Start disk progress checker
+                                last_disk_size = 0
+
+                                def disk_progress_check():
+                                    nonlocal last_disk_size
+                                    while True:
+                                        # Find the downloaded file in target directory
+                                        if target_path.exists():
+                                            files = list(target_path.glob("*"))
+                                            for f in files:
+                                                if (
+                                                    f.is_file()
+                                                    and f.stat().st_size > 1024
+                                                ):
+                                                    current_size = f.stat().st_size
+                                                    if current_size != last_disk_size:
+                                                        last_disk_size = current_size
+                                                        if (
+                                                            expected_size
+                                                            and expected_size > 0
+                                                        ):
+                                                            disk_progress = int(
+                                                                (
+                                                                    current_size
+                                                                    / expected_size
+                                                                )
+                                                                * 100
+                                                            )
+                                                            event_bus.publish(
+                                                                task_id,
+                                                                {
+                                                                    "task_id": task_id,
+                                                                    "status": "downloading",
+                                                                    "progress": disk_progress,
+                                                                    "downloaded": current_size,
+                                                                    "total": expected_size,
+                                                                    "expected_size": expected_size,
+                                                                    "source": "disk",
+                                                                },
+                                                            )
+                                        time.sleep(2)
+
+                                disk_thread = threading.Thread(
+                                    target=disk_progress_check, daemon=True
+                                )
+                                disk_thread.start()
+
+                                dler = downloader_factory(
+                                    mirror_service=container.mirror_service
+                                )
+                                target_path = dler.download_model(
+                                    model_id=model_id,
+                                    version_id=version_id,
+                                    file_id=file_id,
+                                    destination_subfolder=dest_folder,
+                                    model_type=model_type,
+                                    progress_callback=lambda d, t: event_bus.publish(
+                                        task_id,
+                                        {
+                                            "task_id": task_id,
+                                            "status": "downloading",
+                                            "progress": int((d / t * 100))
+                                            if t > 0
+                                            else 0,
+                                            "downloaded": d,
+                                            "total": t,
+                                        },
+                                    ),
+                                )
+
+                                event_bus.publish(
+                                    task_id,
+                                    {
+                                        "task_id": task_id,
+                                        "status": "completed",
+                                        "progress": 100,
+                                        "file_path": str(target_path),
+                                    },
+                                )
+                                event_bus.publish(
+                                    "__global__",
+                                    {
+                                        "task_id": task_id,
+                                        "status": "completed",
+                                        "progress": 100,
+                                    },
+                                )
+                            except Exception as dl_err:
+                                logger.error(f"Failed to resume {task_id}: {dl_err}")
+                                event_bus.publish(
+                                    task_id,
+                                    {
+                                        "task_id": task_id,
+                                        "status": "failed",
+                                        "error": str(dl_err),
+                                    },
+                                )
+                            finally:
+                                try:
+                                    task_file.unlink(missing_ok=True)
+                                except:
+                                    pass
+
+                        import threading
+
+                        threading.Thread(target=resume_download, daemon=True).start()
+
+                    except Exception as e:
+                        logger.error(f"Failed to load task {task_file}: {e}")
+
+                print(f"Startup: Resumed {len(pending_tasks)} downloads in background")
+    except Exception as e:
+        print(f"Warning: Could not resume downloads: {e}")
 
     yield
     # Shutdown
@@ -274,6 +450,20 @@ def create_app() -> FastAPI:
         debug_router,
         prefix=f"{settings.API_V1_STR}/debug",
         tags=["Debug Simulator"],
+        dependencies=global_deps,
+    )
+
+    # DataForge & Grid Persistence
+    app.include_router(
+        data_forge_router,
+        prefix=f"{settings.API_V1_STR}/data-forge",
+        tags=["DataForge Simulation"],
+        dependencies=global_deps,
+    )
+    app.include_router(
+        grid_router,
+        prefix=f"{settings.API_V1_STR}/grid",
+        tags=["Grid Customization Persistence"],
         dependencies=global_deps,
     )
 
