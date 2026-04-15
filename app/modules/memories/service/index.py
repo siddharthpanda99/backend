@@ -10,7 +10,7 @@ class MemoryService:
             memories = common_memory.list_memory_definitions()
             return memories[skip : skip + limit]
         except AttributeError:
-            from common_lib.modules.orchestration.memory.models import MemoryDefinitionRecord
+            from common_lib.modules.orchestration.context.memory.models import MemoryDefinitionRecord
             from sqlmodel import select
             with common_memory._get_session() as session:
                 statement = select(MemoryDefinitionRecord).offset(skip).limit(limit)
@@ -21,7 +21,7 @@ class MemoryService:
         try:
             return common_memory.get_memory_definition(memory_id)
         except AttributeError:
-            from common_lib.modules.orchestration.memory.models import MemoryDefinitionRecord
+            from common_lib.modules.orchestration.context.memory.models import MemoryDefinitionRecord
             with common_memory._get_session() as session:
                 record = session.get(MemoryDefinitionRecord, memory_id)
                 return record.dict() if record and hasattr(record, 'dict') else ({c.name: getattr(record, c.name) for c in record.__table__.columns} if record else None)
@@ -39,7 +39,7 @@ class MemoryService:
                 version=data.get("version", "1.0.0")
             )
         except AttributeError:
-            from common_lib.modules.orchestration.memory.models import MemoryDefinitionRecord
+            from common_lib.modules.orchestration.context.memory.models import MemoryDefinitionRecord
             with common_memory._get_session() as session:
                 record = MemoryDefinitionRecord(**data)
                 session.add(record)
@@ -64,7 +64,7 @@ class MemoryService:
                 version=version
             )
         except AttributeError:
-            from common_lib.modules.orchestration.memory.models import MemoryDefinitionRecord
+            from common_lib.modules.orchestration.context.memory.models import MemoryDefinitionRecord
             with common_memory._get_session() as session:
                 record = session.get(MemoryDefinitionRecord, memory_id)
                 if record:
@@ -82,7 +82,7 @@ class MemoryService:
         try:
             common_memory.delete_memory_definition(memory_id)
         except AttributeError:
-            from common_lib.modules.orchestration.memory.models import MemoryDefinitionRecord
+            from common_lib.modules.orchestration.context.memory.models import MemoryDefinitionRecord
             from sqlalchemy import delete
             with common_memory._get_session() as session:
                 stmt = delete(MemoryDefinitionRecord).where(MemoryDefinitionRecord.id == memory_id)

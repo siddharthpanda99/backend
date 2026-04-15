@@ -32,11 +32,11 @@ ALLOWED_NODES = {
 }
 NODE_TITLES = {
     "preprocess_input": "🔍 Analysing Input",
-    "agent_thinking": "🏢 Agent Reasoning",
-    "execute_tool": "🔧 Executing Tool",
-    "auto_extract": "🧠 Extracting Knowledge",
-    "aggregate_results": "🔗 Aggregating Results",
-    "finalize_turn": "💾 Saving History",
+    "agent_thinking": "[Reasoning] Agent Reasoning",
+    "execute_tool": "[Tool] Executing Tool",
+    "auto_extract": "[Extract] Extracting Knowledge",
+    "aggregate_results": "[Link] Aggregating Results",
+    "finalize_turn": "[Save] Saving History",
 }
 
 

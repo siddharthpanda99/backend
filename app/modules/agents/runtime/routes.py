@@ -120,6 +120,10 @@ class StateUpdateRequest(BaseModel):
     operational_metadata: Optional[dict] = None
 
 
+class ClearSessionRequest(BaseModel):
+    hard_reset: bool = False
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------

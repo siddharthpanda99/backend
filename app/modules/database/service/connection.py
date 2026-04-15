@@ -52,6 +52,7 @@ def init_db():
     from app.modules.users.models.index import User
     from app.modules.authorization.models.index import Role, Permission, UserRole, RolePermission, UserResourceRole
     from app.modules.projects.models.index import Project, ProjectModule, Workflow, Task
+    from app.modules.grid.models import GridConfig
     
     SQLModel.metadata.create_all(engine)
 

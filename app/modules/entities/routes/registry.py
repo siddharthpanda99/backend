@@ -6,12 +6,12 @@ from fastapi.responses import StreamingResponse
 from app.modules.common.types.index import APIResponse
 from app.core.common_lib_integration import common_memory
 from app.modules.entities.services.vector_search import get_search_service
-from common_lib.modules.orchestration.skill.schemas import CapabilityDefinition
-from common_lib.modules.orchestration.workflow.schemas import WorkflowDefinition
-from common_lib.modules.orchestration.agent.prompt_resolver import PromptResolver
+from common_lib.modules.orchestration.agents.skill.schemas import CapabilityDefinition
+from common_lib.modules.workflows.schemas import WorkflowDefinition
+from common_lib.modules.orchestration.agents.agent.prompt_resolver import PromptResolver
 from app.modules.agents.runtime.core import get_engine_manager
 from app.modules.agents.runtime.tools.registry import BUILTIN_TOOL_REGISTRY
-from common_lib.modules.orchestration.sd.models import (
+from common_lib.modules.orchestration.infrastructure.sd.models import (
     SdWildcardRecord,
     SdWeightedPromptRecord,
     SdKeywordRecord,
@@ -529,7 +529,9 @@ async def list_entities(
                     continue
                 agent_map[a["id"]] = a
 
-            from common_lib.modules.orchestration.agent.schemas import AgentDefinition
+            from common_lib.modules.orchestration.agents.agent.schemas import (
+                AgentDefinition,
+            )
 
             # Use resolved_definition for Pydantic validation (has fully resolved sections)
             # Fall back to definition if resolved not available
@@ -564,7 +566,7 @@ async def list_entities(
             )
 
             # UNIFY SKILLS
-            from common_lib.modules.orchestration.skill.schemas import (
+            from common_lib.modules.orchestration.agents.skill.schemas import (
                 CapabilityDefinition,
             )
 
@@ -811,9 +813,10 @@ async def get_registry_stats():
 
         # 4. Workflows
         from app.modules.agents.runtime.routes import available_workflows
+
         engine_groups = await available_workflows()
         db_workflows = common_memory.list_workflow_definitions()
-        
+
         # Consolidation logic similar to list_entities but just for counts
         wf_ids = set()
         wf_categories = {}
@@ -828,7 +831,9 @@ async def get_registry_stats():
             w_id = wf.get("id")
             if w_id and w_id not in wf_ids:
                 wf_ids.add(w_id)
-                meta = wf.get("metadata") or wf.get("definition", {}).get("metadata") or {}
+                meta = (
+                    wf.get("metadata") or wf.get("definition", {}).get("metadata") or {}
+                )
                 cat = meta.get("category") or wf.get("category") or "General"
                 wf_categories[cat] = wf_categories.get(cat, 0) + 1
 
@@ -842,7 +847,7 @@ async def get_registry_stats():
         for p in db_prompts:
             # Handle potential None value for category
             raw_cat = (p.get("category") or "General").lower()
-            
+
             # Logic grouping based on keywords
             if "instruction" in raw_cat or "role" in raw_cat:
                 logic_cat = "Instructions"
@@ -864,6 +869,7 @@ async def get_registry_stats():
         # 7. Models
         try:
             from common_lib.modules.ai_models.container import AIModelsContainer
+
             model_container = AIModelsContainer()
             models = model_container.registry_service.list_models()
             stats["models"]["total"] = len(models)
@@ -886,8 +892,12 @@ async def get_registry_stats():
 
         # 10. Snippets & Profiles
         try:
-            stats["snippets"]["total"] = len(common_memory.list_shared_sections(section_type="snippet"))
-            stats["profiles"]["total"] = len(common_memory.list_shared_sections(section_type="persona"))
+            stats["snippets"]["total"] = len(
+                common_memory.list_shared_sections(section_type="snippet")
+            )
+            stats["profiles"]["total"] = len(
+                common_memory.list_shared_sections(section_type="persona")
+            )
         except Exception:
             stats["snippets"]["total"] = 0
             stats["profiles"]["total"] = 0
@@ -924,7 +934,6 @@ async def sync_registry(
             force_sync=effective_force_sync,
             force_reindex=effective_force_reindex,
         )
-
 
         return APIResponse(
             data={"status": "started"},

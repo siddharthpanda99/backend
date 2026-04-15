@@ -1,8 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from typing import Any, Dict
-from .schemas import VisionGenerateRequest, VisionGenerateResponse
+from .schemas import (
+    VisionGenerateRequest,
+    VisionGenerateResponse,
+    VisionWorkflowRequest,
+    VisionWorkflowResponse,
+)
 from .service import vision_service
-from common_lib.modules.orchestration.workflow.execution.signals import (
+from common_lib.modules.workflows.execution.signals import (
     execution_signals,
     ExecutionSignal,
 )
@@ -42,6 +47,27 @@ async def generate_vision_task_stream(request_in: VisionGenerateRequest):
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/workflow-run", response_model=APIResponse[VisionWorkflowResponse])
+def run_workflow_with_config(request_in: VisionWorkflowRequest):
+    """
+    Run a workflow YAML with a data config YAML overlay.
+    Example: workflow_yaml=hires_fix.sd15.dreamshaper, config_yaml=cyberpunk_streetscape
+    """
+    result = vision_service.run_workflow_with_config(
+        workflow_yaml=request_in.workflow_yaml,
+        config_yaml=request_in.config_yaml,
+        seed=request_in.seed,
+    )
+
+    if result["status"] == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+
+    return APIResponse(
+        data=VisionWorkflowResponse(**result),
+        message="Workflow execution completed successfully",
+    )
 
 
 @router.get("/gallery")

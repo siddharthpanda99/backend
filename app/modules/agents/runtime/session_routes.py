@@ -1492,7 +1492,7 @@ async def smart_chat(
                     # Complex intent → find matching workflow
                     emit("planning_started", {"intent": intent["intent"]})
 
-                    from common_lib.modules.orchestration.agent.workflow_matcher import (
+                    from common_lib.modules.orchestration.agents.agent.workflow_matcher import (
                         WorkflowMatcher,
                     )
 
@@ -1764,7 +1764,9 @@ async def evolve_workflow(
     request: EvolutionFeedbackRequest, session: Session = Depends(get_db_session)
 ):
     """Update workflow similarity weights based on execution outcome."""
-    from common_lib.modules.orchestration.agent.workflow_matcher import WorkflowMatcher
+    from common_lib.modules.orchestration.agents.agent.workflow_matcher import (
+        WorkflowMatcher,
+    )
 
     matcher = WorkflowMatcher()
     result = matcher.update_similarity_weights(
@@ -1797,7 +1799,9 @@ async def execute_plan(
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    from common_lib.modules.orchestration.agent.workflow_matcher import WorkflowMatcher
+    from common_lib.modules.orchestration.agents.agent.workflow_matcher import (
+        WorkflowMatcher,
+    )
 
     matcher = WorkflowMatcher()
     wf = matcher.get_workflow_by_id(request.workflow_id)
