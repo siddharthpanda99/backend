@@ -6,7 +6,7 @@ class GridConfig(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True, unique=True)
     config_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
-    schema_json: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    config_schema: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     metadata_json: Optional[Dict[str, Any]] = Field(default_factory=dict, sa_column=Column(JSON))
     is_favorite: bool = Field(default=False)
     user_comments: Optional[str] = Field(default=None)

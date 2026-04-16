@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     API_V1_STR: str = config.get("Backend", "api_v1_str", "/api/v1")
     PRELOAD_LLM: bool = False
     SKIP_REGISTRY_SYNC: bool = config.get("Backend", "skip_registry_sync", True)
+    EXCLUDE_TOOL_CATEGORIES: list[str] = config.get_list(
+        "Backend", "exclude_tool_categories", ["internal", "deprecated", "test"]
+    )
 
     # Image Generation Performance & Optimization
     OPTIMIZE_USE_XFORMERS: bool = config.get("Backend", "optimize_use_xformers", True)

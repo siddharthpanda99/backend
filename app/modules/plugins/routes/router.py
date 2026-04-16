@@ -1,0 +1,324 @@
+import os
+import shutil
+from pathlib import Path
+from typing import List, Optional
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from app.modules.plugins.schemas.plugin_schemas import (
+    PluginResponse,
+    NodeCandidateSchema,
+    OnboardRequest,
+    PluginDetailResponse,
+    NodeDefinitionSchema,
+    HealthStatus,
+    PluginType,
+    PluginUpdateRequest,
+)
+from common_lib.modules.plugins.manager import PluginManager
+from common_lib.modules.plugins.schemas import ExtractionCandidate
+
+router = APIRouter(tags=["Plugins"])
+plugin_manager = PluginManager()
+plugin_manager.start()
+
+from app.core.common_lib_integration import common_memory
+
+@router.get("", response_model=List[PluginResponse])
+@router.get("/", response_model=List[PluginResponse])
+async def list_plugins():
+    """
+    Returns a list of all installed and discovered plugins with rich metadata from DB.
+    """
+    # 1. Fetch all plugin definitions from PostgreSQL
+    records = common_memory.list_plugin_definitions()
+    
+    # 2. Get active engine plugins for status/health checks
+    engine_plugins = {p.id: p for p in plugin_manager.engine.list_plugins()}
+    
+    results = []
+    for p in records:
+        # Determine status: HEALTHY if in engine, DISCOVERED otherwise (or based on artifacts)
+        status = HealthStatus.HEALTHY
+        p_type = PluginType.EXTERNAL
+        
+        p_id = p.get("id")
+        p_artifacts = p.get("artifacts") or {}
+        
+        if p_id in engine_plugins:
+            instance = engine_plugins[p_id]
+            # Map healthy to ACTIVE for frontend marker consistency
+            if instance.check_health().status == HealthStatus.HEALTHY:
+                status = HealthStatus.ACTIVE
+            else:
+                status = instance.check_health().status
+            p_type = instance.metadata.plugin_type
+        else:
+            # Check if it was discovered by RegistryStabilizer
+            yaml_path = p_artifacts.get("yaml_path", "")
+            if "discovered" in yaml_path:
+                status = HealthStatus.ACTIVE # Show as installed/active if successfully stabilized
+            else:
+                status = HealthStatus.INACTIVE
+                
+        p_nodes_list = p.get("nodes_list") or []
+        node_count = len(p_nodes_list)
+
+        # Format human-readable date
+        raw_updated = p.get("updated_at")
+        if hasattr(raw_updated, "strftime"):
+             updated_str = raw_updated.strftime("%Y-%m-%d")
+        elif isinstance(raw_updated, str):
+             updated_str = raw_updated[:10]
+        else:
+             updated_str = "2024-04-16"
+        
+        results.append(PluginResponse(
+            id=p_id,
+            name=p.get("name") or p_id,
+            description=p.get("description"),
+            category=p.get("category") or "general",
+            version=p.get("version") or "1.0.0",
+            status=status,
+            plugin_type=p_type,
+            node_count=node_count,
+            total_nodes=node_count,
+            active_node_count=node_count,
+            author_url=p.get("author_url"),
+            thumbnail_url=p.get("thumbnail_url"),
+            downloads_count=p.get("downloads_count") or 0,
+            updated_at=updated_str,
+            author=p.get("author") or "Nexus Official",
+            tags=p.get("tags") or []
+        ))
+    return results
+
+@router.get("/{plugin_id}", response_model=PluginDetailResponse)
+async def get_plugin_details(plugin_id: str):
+    """
+    Returns full details for a specific plugin, including its tools from DB.
+    """
+    p = common_memory.get_plugin_definition(plugin_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Plugin not found")
+        
+    engine_plugins = {p.id: p for p in plugin_manager.engine.list_plugins()}
+    status = HealthStatus.ACTIVE if plugin_id in engine_plugins else HealthStatus.ACTIVE
+    p_type = engine_plugins[plugin_id].metadata.plugin_type if plugin_id in engine_plugins else PluginType.EXTERNAL
+
+    # Fetch tool details for all nodes in the list
+    nodes = []
+    p_nodes_list = p.get("nodes_list") or []
+    if p_nodes_list:
+        for node_id in p_nodes_list:
+            node_record = common_memory.get_tool_definition(node_id)
+            if node_record:
+                # Use standard definition blob
+                defn = node_record.get("definition") or {}
+                nodes.append(NodeDefinitionSchema(
+                    id=node_id,
+                    name=defn.get("name") or node_id.split(".")[-1].replace("_", " ").title(),
+                    description=defn.get("capability", {}).get("description") or defn.get("description"),
+                    parameters=defn.get("capability", {}).get("parameters", {}).get("properties") or {}
+                ))
+
+    node_count = len(p_nodes_list)
+    
+    # Format human-readable date
+    raw_updated = p.get("updated_at")
+    if hasattr(raw_updated, "strftime"):
+            updated_one_str = raw_updated.strftime("%Y-%m-%d")
+    elif isinstance(raw_updated, str):
+            updated_one_str = raw_updated[:10]
+    else:
+            updated_one_str = "2024-04-16"
+
+    return PluginDetailResponse(
+        id=p.get("id"),
+        name=p.get("name"),
+        description=p.get("description"),
+        category=p.get("category") or "general",
+        version=p.get("version") or "1.0.0",
+        status=status,
+        plugin_type=p_type,
+        node_count=node_count,
+        total_nodes=node_count,
+        active_node_count=node_count,
+        author=p.get("author") or "Nexus Official",
+        author_url=p.get("author_url"),
+        thumbnail_url=p.get("thumbnail_url"),
+        downloads_count=p.get("downloads_count") or 0,
+        updated_at=updated_one_str,
+        tags=p.get("tags") or [],
+        nodes=nodes
+    )
+
+@router.post("/analyze", response_model=List[NodeCandidateSchema])
+async def analyze_plugin(file: UploadFile = File(...)):
+    """
+    Uploads a python plugin file and returns candidate nodes found via static analysis.
+    """
+    if not file.filename.endswith(".py"):
+        raise HTTPException(status_code=400, detail="Only .py files are supported for analysis.")
+
+    # Save to a temporary location for analysis
+    temp_dir = Path("resources/temp_uploads")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = temp_dir / file.filename
+    
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    try:
+        candidates = plugin_manager.analyze_plugin_file(temp_path)
+        return [
+            NodeCandidateSchema(
+                name=c.name,
+                description=c.description,
+                parameters=c.parameters,
+                module_path=str(temp_path)
+            ) for c in candidates
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+@router.post("/onboard")
+async def onboard_plugin_tools(
+    plugin_id: str = Form(...),
+    name: str = Form(...),
+    category: str = Form("general"),
+    author: str = Form("System"),
+    author_url: Optional[str] = Form(None),
+    thumbnail_url: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None), # Comma separated
+    description: Optional[str] = Form(None),
+    file: UploadFile = File(...)
+):
+    """
+    Comprehensive onboarding endpoint:
+    1. Uploads ZIP or .py file.
+    2. Extracts and analyzes tools.
+    3. Generates enriched Plugin and Tool YAMLs.
+    """
+    # Create temp directory for upload
+    temp_dir = Path("resources/temp_uploads")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = temp_dir / file.filename
+    
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    try:
+        # Prepare metadata for PluginManager
+        metadata = {
+            "description": description,
+            "author_url": author_url,
+            "thumbnail_url": thumbnail_url,
+            "tags": [tag.strip() for tag in tags.split(",")] if tags else []
+        }
+        
+        # Determine if it's a zip or py
+        if file.filename.endswith(".zip"):
+            result = plugin_manager.onboard_plugin(
+                plugin_id=plugin_id,
+                name=name,
+                zip_path=temp_path,
+                metadata=metadata,
+                category=category,
+                author=author
+            )
+        elif file.filename.endswith(".py"):
+            with open(temp_path, "r", encoding="utf-8") as f:
+                code = f.read()
+            result = plugin_manager.onboard_plugin(
+                plugin_id=plugin_id,
+                name=name,
+                source_code=code,
+                metadata=metadata,
+                category=category,
+                author=author
+            )
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file type. Use .zip or .py")
+            
+        # Clean up temp file
+        if temp_path.exists():
+            temp_path.unlink()
+            
+        return result
+        
+    except Exception as e:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise HTTPException(status_code=500, detail=f"Onboarding failed: {str(e)}")
+
+
+@router.patch("/{plugin_id}", response_model=PluginResponse)
+async def update_plugin(plugin_id: str, request: PluginUpdateRequest):
+    """Update plugin metadata."""
+    existing = common_memory.get_plugin_definition(plugin_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Plugin not found")
+
+    # Merge existing with update request
+    update_data = request.dict(exclude_unset=True)
+    
+    # name is a required positional arg in save_plugin_definition signature
+    name = update_data.pop("name", existing["name"])
+    
+    try:
+        common_memory.save_plugin_definition(
+            plugin_id=plugin_id,
+            name=name,
+            **update_data
+        )
+        
+        # Return updated state
+        p = common_memory.get_plugin_definition(plugin_id)
+        
+        # Re-use status determination logic from list_plugins if needed, 
+        # but for PATCH return, a simple response is usually enough as long as status matches schema.
+        # However, PluginResponse requires all fields.
+        
+        # Determine status (consistent with list_plugins logic)
+        engine_plugins = {p_inst.id: p_inst for p_inst in plugin_manager.engine.list_plugins()}
+        status = HealthStatus.ACTIVE if plugin_id in engine_plugins else HealthStatus.ACTIVE
+        tags = p.get("tags") or []
+        
+        # Format human-readable date
+        raw_updated = p.get("updated_at")
+        if hasattr(raw_updated, "strftime"):
+             updated_str = raw_updated.strftime("%Y-%m-%d")
+        elif isinstance(raw_updated, str):
+             updated_str = raw_updated[:10]
+        else:
+             updated_str = "2024-04-16"
+
+        return PluginResponse(
+            id=p.get("id"),
+            name=p.get("name"),
+            description=p.get("description"),
+            category=p.get("category") or "general",
+            version=p.get("version") or "1.0.0",
+            status=status,
+            plugin_type=PluginType.EXTERNAL, # Fallback for discovered/external
+            node_count=len(p.get("nodes_list") or []),
+            total_nodes=len(p.get("nodes_list") or []),
+            active_node_count=len(p.get("nodes_list") or []),
+            author_url=p.get("author_url"),
+            thumbnail_url=p.get("thumbnail_url"),
+            downloads_count=p.get("downloads_count") or 0,
+            updated_at=updated_str,
+            author=p.get("author") or "Nexus Official",
+            tags=tags
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{plugin_id}")
+async def delete_plugin(plugin_id: str):
+    """Remove plugin definition from registry."""
+    success = common_memory.delete_plugin_definition(plugin_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Plugin not found")
+        
+    return {"status": "success", "message": f"Plugin {plugin_id} deleted"}

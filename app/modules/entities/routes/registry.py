@@ -440,68 +440,73 @@ async def list_entities(
 
         # 2. WORKFLOWS (71+ total expected)
         if not entity_type or entity_type == "workflows":
-            # Consolidate engine discovery with memory definitions
-            from app.modules.agents.runtime.routes import available_workflows
+            try:
+                # Consolidate engine discovery with memory definitions
+                from app.modules.agents.runtime.routes import available_workflows
 
-            engine_groups = await available_workflows()
-            db_workflows = common_memory.list_workflow_definitions()
+                engine_groups = await available_workflows()
+                db_workflows = common_memory.list_workflow_definitions()
 
-            # 1. Flatten everything for deduplication
-            all_workflows_flat = {}
-            for group in engine_groups:
-                for item in group.get("items", []):
-                    all_workflows_flat[item["id"]] = item
+                # 1. Flatten everything for deduplication
+                all_workflows_flat = {}
+                for group in engine_groups:
+                    for item in group.get("items", []):
+                        if isinstance(item, dict) and "id" in item:
+                            all_workflows_flat[item["id"]] = item
 
-            for wf in db_workflows:
-                w_id = wf.get("id")
-                if w_id and w_id not in all_workflows_flat:
-                    # Look for metadata inside the definition column if top-level is empty
-                    definition = wf.get("definition") or {}
-                    metadata = wf.get("metadata") or definition.get("metadata") or {}
+                for wf in db_workflows:
+                    w_id = wf.get("id")
+                    if w_id and w_id not in all_workflows_flat:
+                        # Look for metadata inside the definition column if top-level is empty
+                        definition = wf.get("definition") or {}
+                        metadata = wf.get("metadata") or definition.get("metadata") or {}
 
-                    all_workflows_flat[w_id] = {
-                        "id": w_id,
-                        "name": wf.get("name") or w_id,
-                        "description": normalize_description(wf.get("description")),
-                        "input_schema": wf.get("input_schema"),
-                        "output_schema": wf.get("output_schema"),
-                        "metadata": metadata,
-                        "artifacts": wf.get("artifacts", {}),
-                    }
+                        all_workflows_flat[w_id] = {
+                            "id": w_id,
+                            "name": wf.get("name") or w_id,
+                            "description": normalize_description(wf.get("description")),
+                            "input_schema": wf.get("input_schema"),
+                            "output_schema": wf.get("output_schema"),
+                            "metadata": metadata,
+                            "artifacts": wf.get("artifacts", {}),
+                        }
 
-            # 2. Group by Metadata Category
-            final_groups = {}
-            for wf in all_workflows_flat.values():
-                meta = wf.get("metadata") or {}
-                # Prioritize internal metadata
-                cat = meta.get("category") or wf.get("category") or "General"
+                # 2. Group by Metadata Category
+                final_groups = {}
+                for wf in all_workflows_flat.values():
+                    meta = wf.get("metadata") or {}
+                    # Prioritize internal metadata
+                    cat = meta.get("category") or wf.get("category") or "General"
 
-                # Coordination Correction: If it's a "Config" format and has a subtype, use the subtype as the category
-                sub = meta.get("subtype")
-                if (meta.get("format") == "config" or cat == "Configuration") and sub:
-                    cat = sub.upper()
+                    # Coordination Correction: If it's a "Config" format and has a subtype, use the subtype as the category
+                    sub = meta.get("subtype")
+                    if (meta.get("format") == "config" or cat == "Configuration") and sub:
+                        cat = sub.upper()
 
-                if cat not in final_groups:
-                    final_groups[cat] = []
+                    if cat not in final_groups:
+                        final_groups[cat] = []
 
-                # Ensure description is normalized string and metadata is present
-                wf["description"] = normalize_description(wf.get("description"))
-                wf["metadata"] = meta
-                final_groups[cat].append(wf)
+                    # Ensure description is normalized string and metadata is present
+                    wf["description"] = normalize_description(wf.get("description"))
+                    wf["metadata"] = meta
+                    final_groups[cat].append(wf)
 
-            # 3. Format into Group Objects
-            results["workflows"] = sorted(
-                [
-                    {
-                        "id": f"wf_{cat.lower().replace(' ', '_')}",
-                        "name": f"{cat} (Workflows)",
-                        "items": sorted(items, key=lambda x: x.get("name", "")),
-                        "type": "workflow",
-                    }
-                    for cat, items in final_groups.items()
-                ],
-                key=lambda x: x["name"],
-            )
+                # 3. Format into Group Objects
+                results["workflows"] = sorted(
+                    [
+                        {
+                            "id": f"wf_{cat.lower().replace(' ', '_')}",
+                            "name": f"{cat} (Workflows)",
+                            "items": sorted(items, key=lambda x: x.get("name", "")),
+                            "type": "workflow",
+                        }
+                        for cat, items in final_groups.items()
+                    ],
+                    key=lambda x: x["name"],
+                )
+            except Exception as e:
+                logger.error(f"Workflow consolidation failed: {e}")
+                results["workflows"] = []
 
         # 3. AGENTS & SKILLS
         if not entity_type or entity_type in [
@@ -570,21 +575,30 @@ async def list_entities(
                 CapabilityDefinition,
             )
 
+            validated_skills = []
             for s in db_skills:
-                s["description"] = normalize_description(s.get("description"))
-                meta = s.get("metadata") or {}
-                # Skills are format: config, subtype: skill
-                if "format" not in meta:
-                    meta["format"] = "config"
-                if "subtype" not in meta:
-                    meta["subtype"] = "skill"
-                s["metadata"] = meta
+                try:
+                    # 1. Normalize (Safe Block)
+                    s["description"] = normalize_description(s.get("description"))
+                    meta = s.get("metadata") or {}
+                    if "format" not in meta:
+                        meta["format"] = "config"
+                    if "subtype" not in meta:
+                        meta["subtype"] = "skill"
+                    s["metadata"] = meta
+
+                    # 2. Validate
+                    validated = CapabilityDefinition.model_validate(s).model_dump()
+                    validated_skills.append(validated)
+                except Exception as e:
+                    s_id = s.get("id") if isinstance(s, dict) else "unknown"
+                    logger.warning(f"Skill processing failed for {s_id}: {e}")
+                    # Return raw data on failure as long as it's a dict
+                    if isinstance(s, dict):
+                        validated_skills.append(s)
 
             results["skills"] = sorted(
-                [
-                    CapabilityDefinition.model_validate(s).model_dump()
-                    for s in db_skills
-                ],
+                validated_skills,
                 key=lambda x: x.get("name", x.get("id", "")),
             )
 
