@@ -98,31 +98,36 @@ class WorkflowService:
         # Map UI identifiers to backend tool signatures and create State objects
         state_map = {}
         tool_mappings = {
-            "load_image": "vision.load_image",
-            "face_analysis": "vision.face_analysis",
-            "face_extractor": "vision.face_extractor",
-            "controlnet_extractor": "vision.controlnet_extractor",
-            "save_character_profile": "vision.save_character_profile",
-            "face_swapper": "vision.face_swapper",
-            "biography": "vision.biography",
+            "load_image": "nexus.vision.load_image",
+            "face_analysis": "nexus.vision.face_analysis",
+            "face_extractor": "nexus.vision.face_extractor",
+            "controlnet_extractor": "nexus.vision.controlnet_extractor",
+            "save_character_profile": "nexus.vision.save_character_profile",
+            "face_swapper": "nexus.vision.face_swapper",
+            "biography": "nexus.vision.biography",
             # SD 1.5 / SDXL tools
-            "vision.load_checkpoint": "vision.load_checkpoint",
-            "vision.clip_encode": "vision.clip_encode",
-            "vision.empty_latent": "vision.empty_latent",
-            "vision.ksampler": "vision.ksampler",
-            "vision.upscale_latent": "vision.upscale_latent",
-            "vision.vae_decode": "vision.vae_decode",
-            "vision.save_image": "vision.save_image",
-            "vision.reactor_restore_face": "vision.reactor_restore_face",
+            "vision.load_checkpoint": "nexus.vision.load_checkpoint",
+            "vision.clip_encode": "nexus.vision.clip_encode",
+            "vision.empty_latent": "nexus.vision.empty_latent",
+            "vision.create_empty_latent": "nexus.vision.create_empty_latent",
+            "vision.ksampler": "nexus.vision.ksampler",
+            "vision.upscale_latent": "nexus.vision.upscale_latent",
+            "vision.vae_decode": "nexus.vision.vae_decode",
+            "vision.save_image": "nexus.vision.save_image",
+            "vision.reactor_restore_face": "nexus.vision.reactor_restore_face",
+            "vision.hires_fix": "nexus.vision.hires_fix",
         }
 
         for n in nodes:
             raw_type = n.get("toolId") or n.get("type", "")
             props = n.get("properties") or n.get("data", {}).get("properties") or {}
 
-            # Resolve Tool ID
+            # Resolve Tool ID - use mappings for legacy type names
             tool_id = raw_type
-            if not tool_id.startswith("vision."):
+            # Check for legacy 'vision.xxx' and map to 'nexus.vision.xxx'
+            if tool_id.startswith("vision."):
+                tool_id = "nexus." + tool_id
+            else:
                 norm = raw_type.lower().replace(" ", "_")
                 if norm in tool_mappings:
                     tool_id = tool_mappings[norm]
@@ -275,6 +280,10 @@ class WorkflowService:
                         output_key = "latent"
                     elif target_port in ["width", "height"]:
                         output_key = target_port
+                elif "ksampler" in source_type:
+                    # Pass images from ksampler to vae_decode/save
+                    if target_port in ["images", "samples", "image"]:
+                        output_key = "images"
 
                 source_tool = str(parent_state.tool_id or "unknown")
                 # Use parent_state.id instead of tool name to ensure unique output keys
