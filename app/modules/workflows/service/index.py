@@ -75,11 +75,16 @@ class WorkflowService:
                     if error_msg:
                         import sys
 
+                        state_id = data.get("state_id") or "unknown"
+                        tool_id = data.get("tool_id") or "unknown"
                         print(
-                            f"\n[QueueTracer] CRITICAL ERROR DETECTED: {error_msg}",
+                            f"\n[QueueTracer] CRITICAL ERROR DETECTED in Node: {state_id} | Tool: {tool_id}",
                             file=sys.stderr,
                         )
-                        logger.error(f"[QueueTracer] ERROR EVENT DETECTED: {error_msg}")
+                        print(f"Error: {error_msg}", file=sys.stderr)
+                        logger.error(
+                            f"[QueueTracer] ERROR EVENT in Node: {state_id} | Tool: {tool_id} | Error: {error_msg}"
+                        )
 
                     loop.call_soon_threadsafe(event_queue.put_nowait, data)
                 except Exception as e:
@@ -123,12 +128,13 @@ class WorkflowService:
             props = n.get("properties") or n.get("data", {}).get("properties") or {}
 
             # Resolve Tool ID - use mappings for legacy type names
-            tool_id = raw_type
+            tool_id = raw_type or "unknown.tool"
+
             # Check for legacy 'vision.xxx' and map to 'nexus.vision.xxx'
-            if tool_id.startswith("vision."):
+            if isinstance(tool_id, str) and tool_id.startswith("vision."):
                 tool_id = "nexus." + tool_id
-            else:
-                norm = raw_type.lower().replace(" ", "_")
+            elif tool_id and isinstance(tool_id, str):
+                norm = tool_id.lower().replace(" ", "_")
                 if norm in tool_mappings:
                     tool_id = tool_mappings[norm]
 
@@ -284,15 +290,20 @@ class WorkflowService:
                     # Pass images from ksampler to vae_decode/save
                     if target_port in ["images", "samples", "image"]:
                         output_key = "images"
+                elif "vae_decode" in source_type or "decode" in source_type:
+                    # Pass images from vae_decode to upscale/save
+                    if target_port in ["images", "samples", "image"]:
+                        output_key = "images"
 
                 source_tool = str(parent_state.tool_id or "unknown")
-                # Use parent_state.id instead of tool name to ensure unique output keys
-                # when multiple nodes of the same tool type exist in the workflow.
-                output_prefix = f"{parent_state.id}_output"
 
-                target_state.static_inputs[target_port] = (
-                    f"{{{output_prefix}.{output_key}}}"
-                )
+                # Build output key in format executor stores: node_id_outputKey
+                # This matches what executor stores: state.id + "_" + output_key
+                # E.g., load_model outputs "model" key → stored as load_model_model
+                # So DNA conduit should create: {load_model_model} not {load_model_outputmodel}
+                output_store_key = f"{parent_state.id}_{output_key}"
+
+                target_state.static_inputs[target_port] = f"{{{output_store_key}}}"
                 logger.info(
                     f"  - DNA Conduit: {source_tool} (node: {parent_state.id}, key: {output_key}) -> {target_state.tool_id} ({target_port})"
                 )
@@ -327,7 +338,19 @@ class WorkflowService:
                     None, executor.execute, graph, inputs, context
                 )
             except Exception as e:
+                import traceback
+
+                error_trace = traceback.format_exc()
                 logger.error(f"[WorkflowService] Execution CRASHED: {e}", exc_info=True)
+                # Send error event to UI
+                loop.call_soon_threadsafe(
+                    event_queue.put_nowait,
+                    {
+                        "event_type": "EXECUTION_ERROR",
+                        "error": str(e),
+                        "trace": error_trace,
+                    },
+                )
             finally:
                 loop.call_soon_threadsafe(
                     event_queue.put_nowait, {"event_type": "DONE"}

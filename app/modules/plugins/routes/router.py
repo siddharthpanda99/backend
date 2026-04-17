@@ -1,7 +1,8 @@
 import os
 import shutil
+import yaml
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from app.modules.plugins.schemas.plugin_schemas import (
     PluginResponse,
@@ -22,6 +23,7 @@ plugin_manager.start()
 
 from app.core.common_lib_integration import common_memory
 
+
 @router.get("", response_model=List[PluginResponse])
 @router.get("/", response_model=List[PluginResponse])
 async def list_plugins():
@@ -30,19 +32,19 @@ async def list_plugins():
     """
     # 1. Fetch all plugin definitions from PostgreSQL
     records = common_memory.list_plugin_definitions()
-    
+
     # 2. Get active engine plugins for status/health checks
     engine_plugins = {p.id: p for p in plugin_manager.engine.list_plugins()}
-    
+
     results = []
     for p in records:
         # Determine status: HEALTHY if in engine, DISCOVERED otherwise (or based on artifacts)
         status = HealthStatus.HEALTHY
         p_type = PluginType.EXTERNAL
-        
+
         p_id = p.get("id")
         p_artifacts = p.get("artifacts") or {}
-        
+
         if p_id in engine_plugins:
             instance = engine_plugins[p_id]
             # Map healthy to ACTIVE for frontend marker consistency
@@ -55,41 +57,46 @@ async def list_plugins():
             # Check if it was discovered by RegistryStabilizer
             yaml_path = p_artifacts.get("yaml_path", "")
             if "discovered" in yaml_path:
-                status = HealthStatus.ACTIVE # Show as installed/active if successfully stabilized
+                status = (
+                    HealthStatus.ACTIVE
+                )  # Show as installed/active if successfully stabilized
             else:
                 status = HealthStatus.INACTIVE
-                
+
         p_nodes_list = p.get("nodes_list") or []
         node_count = len(p_nodes_list)
 
         # Format human-readable date
         raw_updated = p.get("updated_at")
         if hasattr(raw_updated, "strftime"):
-             updated_str = raw_updated.strftime("%Y-%m-%d")
+            updated_str = raw_updated.strftime("%Y-%m-%d")
         elif isinstance(raw_updated, str):
-             updated_str = raw_updated[:10]
+            updated_str = raw_updated[:10]
         else:
-             updated_str = "2024-04-16"
-        
-        results.append(PluginResponse(
-            id=p_id,
-            name=p.get("name") or p_id,
-            description=p.get("description"),
-            category=p.get("category") or "general",
-            version=p.get("version") or "1.0.0",
-            status=status,
-            plugin_type=p_type,
-            node_count=node_count,
-            total_nodes=node_count,
-            active_node_count=node_count,
-            author_url=p.get("author_url"),
-            thumbnail_url=p.get("thumbnail_url"),
-            downloads_count=p.get("downloads_count") or 0,
-            updated_at=updated_str,
-            author=p.get("author") or "Nexus Official",
-            tags=p.get("tags") or []
-        ))
+            updated_str = "2024-04-16"
+
+        results.append(
+            PluginResponse(
+                id=p_id,
+                name=p.get("name") or p_id,
+                description=p.get("description"),
+                category=p.get("category") or "general",
+                version=p.get("version") or "1.0.0",
+                status=status,
+                plugin_type=p_type,
+                node_count=node_count,
+                total_nodes=node_count,
+                active_node_count=node_count,
+                author_url=p.get("author_url"),
+                thumbnail_url=p.get("thumbnail_url"),
+                downloads_count=p.get("downloads_count") or 0,
+                updated_at=updated_str,
+                author=p.get("author") or "Nexus Official",
+                tags=p.get("tags") or [],
+            )
+        )
     return results
+
 
 @router.get("/{plugin_id}", response_model=PluginDetailResponse)
 async def get_plugin_details(plugin_id: str):
@@ -99,37 +106,163 @@ async def get_plugin_details(plugin_id: str):
     p = common_memory.get_plugin_definition(plugin_id)
     if not p:
         raise HTTPException(status_code=404, detail="Plugin not found")
-        
+
     engine_plugins = {p.id: p for p in plugin_manager.engine.list_plugins()}
     status = HealthStatus.ACTIVE if plugin_id in engine_plugins else HealthStatus.ACTIVE
-    p_type = engine_plugins[plugin_id].metadata.plugin_type if plugin_id in engine_plugins else PluginType.EXTERNAL
+    p_type = (
+        engine_plugins[plugin_id].metadata.plugin_type
+        if plugin_id in engine_plugins
+        else PluginType.EXTERNAL
+    )
 
     # Fetch tool details for all nodes in the list
     nodes = []
     p_nodes_list = p.get("nodes_list") or []
-    if p_nodes_list:
-        for node_id in p_nodes_list:
-            node_record = common_memory.get_tool_definition(node_id)
-            if node_record:
-                # Use standard definition blob
-                defn = node_record.get("definition") or {}
-                nodes.append(NodeDefinitionSchema(
-                    id=node_id,
-                    name=defn.get("name") or node_id.split(".")[-1].replace("_", " ").title(),
-                    description=defn.get("capability", {}).get("description") or defn.get("description"),
-                    parameters=defn.get("capability", {}).get("parameters", {}).get("properties") or {}
-                ))
+    # Path: Backend/app/modules/plugins/routes/router.py -> Backend Monorepo/Python Libs/common_lib/src/common_lib/templates/tools/discovered
+    templates_root = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "Python Libs"
+        / "common_lib"
+        / "src"
+        / "common_lib"
+        / "templates"
+        / "tools"
+        / "discovered"
+    )
+
+    for node_id in p_nodes_list:
+        node_record = common_memory.get_tool_definition(node_id)
+        defn: Dict[str, Any] = {}
+        capability: Dict[str, Any] = {}
+        description = ""
+        parameters = {}
+
+        # First try DB - data is nested in definition.nodes_list[0].capability
+        if node_record:
+            defn = node_record.get("definition") or {}
+            nodes_list = defn.get("nodes_list", [])
+            # Find the tool in nodes_list that matches node_id
+            for node_data in nodes_list:
+                if isinstance(node_data, dict) and node_data.get("id") == node_id:
+                    capability = node_data.get("capability") or node_data or {}
+                    defn = node_data
+                    break
+            # Fallback if no nested match
+            if not capability:
+                capability = defn.get("capability") or {}
+
+        # If no capability in DB, read directly from YAML file
+        if not capability:
+            yaml_file = templates_root / f"{node_id}.tool.yaml"
+            if yaml_file.exists():
+                try:
+                    with open(yaml_file) as f:
+                        yaml_def = yaml.safe_load(f) or {}
+                        capability = yaml_def.get("capability") or yaml_def or {}
+                        defn = yaml_def
+                except Exception:
+                    pass
+
+        if capability:
+            description = capability.get("description") or defn.get("description") or ""
+
+            # NEW SCHEMA: input_schema
+            if capability.get("input_schema"):
+                input_schema_dict = capability.get("input_schema", {})
+                if isinstance(input_schema_dict, dict):
+                    input_props = input_schema_dict.get("properties", {})
+                    input_required = input_schema_dict.get("required", [])
+                else:
+                    input_props = {}
+                    input_required = []
+            # OLD SCHEMA: capability.parameters.properties
+            elif capability.get("parameters"):
+                params = capability.get("parameters", {})
+                input_props = params.get("properties", {})
+                input_required = params.get("required", list(input_props.keys()))
+            else:
+                input_props = {}
+                input_required = []
+
+            # NEW SCHEMA: output_schema
+            output_schema = (
+                capability.get("output_schema") or defn.get("output_schema") or {}
+            )
+            if isinstance(output_schema, dict) and "description" in output_schema:
+                output_schema = {
+                    "type": "object",
+                    "properties": {},
+                    "description": output_schema.get("description"),
+                }
+        else:
+            description = ""
+            input_props = {}
+            input_required = []
+            output_schema = {}
+
+        name = defn.get("name") or node_id.split(".")[-1].replace("_", " ").title()
+
+        # Build input_schema as plain dict - NOT via Pydantic model to avoid defaults
+        input_schema_obj = None
+        if input_props:
+            clean_props = {}
+            for prop_name, prop_val in input_props.items():
+                if isinstance(prop_val, dict):
+                    # Only keep non-None values from the source data
+                    clean_val = {k: v for k, v in prop_val.items() if v is not None}
+                    if clean_val:
+                        clean_props[prop_name] = clean_val
+            if clean_props:
+                input_schema_obj = {
+                    "type": "object",
+                    "properties": clean_props,
+                    "required": input_required,
+                }
+
+        # Clean output_schema as plain dict
+        clean_output = None
+        if output_schema and isinstance(output_schema, dict):
+            clean_output = {k: v for k, v in output_schema.items() if v is not None}
+            if not clean_output:
+                clean_output = None
+
+        nodes.append(
+            NodeDefinitionSchema(
+                id=node_id,
+                name=name,
+                description=description,
+                category=defn.get("category"),
+                version=defn.get("version", "1.0.0"),
+                tags=defn.get("tags", []),
+                audience=capability.get("audience")
+                or defn.get("audience")
+                or ["executor"],
+                input_schema=input_schema_obj,
+                output_schema=clean_output,
+                execution_timeout=capability.get("execution_timeout")
+                or defn.get("execution_timeout")
+                or 60,
+                execution_mode=capability.get("execution_mode")
+                or defn.get("execution_mode")
+                or "sync",
+                cacheable=capability.get("cacheable") or defn.get("cacheable") or False,
+                idempotent=capability.get("idempotent")
+                or defn.get("idempotent")
+                or False,
+                metadata=defn.get("metadata"),
+            )
+        )
 
     node_count = len(p_nodes_list)
-    
+
     # Format human-readable date
     raw_updated = p.get("updated_at")
     if hasattr(raw_updated, "strftime"):
-            updated_one_str = raw_updated.strftime("%Y-%m-%d")
+        updated_one_str = raw_updated.strftime("%Y-%m-%d")
     elif isinstance(raw_updated, str):
-            updated_one_str = raw_updated[:10]
+        updated_one_str = raw_updated[:10]
     else:
-            updated_one_str = "2024-04-16"
+        updated_one_str = "2024-04-16"
 
     return PluginDetailResponse(
         id=p.get("id"),
@@ -148,8 +281,9 @@ async def get_plugin_details(plugin_id: str):
         downloads_count=p.get("downloads_count") or 0,
         updated_at=updated_one_str,
         tags=p.get("tags") or [],
-        nodes=nodes
+        nodes=nodes,
     )
+
 
 @router.post("/analyze", response_model=List[NodeCandidateSchema])
 async def analyze_plugin(file: UploadFile = File(...)):
@@ -157,16 +291,18 @@ async def analyze_plugin(file: UploadFile = File(...)):
     Uploads a python plugin file and returns candidate nodes found via static analysis.
     """
     if not file.filename.endswith(".py"):
-        raise HTTPException(status_code=400, detail="Only .py files are supported for analysis.")
+        raise HTTPException(
+            status_code=400, detail="Only .py files are supported for analysis."
+        )
 
     # Save to a temporary location for analysis
     temp_dir = Path("resources/temp_uploads")
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / file.filename
-    
+
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-        
+
     try:
         candidates = plugin_manager.analyze_plugin_file(temp_path)
         return [
@@ -174,11 +310,13 @@ async def analyze_plugin(file: UploadFile = File(...)):
                 name=c.name,
                 description=c.description,
                 parameters=c.parameters,
-                module_path=str(temp_path)
-            ) for c in candidates
+                module_path=str(temp_path),
+            )
+            for c in candidates
         ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
 
 @router.post("/onboard")
 async def onboard_plugin_tools(
@@ -188,9 +326,9 @@ async def onboard_plugin_tools(
     author: str = Form("System"),
     author_url: Optional[str] = Form(None),
     thumbnail_url: Optional[str] = Form(None),
-    tags: Optional[str] = Form(None), # Comma separated
+    tags: Optional[str] = Form(None),  # Comma separated
     description: Optional[str] = Form(None),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
 ):
     """
     Comprehensive onboarding endpoint:
@@ -202,19 +340,19 @@ async def onboard_plugin_tools(
     temp_dir = Path("resources/temp_uploads")
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / file.filename
-    
+
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-        
+
     try:
         # Prepare metadata for PluginManager
         metadata = {
             "description": description,
             "author_url": author_url,
             "thumbnail_url": thumbnail_url,
-            "tags": [tag.strip() for tag in tags.split(",")] if tags else []
+            "tags": [tag.strip() for tag in tags.split(",")] if tags else [],
         }
-        
+
         # Determine if it's a zip or py
         if file.filename.endswith(".zip"):
             result = plugin_manager.onboard_plugin(
@@ -223,7 +361,7 @@ async def onboard_plugin_tools(
                 zip_path=temp_path,
                 metadata=metadata,
                 category=category,
-                author=author
+                author=author,
             )
         elif file.filename.endswith(".py"):
             with open(temp_path, "r", encoding="utf-8") as f:
@@ -234,17 +372,19 @@ async def onboard_plugin_tools(
                 source_code=code,
                 metadata=metadata,
                 category=category,
-                author=author
+                author=author,
             )
         else:
-            raise HTTPException(status_code=400, detail="Unsupported file type. Use .zip or .py")
-            
+            raise HTTPException(
+                status_code=400, detail="Unsupported file type. Use .zip or .py"
+            )
+
         # Clean up temp file
         if temp_path.exists():
             temp_path.unlink()
-            
+
         return result
-        
+
     except Exception as e:
         if temp_path.exists():
             temp_path.unlink()
@@ -260,37 +400,39 @@ async def update_plugin(plugin_id: str, request: PluginUpdateRequest):
 
     # Merge existing with update request
     update_data = request.dict(exclude_unset=True)
-    
+
     # name is a required positional arg in save_plugin_definition signature
     name = update_data.pop("name", existing["name"])
-    
+
     try:
         common_memory.save_plugin_definition(
-            plugin_id=plugin_id,
-            name=name,
-            **update_data
+            plugin_id=plugin_id, name=name, **update_data
         )
-        
+
         # Return updated state
         p = common_memory.get_plugin_definition(plugin_id)
-        
-        # Re-use status determination logic from list_plugins if needed, 
+
+        # Re-use status determination logic from list_plugins if needed,
         # but for PATCH return, a simple response is usually enough as long as status matches schema.
         # However, PluginResponse requires all fields.
-        
+
         # Determine status (consistent with list_plugins logic)
-        engine_plugins = {p_inst.id: p_inst for p_inst in plugin_manager.engine.list_plugins()}
-        status = HealthStatus.ACTIVE if plugin_id in engine_plugins else HealthStatus.ACTIVE
+        engine_plugins = {
+            p_inst.id: p_inst for p_inst in plugin_manager.engine.list_plugins()
+        }
+        status = (
+            HealthStatus.ACTIVE if plugin_id in engine_plugins else HealthStatus.ACTIVE
+        )
         tags = p.get("tags") or []
-        
+
         # Format human-readable date
         raw_updated = p.get("updated_at")
         if hasattr(raw_updated, "strftime"):
-             updated_str = raw_updated.strftime("%Y-%m-%d")
+            updated_str = raw_updated.strftime("%Y-%m-%d")
         elif isinstance(raw_updated, str):
-             updated_str = raw_updated[:10]
+            updated_str = raw_updated[:10]
         else:
-             updated_str = "2024-04-16"
+            updated_str = "2024-04-16"
 
         return PluginResponse(
             id=p.get("id"),
@@ -299,7 +441,7 @@ async def update_plugin(plugin_id: str, request: PluginUpdateRequest):
             category=p.get("category") or "general",
             version=p.get("version") or "1.0.0",
             status=status,
-            plugin_type=PluginType.EXTERNAL, # Fallback for discovered/external
+            plugin_type=PluginType.EXTERNAL,  # Fallback for discovered/external
             node_count=len(p.get("nodes_list") or []),
             total_nodes=len(p.get("nodes_list") or []),
             active_node_count=len(p.get("nodes_list") or []),
@@ -308,7 +450,7 @@ async def update_plugin(plugin_id: str, request: PluginUpdateRequest):
             downloads_count=p.get("downloads_count") or 0,
             updated_at=updated_str,
             author=p.get("author") or "Nexus Official",
-            tags=tags
+            tags=tags,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -320,5 +462,5 @@ async def delete_plugin(plugin_id: str):
     success = common_memory.delete_plugin_definition(plugin_id)
     if not success:
         raise HTTPException(status_code=404, detail="Plugin not found")
-        
+
     return {"status": "success", "message": f"Plugin {plugin_id} deleted"}
