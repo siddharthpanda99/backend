@@ -206,6 +206,8 @@ The Agents API is organized into sub-routers:
 | Registry | `/api/v1/agents/registry/` | Entity registry |
 | Runtime | `/api/v1/agents/runtime/` | Runtime operations |
 | Sessions | `/api/v1/agents/runtime/` | Session management |
+| Pipelines | `/api/v1/agents/pipelines/` | Pipeline & checkpoint operations |
+| Policy | `/api/v1/agents/policies/` | Tool permissions & sandboxing |
 
 #### List Agents
 ```http
@@ -473,7 +475,158 @@ DELETE /api/v1/agents/sessions/{session_id}/files/{file_id}
 
 ---
 
-### 7. Entities Registry API
+### 7. Pipelines API
+
+Execute skill pipelines, workflow pipelines, or hybrid pipelines with full state tracking.
+
+#### Execute Pipeline
+```http
+POST /api/v1/agents/pipelines/execute
+```
+
+**Request Body:**
+```json
+{
+  "pipeline_id": "my_pipeline",
+  "initial_inputs": {"input": "value"},
+  "context": {}
+}
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "execution_id": "uuid",
+    "pipeline_id": "my_pipeline",
+    "status": "success",
+    "outputs": {}
+  }
+}
+```
+
+#### List Pipeline Executions
+```http
+GET /api/v1/agents/pipelines/executions
+```
+
+#### Get Execution
+```http
+GET /api/v1/agents/pipelines/executions/{execution_id}
+```
+
+---
+
+### 8. Checkpoints API
+
+Create and manage agent execution checkpoints for replay/debug.
+
+#### Create Checkpoint
+```http
+POST /api/v1/agents/pipelines/checkpoints
+```
+
+#### List Checkpoints
+```http
+GET /api/v1/agents/pipelines/checkpoints
+```
+
+#### Get Checkpoint
+```http
+GET /api/v1/agents/pipelines/checkpoints/{checkpoint_id}
+```
+
+#### Replay from Checkpoint
+```http
+POST /api/v1/agents/pipelines/checkpoints/{checkpoint_id}/replay
+```
+
+#### Delete Checkpoint
+```http
+DELETE /api/v1/agents/pipelines/checkpoints/{checkpoint_id}
+```
+
+---
+
+### 9. Tool Policy API
+
+Manage tool permissions and sandboxing.
+
+#### Create Policy
+```http
+POST /api/v1/agents/policies
+```
+
+**Request Body:**
+```json
+{
+  "policy_id": "safe Policy",
+  "name": "Safe Tool Policy",
+  "permissions": {}
+}
+```
+
+#### List Policies
+```http
+GET /api/v1/agents/policies
+```
+
+#### Assign Policy to Agent
+```http
+POST /api/v1/agents/policies/{policy_id}/assign?agent_id=my_agent
+```
+
+---
+
+### 10. Multi-Agent API
+
+Execute complex tasks with Planner/Executor/Critic coordination.
+
+#### Execute Multi-Agent
+```http
+POST /api/v1/agents/multi-agent/execute
+```
+
+**Request Body:**
+```json
+{
+  "user_request": "Find AI papers and summarize them",
+  "available_agents": ["planner", "executor", "critic"],
+  "context": {},
+  "use_critic": true
+}
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "coordination_id": "uuid",
+    "status": "success",
+    "tasks": [
+      {"task_id": "uuid", "role": "planner", "status": "completed"},
+      {"task_id": "uuid", "role": "executor", "status": "completed"},
+      {"task_id": "uuid", "role": "critic", "status": "completed"}
+    ],
+    "final_result": {},
+    "duration_ms": 1500
+  }
+}
+```
+
+#### List Multi-Agent Executions
+```http
+GET /api/v1/agents/multi-agent/executions
+```
+
+#### Get Multi-Agent Execution
+```http
+GET /api/v1/agents/multi-agent/executions/{coordination_id}
+```
+
+---
+
+### 11. Entities Registry API
 
 #### List All Entities
 ```http

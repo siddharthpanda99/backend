@@ -28,7 +28,7 @@ import time
 import json
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, UploadFile, File, Depends
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlmodel import Session, select, func
 from app.modules.database.service.connection import get_session as get_db_session
 from app.modules.agents.runtime.session_models import (
@@ -155,8 +155,10 @@ async def deploy(req: DeployRequest):
 async def fleet_deploy(req: FleetDeployRequest):
     """Deploy or reconfigure an inference node (Engine Only)."""
     from common_lib.modules.ai_models.container import AIModelsContainer
+
     mirror = AIModelsContainer().mirror_service
 
+    # Always use vllm.compose.yml (ignore compose_file from UI)
     return StreamingResponse(
         vllm_manager.deploy_engine_node(
             model_path=req.model_path,
@@ -164,7 +166,8 @@ async def fleet_deploy(req: FleetDeployRequest):
             gpu_memory_utilization=req.gpu_memory_utilization,
             max_model_len=req.max_model_len,
             quantization=req.quantization,
-            mirror_service=mirror
+            compose_file="resources/vllm.compose.yml",
+            mirror_service=mirror,
         ),
         media_type="text/event-stream",
     )
@@ -320,19 +323,25 @@ async def get_config():
         for m in models:
             # Skip models that are not fully downloaded/local
             # Based on user feedback: hide non-completed models
-            if not getattr(m, "is_local", False) or getattr(m, "status", None) != ModelStatus.COMPLETED:
+            if (
+                not getattr(m, "is_local", False)
+                or getattr(m, "status", None) != ModelStatus.COMPLETED
+            ):
                 continue
 
             modality = getattr(m, "modality", None) or "text"
             tasks = list(getattr(m, "tasks", None) or [])
             provider = getattr(m, "provider", None) or "unknown"
-            
+
             # Refined LLM detection: Text or Multimodal with Chat/Gen tasks
             is_llm = bool(
                 provider in LLM_PROVIDERS
                 or (
                     modality in ("text", "multimodal")
-                    and any(t in tasks for t in ("text_generation", "chat", "multimodal_chat"))
+                    and any(
+                        t in tasks
+                        for t in ("text_generation", "chat", "multimodal_chat")
+                    )
                 )
             )
 
@@ -485,9 +494,7 @@ async def stream(req: StreamRequest):
 
 @router.get("/session_state/{session_id}")
 async def read_session_state(
-    session_id: str,
-    thread_id: str = None,
-    db: Session = Depends(get_db_session)
+    session_id: str, thread_id: str = None, db: Session = Depends(get_db_session)
 ):
     """Read the full LangGraph checkpoint state for a thread.
 
@@ -503,11 +510,15 @@ async def read_session_state(
     checkpoint_id = "initial"
     if agent and agent.graph:
         try:
-            state = agent.graph.get_state({"configurable": {"thread_id": actual_thread_id}})
+            state = agent.graph.get_state(
+                {"configurable": {"thread_id": actual_thread_id}}
+            )
             v = state.values
-            checkpoint_id = str(state.config.get("configurable", {}).get("checkpoint_id", "initial"))
+            checkpoint_id = str(
+                state.config.get("configurable", {}).get("checkpoint_id", "initial")
+            )
         except Exception:
-            pass # Graph state might be empty for new sessions
+            pass  # Graph state might be empty for new sessions
 
     # 2. Fetch last 50 messages from DB for the session (ChatGPT style flat stream)
     # Join Message -> Conversation -> Session to ensure we get messages for this session
@@ -525,15 +536,17 @@ async def read_session_state(
     # Convert to JSON serializable format
     formatted_messages = []
     for m in db_messages:
-        formatted_messages.append({
-            "id": m.id,
-            "role": m.role, # assistant/user
-            "content": m.content,
-            "reasoning": m.reasoning,
-            "trace": json.loads(m.trace_events) if m.trace_events else [],
-            "created_at": m.created_at.isoformat() if m.created_at else None,
-            "conversation_id": m.conversation_id,
-        })
+        formatted_messages.append(
+            {
+                "id": m.id,
+                "role": m.role,  # assistant/user
+                "content": m.content,
+                "reasoning": m.reasoning,
+                "trace": json.loads(m.trace_events) if m.trace_events else [],
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+                "conversation_id": m.conversation_id,
+            }
+        )
 
     # Check if more messages exist
     has_more = False
@@ -567,9 +580,6 @@ async def read_session_state(
         "last_input": v.get("input", ""),
         "checkpoint_id": checkpoint_id,
     }
-
-
-
 
 
 @router.post("/upload")

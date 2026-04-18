@@ -45,6 +45,8 @@ from app.modules.authorization.routes.permissions import router as permissions_r
 from app.modules.users.routes.users import router as users_router
 from app.modules.projects.routes.projects import router as projects_router
 from app.modules.agents.routes.index import router as agents_router
+from app.modules.agents.runtime.pipeline_routes import router as pipeline_router
+from app.modules.agents.runtime.policy_routes import router as policy_router
 from app.modules.entities.routes.registry import router as entities_router
 from app.modules.workflows.routes.index import router as workflows_router
 from app.modules.tools.routes.index import router as tools_router
@@ -393,6 +395,18 @@ def create_app() -> FastAPI:
         dependencies=global_deps,
     )
     app.include_router(
+        pipeline_router,
+        prefix=f"{settings.API_V1_STR}/agents/pipelines",
+        tags=["Pipelines"],
+        dependencies=global_deps,
+    )
+    app.include_router(
+        policy_router,
+        prefix=f"{settings.API_V1_STR}/agents",
+        tags=["Policy & Multi-Agent"],
+        dependencies=global_deps,
+    )
+    app.include_router(
         workflows_router,
         prefix=f"{settings.API_V1_STR}/workflows",
         tags=["Workflows"],
@@ -469,7 +483,9 @@ def create_app() -> FastAPI:
     )
 
     # Plugin Management System
-    print(f"Startup: Including Plugins router with prefix: {settings.API_V1_STR}/plugins")
+    print(
+        f"Startup: Including Plugins router with prefix: {settings.API_V1_STR}/plugins"
+    )
     app.include_router(
         plugins_router,
         prefix=f"{settings.API_V1_STR}/plugins",

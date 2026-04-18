@@ -1,6 +1,60 @@
 # Changelog - Nexus AI Backend
 
-All notable changes to the `Backend` service, from initialization to the latest Agentic V3 stabilization.
+All notable changes to the `Backend` service, from initialization to the latest Agent OS features.
+
+## [V4.0.0] - 2026-04-18
+
+### Agent OS - Unified Execution Platform
+
+- **Pipeline System**: Added `UnifiedPipelineExecutor` for skill/workflow/hybrid pipelines
+  - Supports skill execution, workflow execution, and conditional branching
+  - Execution history tracking with IDs for replay
+
+- **Memory**: Added `VectorMemoryStore` with pgvector integration
+  - Semantic search for agent memories
+  - `ContextBuilder` for dynamic context assembly from memory
+  - Token budget optimization
+
+- **Checkpoints**: Added `CheckpointManager` for state snapshots
+  - Create, list, get, delete checkpoints
+  - `ExecutionReplay` for replay/debug from any checkpoint
+  - Timeline for debugging
+
+- **Tool Permissions**: Added `ToolPermissionManager` with sandboxing
+  - Rate limits per agent/tool
+  - Blocked command patterns
+  - Execution logging
+
+- **Multi-Agent**: Added `MultiAgentCoordinator` with Planner/Executor/Critic pattern
+  - `PlannerAgent`: Decomposes complex tasks into subtasks
+  - `ExecutorAgent`: Executes subtasks
+  - `CriticAgent`: Reviews results, provides feedback
+
+- **API Routes**: Added new endpoints
+  - `/agents/pipelines/execute` - Execute pipeline
+  - `/agents/pipelines/checkpoints` - Checkpoint CRUD
+  - `/agents/policies` - Tool policy management
+  - `/agents/multi-agent/execute` - Multi-agent coordination
+
+- **Database**: Added Alembic migration for new tables
+  - `agent_checkpoints` - Execution snapshots
+  - `agent_policies` - Tool permissions
+  - `agent_memories` - Vector memory storage
+
+### Files Added
+
+```
+common_lib/src/.../orchestration/
+├── agents/skill/pipeline.py         # UnifiedPipelineExecutor
+├── agents/checkpoint.py          # CheckpointManager, ExecutionReplay
+├── agents/multi_agent.py         # MultiAgentCoordinator
+├── memory/vector_store.py       # VectorMemoryStore
+└── tools/sandbox.py            # ToolPermissionManager
+
+Backend/.../agents/runtime/
+├── pipeline_routes.py         # Pipeline API endpoints
+└── policy_routes.py          # Policy & Multi-Agent endpoints
+```
 
 ## [V3.0.0] - 2026-04-04
 
