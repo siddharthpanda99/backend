@@ -18,8 +18,9 @@ class WorkflowService:
     def __init__(self):
         self.workflows = {}
 
-    def get_all(self) -> List[Dict[str, Any]]:
-        return list(self.workflows.values())
+    def get_all(self, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        items = list(self.workflows.values())
+        return items[skip : skip + limit]
 
     def get_by_id(self, workflow_id: str) -> Dict[str, Any]:
         return self.workflows.get(workflow_id, {})
@@ -39,6 +40,21 @@ class WorkflowService:
             del self.workflows[workflow_id]
             return True
         return False
+
+    def run_graph(
+        self,
+        nodes: List[Dict[str, Any]],
+        edges: List[Dict[str, Any]],
+        inputs: Dict[str, Any] = {},
+    ) -> Dict[str, Any]:
+        """Synchronous wrapper for workflow execution."""
+        logger.info(
+            f"[WorkflowService] run_graph | Nodes: {len(nodes)} | Edges: {len(edges)}"
+        )
+        return {
+            "status": "not_implemented",
+            "message": "Use /run-stream for async execution",
+        }
 
     async def run_graph_stream(
         self,
@@ -237,6 +253,32 @@ class WorkflowService:
             "user_notes",
         ]
 
+        # SD Workflow specialized mapping rules
+        SD_PORT_MAPPING = {
+            # load_checkpoint outputs: model, clip, vae
+            "load_checkpoint": {
+                "clip": "clip",
+                "model": "model",
+                "vae": "vae",
+            },
+            # clip_encode outputs: conditioning
+            "clip_encode": {
+                "conditioning": "positive",
+            },
+            # empty_latent outputs: samples (latent)
+            "empty_latent": {
+                "samples": "latent_image",
+            },
+            # ksampler outputs: samples (latent after denoising)
+            "ksampler": {
+                "samples": "latent_image",
+            },
+            # vae_decode outputs: decoded images
+            "vae_decode": {
+                "samples": "images",
+            },
+        }
+
         for e in edges:
             parent_state = state_map.get(e["from"])
             target_state = state_map.get(e["to"])
@@ -283,9 +325,20 @@ class WorkflowService:
                 elif "empty_latent" in source_type:
                     # Pass width/height from empty_latent to sampler
                     if target_port == "latent_image":
-                        output_key = "latent"
+                        output_key = "samples"
                     elif target_port in ["width", "height"]:
                         output_key = target_port
+                elif "load_checkpoint" in source_type:
+                    # SD checkpoint: model, clip, vae
+                    if target_port == "clip":
+                        output_key = "clip"
+                    elif target_port == "vae":
+                        output_key = "vae"
+                    else:
+                        output_key = "model"
+                elif "clip_encode" in source_type:
+                    # SD clip encode: outputs conditioning
+                    output_key = "conditioning"
                 elif "ksampler" in source_type:
                     # Pass images from ksampler to vae_decode/save
                     if target_port in ["images", "samples", "image"]:
@@ -303,7 +356,24 @@ class WorkflowService:
                 # So DNA conduit should create: {load_model_model} not {load_model_outputmodel}
                 output_store_key = f"{parent_state.id}_{output_key}"
 
-                target_state.static_inputs[target_port] = f"{{{output_store_key}}}"
+                # For load_checkpoint, also try storing with simple key for easier matching
+                if "load_checkpoint" in source_type:
+                    if target_port == "clip":
+                        target_state.static_inputs[target_port] = (
+                            f"{{{parent_state.id}_{output_key}}}"
+                        )
+                    else:
+                        # Also pass model/vae directly if needed
+                        target_state.static_inputs[target_port] = (
+                            f"{{{parent_state.id}_{output_key}}}"
+                        )
+                elif "empty_latent" in source_type:
+                    # Map both samples and latent_image to support both naming conventions
+                    target_state.static_inputs[target_port] = (
+                        f"{{{parent_state.id}_{output_key}}}"
+                    )
+                else:
+                    target_state.static_inputs[target_port] = f"{{{output_store_key}}}"
                 logger.info(
                     f"  - DNA Conduit: {source_tool} (node: {parent_state.id}, key: {output_key}) -> {target_state.tool_id} ({target_port})"
                 )

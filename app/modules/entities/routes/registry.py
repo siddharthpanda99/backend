@@ -559,6 +559,13 @@ async def list_entities(
                             validated = a["definition"]
                     else:
                         validated = a
+                    
+                    # Ensure root compatibility
+                    if not validated.get("id") and validated.get("identity", {}).get("id"):
+                         validated["id"] = validated["identity"]["id"]
+                    if not validated.get("name") and validated.get("identity", {}).get("name"):
+                         validated["name"] = validated["identity"]["name"]
+                         
                     validated_agents.append(validated)
                 except Exception as e:
                     logger.warning(f"Agent validation failed for {a.get('id')}: {e}")
@@ -589,6 +596,13 @@ async def list_entities(
 
                     # 2. Validate
                     validated = CapabilityDefinition.model_validate(s).model_dump()
+                    
+                    # Ensure root compatibility for UI (V3 often hides ID in identity)
+                    if not validated.get("id") and validated.get("identity", {}).get("id"):
+                         validated["id"] = validated["identity"]["id"]
+                    if not validated.get("name") and validated.get("identity", {}).get("name"):
+                         validated["name"] = validated["identity"]["name"]
+                         
                     validated_skills.append(validated)
                 except Exception as e:
                     s_id = s.get("id") if isinstance(s, dict) else "unknown"
