@@ -69,35 +69,35 @@ REPLACEMENTS = [
     # orchestration.workflow -> workflows
     (
         r"from common_lib\.modules\.orchestration\.workflow\.schemas",
-        "from common_lib.modules.workflows.schemas",
+        "from common_lib.modules.workflows.standard.schemas",
     ),
     (
         r"from common_lib\.modules\.orchestration\.workflow\.execution\.signals",
-        "from common_lib.modules.workflows.execution.signals",
+        "from common_lib.modules.workflows.standard.execution.signals",
     ),
     (
         r"from common_lib\.modules\.orchestration\.workflow\.execution\.executor",
-        "from common_lib.modules.workflows.execution.executor",
+        "from common_lib.modules.workflows.standard.execution.executor",
     ),
     (
         r"from common_lib\.modules\.orchestration\.workflow\.execution\.core",
-        "from common_lib.modules.workflows.execution.core",
+        "from common_lib.modules.workflows.standard.execution.core",
     ),
     (
         r"from common_lib\.modules\.orchestration\.workflow\.execution\.context",
-        "from common_lib.modules.workflows.execution.context",
+        "from common_lib.modules.workflows.standard.execution.context",
     ),
     (
         r"from common_lib\.modules\.orchestration\.workflow\.execution\.primitives",
-        "from common_lib.modules.workflows.execution.primitives",
+        "from common_lib.modules.workflows.standard.execution.primitives",
     ),
     (
         r"from common_lib\.modules\.orchestration\.workflow\.loaders\.workflow_loader",
-        "from common_lib.modules.workflows.loaders.workflow_loader",
+        "from common_lib.modules.workflows.standard.loaders.workflow_loader",
     ),
     (
         r"from common_lib\.modules\.orchestration\.workflow\.observability",
-        "from common_lib.modules.workflows.observability",
+        "from common_lib.modules.workflows.standard.observability",
     ),
     # orchestration.inference -> orchestration.inference
     (

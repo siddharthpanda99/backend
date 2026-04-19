@@ -7,7 +7,7 @@ from .schemas import (
     VisionWorkflowResponse,
 )
 from .service import vision_service
-from common_lib.modules.workflows.execution.signals import (
+from common_lib.modules.workflows.standard.execution.signals import (
     execution_signals,
     ExecutionSignal,
 )

@@ -5,11 +5,13 @@ import asyncio
 from typing import Any, Dict, List, AsyncGenerator
 from pathlib import Path
 
-from common_lib.modules.workflows.execution.executor import GraphExecutor
-from common_lib.modules.workflows.execution.core import ExecutionEngine
-from common_lib.modules.workflows.execution.context import ExecutionContext
-from common_lib.modules.workflows.execution.primitives import Graph, State, Transition
-from common_lib.modules.workflows.observability import EventTracer, EventType
+from common_lib.modules.workflows.standard.execution.executor import GraphExecutor
+from common_lib.modules.workflows.standard.execution.core import ExecutionEngine
+from common_lib.modules.workflows.standard.execution.context import ExecutionContext
+from common_lib.modules.workflows.standard.execution.primitives import Graph, State, Transition
+from common_lib.modules.workflows.standard.observability import EventTracer, EventType
+
+from app.modules.workflows.service.observability_backend import PostgresEventBackend
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +105,9 @@ class WorkflowService:
                         )
 
                     loop.call_soon_threadsafe(event_queue.put_nowait, data)
+                    
+                    # Also call standard backends (Postgres, etc)
+                    super().emit(event)
                 except Exception as e:
                     import sys
 
@@ -399,6 +404,8 @@ class WorkflowService:
                     registry.auto_register_common_lib_tools()
 
                 shared_tracer = QueueTracer()
+                shared_tracer.add_backend(PostgresEventBackend())
+                
                 engine = ExecutionEngine(registry=registry, tracer=shared_tracer)
                 executor = GraphExecutor(engine, shared_tracer)
                 context = ExecutionContext(agent_id="workflow_system", role="executor")

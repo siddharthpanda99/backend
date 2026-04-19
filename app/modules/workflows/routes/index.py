@@ -31,12 +31,12 @@ async def run_workflow_stream(request: WorkflowRunRequest):
 
     async def event_generator():
         # Create workflow state
-        from common_lib.modules.workflows.state import (
+        from common_lib.modules.workflows.standard.state import (
             WorkflowState,
             WorkflowStatus,
             PauseSource,
         )
-        from common_lib.modules.workflows.observability.events import EventType
+        from common_lib.modules.workflows.standard.observability.events import EventType
 
         state = WorkflowState(
             execution_id=f"exec_{id(request.nodes) if request.nodes else 'test'}",
@@ -77,7 +77,7 @@ def pause_workflow(
     execution_id: str, source: str = "user", reason: str = "User requested pause"
 ):
     """Pause a running workflow."""
-    from common_lib.modules.workflows.state import PauseSource, WorkflowStatus
+    from common_lib.modules.workflows.standard.state import PauseSource, WorkflowStatus
 
     state = _workflow_states.get(execution_id)
     if not state:

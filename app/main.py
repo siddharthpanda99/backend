@@ -49,6 +49,7 @@ from app.modules.agents.runtime.pipeline_routes import router as pipeline_router
 from app.modules.agents.runtime.policy_routes import router as policy_router
 from app.modules.entities.routes.registry import router as entities_router
 from app.modules.workflows.routes.index import router as workflows_router
+from app.modules.workflows.routes.observability import router as observability_router
 from app.modules.tools.routes.index import router as tools_router
 from app.modules.memories.routes.index import router as memories_router
 from app.modules.models.routes import router as models_router
@@ -56,6 +57,8 @@ from app.modules.models.external_routes import router as external_models_router
 from app.modules.data_forge.routes import router as data_forge_router
 from app.modules.grid.routes import router as grid_router
 from app.modules.plugins.routes.router import router as plugins_router
+from app.modules.daw.routes import router as daw_router
+from app.modules.memories.routes.external_memory import router as memory_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -413,6 +416,12 @@ def create_app() -> FastAPI:
         dependencies=global_deps,
     )
     app.include_router(
+        observability_router,
+        prefix=f"{settings.API_V1_STR}/workflows/observability",
+        tags=["Workflow Observability"],
+        dependencies=global_deps,
+    )
+    app.include_router(
         tools_router,
         prefix=f"{settings.API_V1_STR}/tools",
         tags=["Tools"],
@@ -445,6 +454,16 @@ def create_app() -> FastAPI:
         vision_router,
         prefix=f"{settings.API_V1_STR}/vision",
         tags=["Vision"],
+        dependencies=global_deps,
+    )
+
+    # New Audio API
+    from app.modules.audio.routes import router as audio_router
+
+    app.include_router(
+        audio_router,
+        prefix=f"{settings.API_V1_STR}/audio",
+        tags=["Audio & TTS"],
         dependencies=global_deps,
     )
 
@@ -490,6 +509,24 @@ def create_app() -> FastAPI:
         plugins_router,
         prefix=f"{settings.API_V1_STR}/plugins",
         tags=["Plugin Management"],
+        dependencies=global_deps,
+    )
+
+    # DAW - Digital Audio Workstation
+    print(f"Startup: Including DAW router with prefix: {settings.API_V1_STR}/daw")
+    app.include_router(
+        daw_router,
+        prefix=f"{settings.API_V1_STR}/daw",
+        tags=["DAW"],
+        dependencies=global_deps,
+    )
+
+    # Memory Module
+    print(f"Startup: Including Memory router with prefix: {settings.API_V1_STR}/memory")
+    app.include_router(
+        memory_router,
+        prefix=f"{settings.API_V1_STR}/memory",
+        tags=["Memory"],
         dependencies=global_deps,
     )
 

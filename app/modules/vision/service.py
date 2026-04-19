@@ -46,11 +46,11 @@ class VisionService:
         import threading
         import uuid
         from dataclasses import asdict
-        from common_lib.modules.workflows.loaders.workflow_loader import WorkflowLoader
-        from common_lib.modules.workflows.execution.executor import GraphExecutor
-        from common_lib.modules.workflows.execution.core import ExecutionEngine
-        from common_lib.modules.workflows.execution.context import ExecutionContext
-        from common_lib.modules.workflows.observability import EventTracer, EventType
+        from common_lib.modules.workflows.standard.loaders.workflow_loader import WorkflowLoader
+        from common_lib.modules.workflows.standard.execution.executor import GraphExecutor
+        from common_lib.modules.workflows.standard.execution.core import ExecutionEngine
+        from common_lib.modules.workflows.standard.execution.context import ExecutionContext
+        from common_lib.modules.workflows.standard.observability import EventTracer, EventType
 
         # 1. Setup the inputs Exactly like common_lib controller does
         inputs = {
@@ -404,12 +404,12 @@ class VisionService:
             logger.info(f"Prompt: {prompt[:50]}...")
 
             # 5. Execute workflow using GraphExecutor directly
-            from common_lib.modules.workflows.loaders.workflow_loader import (
+            from common_lib.modules.workflows.standard.loaders.workflow_loader import (
                 WorkflowLoader,
             )
-            from common_lib.modules.workflows.execution.executor import GraphExecutor
-            from common_lib.modules.workflows.execution.core import ExecutionEngine
-            from common_lib.modules.workflows.execution.context import ExecutionContext
+            from common_lib.modules.workflows.standard.execution.executor import GraphExecutor
+            from common_lib.modules.workflows.standard.execution.core import ExecutionEngine
+            from common_lib.modules.workflows.standard.execution.context import ExecutionContext
             from common_lib.modules.core_infrastructure.registry import RegistryService
 
             # Load the workflow
@@ -437,7 +437,7 @@ class VisionService:
             import logging
 
             loader_logger = logging.getLogger(
-                "common_lib.modules.workflows.loaders.workflow_loader"
+                "common_lib.modules.workflows.standard.loaders.workflow_loader"
             )
             old_level = loader_logger.level
             loader_logger.setLevel(logging.DEBUG)

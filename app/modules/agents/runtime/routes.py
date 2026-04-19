@@ -721,6 +721,38 @@ async def available_workflows():
         return []
 
 
+@router.get("/available_loops")
+async def available_loops():
+    """List all valid executable agentic loops from DB.
+
+    Filter workflows where definition.workflow_type = executable_graph
+    """
+    from app.core.common_lib_integration import common_memory
+
+    try:
+        all_wfs = common_memory.list_workflow_definitions()
+        loops = []
+
+        for wf in all_wfs:
+            defn = wf.get("definition", {})
+            workflow_type = defn.get("workflow_type", "")
+
+            if workflow_type == "executable_graph":
+                loops.append(
+                    {
+                        "id": wf.get("id"),
+                        "name": defn.get("name", wf["id"].replace("_", " ").title()),
+                        "description": defn.get("description", "Agentic loop."),
+                        "workflow_type": workflow_type,
+                    }
+                )
+
+        return loops
+    except Exception as e:
+        logger.error(f"Available loops failed: {e}")
+        return []
+
+
 @router.get("/gemini_models")
 async def gemini_models():
     """Return the live list of available Gemini models."""

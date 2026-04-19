@@ -53,6 +53,12 @@ def init_db():
     from app.modules.authorization.models.index import Role, Permission, UserRole, RolePermission, UserResourceRole
     from app.modules.projects.models.index import Project, ProjectModule, Workflow, Task
     from app.modules.grid.models import GridConfig
+    from app.modules.workflows.models.observability import WorkflowExecution, WorkflowEvent
+    
+    # Create schemas before creating tables
+    with engine.connect() as conn:
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS observability"))
+        conn.commit()
     
     SQLModel.metadata.create_all(engine)
 

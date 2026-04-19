@@ -1,13 +1,13 @@
 from typing import List, Optional, Dict, Any, AsyncGenerator
 import json
 import asyncio
-from fastapi import APIRouter, Query, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Query, HTTPException, BackgroundTasks, Form
 from fastapi.responses import StreamingResponse
 from app.modules.common.types.index import APIResponse
 from app.core.common_lib_integration import common_memory
 from app.modules.entities.services.vector_search import get_search_service
 from common_lib.modules.orchestration.agents.skill.schemas import CapabilityDefinition
-from common_lib.modules.workflows.schemas import WorkflowDefinition
+from common_lib.modules.workflows.standard.schemas import WorkflowDefinition
 from common_lib.modules.orchestration.agents.agent.prompt_resolver import PromptResolver
 from app.modules.agents.runtime.core import get_engine_manager
 from app.modules.agents.runtime.tools.registry import BUILTIN_TOOL_REGISTRY
@@ -459,7 +459,9 @@ async def list_entities(
                     if w_id and w_id not in all_workflows_flat:
                         # Look for metadata inside the definition column if top-level is empty
                         definition = wf.get("definition") or {}
-                        metadata = wf.get("metadata") or definition.get("metadata") or {}
+                        metadata = (
+                            wf.get("metadata") or definition.get("metadata") or {}
+                        )
 
                         all_workflows_flat[w_id] = {
                             "id": w_id,
@@ -480,7 +482,9 @@ async def list_entities(
 
                     # Coordination Correction: If it's a "Config" format and has a subtype, use the subtype as the category
                     sub = meta.get("subtype")
-                    if (meta.get("format") == "config" or cat == "Configuration") and sub:
+                    if (
+                        meta.get("format") == "config" or cat == "Configuration"
+                    ) and sub:
                         cat = sub.upper()
 
                     if cat not in final_groups:
@@ -559,13 +563,17 @@ async def list_entities(
                             validated = a["definition"]
                     else:
                         validated = a
-                    
+
                     # Ensure root compatibility
-                    if not validated.get("id") and validated.get("identity", {}).get("id"):
-                         validated["id"] = validated["identity"]["id"]
-                    if not validated.get("name") and validated.get("identity", {}).get("name"):
-                         validated["name"] = validated["identity"]["name"]
-                         
+                    if not validated.get("id") and validated.get("identity", {}).get(
+                        "id"
+                    ):
+                        validated["id"] = validated["identity"]["id"]
+                    if not validated.get("name") and validated.get("identity", {}).get(
+                        "name"
+                    ):
+                        validated["name"] = validated["identity"]["name"]
+
                     validated_agents.append(validated)
                 except Exception as e:
                     logger.warning(f"Agent validation failed for {a.get('id')}: {e}")
@@ -596,13 +604,17 @@ async def list_entities(
 
                     # 2. Validate
                     validated = CapabilityDefinition.model_validate(s).model_dump()
-                    
+
                     # Ensure root compatibility for UI (V3 often hides ID in identity)
-                    if not validated.get("id") and validated.get("identity", {}).get("id"):
-                         validated["id"] = validated["identity"]["id"]
-                    if not validated.get("name") and validated.get("identity", {}).get("name"):
-                         validated["name"] = validated["identity"]["name"]
-                         
+                    if not validated.get("id") and validated.get("identity", {}).get(
+                        "id"
+                    ):
+                        validated["id"] = validated["identity"]["id"]
+                    if not validated.get("name") and validated.get("identity", {}).get(
+                        "name"
+                    ):
+                        validated["name"] = validated["identity"]["name"]
+
                     validated_skills.append(validated)
                 except Exception as e:
                     s_id = s.get("id") if isinstance(s, dict) else "unknown"
@@ -1014,7 +1026,9 @@ async def sync_progress_stream():
 
 
 @router.post("/", response_model=APIResponse[Dict[str, Any]])
-async def create_entity(entity_type: str, definition: Dict[str, Any]):
+async def create_entity(
+    entity_type: str = Form(...), definition: Dict[str, Any] = Form(...)
+):
     """
     Unified creation endpoint for all system entities.
     Validates against Gold Standard Pydantic schemas.

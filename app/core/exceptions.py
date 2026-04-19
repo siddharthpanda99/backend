@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from pydantic import ValidationError
 from app.core.settings import get_settings
 
+
 class NexusException(Exception):
     def __init__(
         self,
@@ -23,6 +24,7 @@ class NexusException(Exception):
         self.status_code = status_code
         self.details = details or {}
 
+
 def _get_module_from_request(url: str) -> str:
     """Extracts module name from URL (e.g., /api/v1/users/ -> Users)"""
     parts = url.split("/")
@@ -30,13 +32,14 @@ def _get_module_from_request(url: str) -> str:
         return parts[3].capitalize()
     return "Global"
 
+
 def _build_error_response(
     status_code: int,
     code: str,
     message: str,
     module: str,
     detail: Any = None,
-    exc: Exception = None
+    exc: Exception = None,
 ) -> JSONResponse:
     content = {
         "error": code,
@@ -44,12 +47,13 @@ def _build_error_response(
         "module": module,
         "detail": detail,
     }
-    
+
     # Add stack trace if exception is provided
     if exc and get_settings().ENVIRONMENT == "development":
         content["stack_trace"] = traceback.format_exc().splitlines()
 
     return JSONResponse(status_code=status_code, content=content)
+
 
 async def nexus_exception_handler(request: Request, exc: NexusException):
     module = exc.module or _get_module_from_request(str(request.url))
@@ -59,8 +63,9 @@ async def nexus_exception_handler(request: Request, exc: NexusException):
         message=exc.message,
         module=module,
         detail=exc.details,
-        exc=exc 
+        exc=exc,
     )
+
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     module = _get_module_from_request(str(request.url))
@@ -69,15 +74,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         err_msg = error.get("msg")
         field = ".".join(str(x) for x in error.get("loc", []))
         errors.append(f"{field}: {err_msg}")
-        
+
     return _build_error_response(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         code="VALIDATION_ERROR",
         message="Data validation failed",
         module=module,
         detail=errors,
-        exc=None # Validation errors don't really need stack traces
+        exc=None,  # Validation errors don't really need stack traces
     )
+
 
 async def pydantic_exception_handler(request: Request, exc: ValidationError):
     module = _get_module_from_request(str(request.url))
@@ -86,15 +92,16 @@ async def pydantic_exception_handler(request: Request, exc: ValidationError):
         err_msg = error.get("msg")
         field = ".".join(str(x) for x in error.get("loc", []))
         errors.append(f"{field}: {err_msg}")
-        
+
     return _build_error_response(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         code="VALIDATION_ERROR",
         message="Data validation failed",
         module=module,
         detail=errors,
-        exc=None
+        exc=None,
     )
+
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     module = _get_module_from_request(str(request.url))
@@ -104,13 +111,14 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         message=str(exc.detail),
         module=module,
         detail=None,
-        exc=exc
+        exc=exc,
     )
+
 
 async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
     module = _get_module_from_request(str(request.url))
     error_msg = str(exc)
-    
+
     code = "DATABASE_ERROR"
     message = "A database error occurred"
     status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -118,7 +126,7 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
     if isinstance(exc, IntegrityError):
         status_code = status.HTTP_400_BAD_REQUEST
         orig_msg = str(exc.orig) if exc.orig else str(exc)
-        
+
         if "unique constraint" in orig_msg.lower():
             code = "DUPLICATE_RESOURCE"
             message = "This resource already exists."
@@ -131,23 +139,27 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
         elif "foreign key constraint" in orig_msg.lower():
             code = "REFERENCE_ERROR"
             message = "Referenced resource does not exist."
-    
+
     return _build_error_response(
         status_code=status_code,
         code=code,
         message=message,
         module=module,
         detail=str(exc),
-        exc=exc
+        exc=exc,
     )
 
+
 async def generic_exception_handler(request: Request, exc: Exception):
+    import traceback
+
     module = _get_module_from_request(str(request.url))
+    tb = traceback.format_exc()
     return _build_error_response(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         code="INTERNAL_SERVER_ERROR",
-        message="An unexpected error occurred.",
+        message=f"Error: {str(exc)} | Trace: {tb[:500]}",
         module=module,
         detail=str(exc),
-        exc=exc
+        exc=exc,
     )
