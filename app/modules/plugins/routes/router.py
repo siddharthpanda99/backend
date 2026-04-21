@@ -1,9 +1,8 @@
-import os
-import shutil
-import yaml
+import json
+import logging
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Query
 from app.modules.plugins.schemas.plugin_schemas import (
     PluginResponse,
     NodeCandidateSchema,
@@ -16,6 +15,154 @@ from app.modules.plugins.schemas.plugin_schemas import (
 )
 from common_lib.modules.plugins.manager import PluginManager
 from common_lib.modules.plugins.schemas import ExtractionCandidate
+
+# Path constants for project KB - compute at module load time from this file's location
+_DOCS_BASE = (
+    Path(__file__).resolve().parent.parent.parent.parent.parent.parent
+    / "Python Libs/common_lib/docs"
+)
+_KB_BASE = (
+    Path(__file__).resolve().parent.parent.parent.parent.parent.parent
+    / "Knowledgebase"
+)
+
+
+def _load_kb_graph() -> dict:
+    """Load unified project graph from Apache AGE: Docs + Workflows + Agents + Procedures."""
+    from app.modules.database.service.connection import engine
+    from sqlalchemy import text
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    memo_graph = {
+        "graph": {
+            "id": "unified_super_graph",
+            "name": "Unified Super Graph",
+            "version": "2.0.0",
+        },
+        "nodes": [],
+        "edges": [],
+        "categories": [],
+    }
+
+    category_colors = {
+        "Core": "#6366f1",
+        "Evolution": "#8b5cf6",
+        "Features": "#f59e0b",
+        "Walkthroughs": "#10b981",
+        "Vision": "#f97316",
+        "Engine": "#ec4899",     # Engine Docs
+        "Agent": "#a855f7",      # Executable Agents
+        "Workflow": "#22c55e",   # Standard DAGs
+        "Procedure": "#3b82f6",  # LangGraph Steps
+        "Memory": "#06b6d4",     # Graphify Memories
+        "Tag": "#94a3b8",        # Concept Tags
+    }
+
+    categories = set()
+
+    try:
+        with engine.connect() as conn:
+            # 1. Setup AGE
+            conn.execute(text("LOAD 'age';"))
+            conn.execute(text('SET search_path = ag_catalog, "$user", public;'))
+            
+            # 2. Query Nodes
+            node_query = """
+            SELECT * FROM cypher('super_graph', $q$
+                MATCH (n) RETURN n
+            $q$) as (n agtype);
+            """
+            query_result = conn.execute(text(node_query))
+            
+            for row in query_result:
+                node_raw = row[0]
+                node_data = {}
+                
+                if isinstance(node_raw, str):
+                    # Handle AGE agtype strings (e.g. '{"id": 1, ...}::vertex')
+                    clean_json = node_raw.split("::")[0] if "::" in node_raw else node_raw
+                    try:
+                        node_data = json.loads(clean_json)
+                    except:
+                        logger.error(f"Failed to parse AGE node: {node_raw}")
+                        continue
+                elif isinstance(node_raw, dict):
+                    node_data = node_raw
+                else:
+                    node_data = getattr(node_raw, '__dict__', {})
+
+                props = node_data.get("properties", {})
+                node_id = str(props.get("id") or str(node_data.get("id", "")))
+                
+                if not node_id or node_id == "None":
+                    continue
+
+                cat = str(props.get("category") or props.get("type") or "Knowledge").capitalize()
+                categories.add(cat)
+
+                memo_graph["nodes"].append({
+                    "id": node_id,
+                    "label": str(props.get("name") or props.get("filename") or node_id),
+                    "category": cat,
+                    "description": str(props.get("description") or props.get("filename") or ""),
+                    "doc": str(props.get("filename", "")) if props.get("filename") else None,
+                    "tags": [str(t) for t in props.get("tags", [])],
+                    "entity_type": str(props.get("type", "doc"))
+                })
+
+            # 3. Query Edges - Safe match only nodes with IDs
+            edge_query = """
+            SELECT * FROM cypher('super_graph', $q$
+                MATCH (a)-[r]->(b) 
+                WHERE a.id IS NOT NULL AND b.id IS NOT NULL
+                RETURN a.id, b.id, label(r)
+            $q$) as (a_id agtype, b_id agtype, rel_label agtype);
+            """
+            edges_result = conn.execute(text(edge_query))
+            
+            # Create lookup set for valid node IDs
+            node_id_lookup = {n["id"] for n in memo_graph["nodes"]}
+            
+            for row in edges_result:
+                # AGE IDs in row[0], row[1] might also be agtype strings
+                from_id = str(row[0]).split("::")[0].strip('"') if row[0] is not None else None
+                to_id = str(row[1]).split("::")[0].strip('"') if row[1] is not None else None
+                rel = str(row[2]).split("::")[0].strip('"') if row[2] is not None else "CONNECTED"
+                
+                if from_id == 'None' or to_id == 'None' or not from_id or not to_id:
+                    continue
+
+                if from_id not in node_id_lookup or to_id not in node_id_lookup:
+                    # Skip orphan edges that refer to non-existent nodes
+                    continue
+                    
+                memo_graph["edges"].append({
+                    "from": from_id,
+                    "to": to_id,
+                    "label": rel,
+                    "type": "explicit" if rel == "LINKS_TO" else "tag"
+                })
+
+        # 4. Finalize Categories
+        for cat_name in categories:
+            memo_graph["categories"].append({
+                "id": cat_name,
+                "color": category_colors.get(cat_name, "#6366f1"),
+                "label": cat_name,
+            })
+
+    except Exception as e:
+        logger.error(f"Failed to load KB graph from AGE: {e}")
+        # Return partial graph or empty if failed
+        pass
+
+    return memo_graph
+
+
+# Cache for KB graph
+_KB_GRAPH_CACHE = None
 
 router = APIRouter(tags=["Plugins"])
 plugin_manager = PluginManager()
@@ -464,3 +611,63 @@ async def delete_plugin(plugin_id: str):
         raise HTTPException(status_code=404, detail="Plugin not found")
 
     return {"status": "success", "message": f"Plugin {plugin_id} deleted"}
+
+
+# ==================== Project KB / Documentation ====================
+
+
+@router.get("/project-kb/graph")
+async def get_project_kb_graph(refresh: bool = Query(False)):
+    """
+    Returns the project knowledge base graph for visualization.
+    Syncs all docs/*.md files and returns them as nodes.
+    """
+    global _KB_GRAPH_CACHE
+    if _KB_GRAPH_CACHE is None or refresh:
+        _KB_GRAPH_CACHE = _load_kb_graph()
+    return _KB_GRAPH_CACHE
+
+
+@router.get("/project-kb/nodes")
+async def get_project_kb_nodes():
+    """Returns all wiki nodes for documentation browser."""
+    graph = await get_project_kb_graph()
+    return {"nodes": graph.get("nodes", []), "categories": graph.get("categories", [])}
+
+
+@router.get("/project-kb/node/{node_id}")
+async def get_project_kb_node(node_id: str):
+    """Returns details for a specific wiki node."""
+    graph = await get_project_kb_graph()
+    for node in graph.get("nodes", []):
+        if node.get("id") == node_id:
+            return node
+    raise HTTPException(status_code=404, detail=f"Node {node_id} not found")
+
+
+@router.get("/project-kb/search")
+async def search_project_kb(q: str = ""):
+    """Search wiki nodes by label or description."""
+    graph = await get_project_kb_graph()
+    query = q.lower()
+    results = []
+    for node in graph.get("nodes", []):
+        if (
+            query in node.get("label", "").lower()
+            or query in node.get("description", "").lower()
+        ):
+            results.append(node)
+    return {"results": results, "query": q}
+
+
+@router.get("/docs/{doc_path:path}")
+async def get_doc_content(doc_path: str):
+    """Returns raw documentation content from markdown files."""
+    docs_path = _DOCS_BASE / doc_path
+    if not docs_path.exists():
+        docs_path = _DOCS_BASE / f"{doc_path}.md"
+    if docs_path.exists():
+        with open(docs_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            return {"content": content, "path": doc_path, "format": "markdown"}
+    raise HTTPException(status_code=404, detail=f"Documentation {doc_path} not found")
