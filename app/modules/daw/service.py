@@ -7,7 +7,7 @@ import json
 
 from app.modules.database.service.connection import get_session
 from .models import (
-    Project,
+    DAWProject,
     Channel,
     Pattern,
     Note,
@@ -18,6 +18,8 @@ from .models import (
     time_signature_to_string,
     time_signature_from_string,
 )
+
+Project = DAWProject  # Alias
 from .schemas import (
     DAWProjectCreate,
     DAWProjectUpdate,
@@ -38,7 +40,10 @@ class NotFoundError(Exception):
     pass
 
 
-from .models import Project, Channel, Pattern, Note, Clip, ProjectStatus
+from .models import DAWProject, Channel, Pattern, Note, Clip, ProjectStatus
+
+Project = DAWProject  # Alias for backward compatibility
+
 from .schemas import (
     DAWProjectCreate,
     DAWProjectUpdate,

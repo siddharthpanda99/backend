@@ -1,6 +1,6 @@
 # DAW Module - Digital Audio Workstation backend
 from .models import (
-    Project,
+    DAWProject as Project,
     Channel,
     Pattern,
     Note,
@@ -33,8 +33,9 @@ from .schemas import (
 from .service import DAWService, daw_service
 
 __all__ = [
-    # Models
+    # Models (alias DAWProject as Project for backward compat)
     "Project",
+    "DAWProject",
     "Channel",
     "Pattern",
     "Note",

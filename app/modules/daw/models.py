@@ -79,7 +79,7 @@ class Channel(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-class Project(SQLModel, table=True):
+class DAWProject(SQLModel, table=True):
     __tablename__ = "daw_project"
     __table_args__ = {"schema": "daw", "extend_existing": True}
 
