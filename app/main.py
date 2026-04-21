@@ -530,6 +530,28 @@ def create_app() -> FastAPI:
         dependencies=global_deps,
     )
 
+    # Graph (AGE) API
+    print(f"Startup: Including Graph router with prefix: {settings.API_V1_STR}/graph")
+    from app.modules.graph.routes import router as graph_router
+
+    app.include_router(
+        graph_router,
+        prefix=f"{settings.API_V1_STR}/graph",
+        tags=["Graph"],
+        dependencies=global_deps,
+    )
+
+    # Sync API
+    print(f"Startup: Including Sync router with prefix: {settings.API_V1_STR}/sync")
+    from app.modules.sync.routes import router as sync_router
+
+    app.include_router(
+        sync_router,
+        prefix=f"{settings.API_V1_STR}/sync",
+        tags=["Sync"],
+        dependencies=global_deps,
+    )
+
     # Serve generated images as static files
     from common_lib.paths import GENERATED_CONTENT
 
