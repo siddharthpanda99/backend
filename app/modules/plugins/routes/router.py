@@ -22,16 +22,17 @@ _DOCS_BASE = (
     / "Python Libs/common_lib/docs"
 )
 _KB_BASE = (
-    Path(__file__).resolve().parent.parent.parent.parent.parent.parent
-    / "Knowledgebase"
+    Path(__file__).resolve().parent.parent.parent.parent.parent.parent / "Knowledgebase"
 )
 
 
 def _load_kb_graph() -> dict:
-    """Load unified project graph from Apache AGE: Docs + Workflows + Agents + Procedures."""
+    """Load unified project graph from Apache AGE + Knowledgebase filesystem."""
     from app.modules.database.service.connection import engine
     from sqlalchemy import text
     import logging
+    import re
+    from pathlib import Path
 
     logger = logging.getLogger(__name__)
 
@@ -52,37 +53,38 @@ def _load_kb_graph() -> dict:
         "Features": "#f59e0b",
         "Walkthroughs": "#10b981",
         "Vision": "#f97316",
-        "Engine": "#ec4899",     # Engine Docs
-        "Agent": "#a855f7",      # Executable Agents
-        "Workflow": "#22c55e",   # Standard DAGs
-        "Procedure": "#3b82f6",  # LangGraph Steps
-        "Memory": "#06b6d4",     # Graphify Memories
-        "Tag": "#94a3b8",        # Concept Tags
+        "Engine": "#ec4899",
+        "Agent": "#a855f7",
+        "Workflow": "#22c55e",
+        "Procedure": "#3b82f6",
+        "Memory": "#06b6d4",
+        "Tag": "#94a3b8",
     }
 
     categories = set()
+    node_id_lookup = set()
+    all_tags: dict[str, list[str]] = {}
 
     try:
         with engine.connect() as conn:
-            # 1. Setup AGE
             conn.execute(text("LOAD 'age';"))
             conn.execute(text('SET search_path = ag_catalog, "$user", public;'))
-            
-            # 2. Query Nodes
+
             node_query = """
             SELECT * FROM cypher('super_graph', $q$
                 MATCH (n) RETURN n
             $q$) as (n agtype);
             """
             query_result = conn.execute(text(node_query))
-            
+
             for row in query_result:
                 node_raw = row[0]
                 node_data = {}
-                
+
                 if isinstance(node_raw, str):
-                    # Handle AGE agtype strings (e.g. '{"id": 1, ...}::vertex')
-                    clean_json = node_raw.split("::")[0] if "::" in node_raw else node_raw
+                    clean_json = (
+                        node_raw.split("::")[0] if "::" in node_raw else node_raw
+                    )
                     try:
                         node_data = json.loads(clean_json)
                     except:
@@ -91,28 +93,41 @@ def _load_kb_graph() -> dict:
                 elif isinstance(node_raw, dict):
                     node_data = node_raw
                 else:
-                    node_data = getattr(node_raw, '__dict__', {})
+                    node_data = getattr(node_raw, "__dict__", {})
 
                 props = node_data.get("properties", {})
                 node_id = str(props.get("id") or str(node_data.get("id", "")))
-                
+
                 if not node_id or node_id == "None":
                     continue
 
-                cat = str(props.get("category") or props.get("type") or "Knowledge").capitalize()
+                cat = str(
+                    props.get("category") or props.get("type") or "Knowledge"
+                ).capitalize()
                 categories.add(cat)
+                node_id_lookup.add(node_id)
 
-                memo_graph["nodes"].append({
-                    "id": node_id,
-                    "label": str(props.get("name") or props.get("filename") or node_id),
-                    "category": cat,
-                    "description": str(props.get("description") or props.get("filename") or ""),
-                    "doc": str(props.get("filename", "")) if props.get("filename") else None,
-                    "tags": [str(t) for t in props.get("tags", [])],
-                    "entity_type": str(props.get("type", "doc"))
-                })
+                node_tags = [str(t) for t in props.get("tags", [])]
+                memo_graph["nodes"].append(
+                    {
+                        "id": node_id,
+                        "label": str(
+                            props.get("name") or props.get("filename") or node_id
+                        ),
+                        "category": cat,
+                        "description": str(
+                            props.get("description") or props.get("filename") or ""
+                        ),
+                        "doc": str(props.get("filename", ""))
+                        if props.get("filename")
+                        else None,
+                        "tags": node_tags,
+                        "entity_type": str(props.get("type", "doc")),
+                    }
+                )
+                if node_tags:
+                    all_tags[node_id] = node_tags
 
-            # 3. Query Edges - Safe match only nodes with IDs
             edge_query = """
             SELECT * FROM cypher('super_graph', $q$
                 MATCH (a)-[r]->(b) 
@@ -121,44 +136,249 @@ def _load_kb_graph() -> dict:
             $q$) as (a_id agtype, b_id agtype, rel_label agtype);
             """
             edges_result = conn.execute(text(edge_query))
-            
-            # Create lookup set for valid node IDs
-            node_id_lookup = {n["id"] for n in memo_graph["nodes"]}
-            
+
             for row in edges_result:
-                # AGE IDs in row[0], row[1] might also be agtype strings
-                from_id = str(row[0]).split("::")[0].strip('"') if row[0] is not None else None
-                to_id = str(row[1]).split("::")[0].strip('"') if row[1] is not None else None
-                rel = str(row[2]).split("::")[0].strip('"') if row[2] is not None else "CONNECTED"
-                
-                if from_id == 'None' or to_id == 'None' or not from_id or not to_id:
+                from_id = (
+                    str(row[0]).split("::")[0].strip('"')
+                    if row[0] is not None
+                    else None
+                )
+                to_id = (
+                    str(row[1]).split("::")[0].strip('"')
+                    if row[1] is not None
+                    else None
+                )
+                rel = (
+                    str(row[2]).split("::")[0].strip('"')
+                    if row[2] is not None
+                    else "CONNECTED"
+                )
+
+                if from_id == "None" or to_id == "None" or not from_id or not to_id:
                     continue
 
                 if from_id not in node_id_lookup or to_id not in node_id_lookup:
-                    # Skip orphan edges that refer to non-existent nodes
                     continue
-                    
-                memo_graph["edges"].append({
-                    "from": from_id,
-                    "to": to_id,
-                    "label": rel,
-                    "type": "explicit" if rel == "LINKS_TO" else "tag"
-                })
 
-        # 4. Finalize Categories
-        for cat_name in categories:
-            memo_graph["categories"].append({
-                "id": cat_name,
-                "color": category_colors.get(cat_name, "#6366f1"),
-                "label": cat_name,
-            })
+                memo_graph["edges"].append(
+                    {
+                        "from": from_id,
+                        "to": to_id,
+                        "label": rel,
+                        "type": "explicit" if rel == "LINKS_TO" else "tag",
+                    }
+                )
 
     except Exception as e:
         logger.error(f"Failed to load KB graph from AGE: {e}")
-        # Return partial graph or empty if failed
-        pass
 
+    has_db_nodes = len(memo_graph["nodes"]) > 0
+
+    if not has_db_nodes:
+        logger.info("No nodes from AGE, falling back to filesystem KB scan")
+
+        wikilink_pattern = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
+        hashtag_pattern = re.compile(r"#([A-Za-z][A-Za-z0-9_]+)")
+
+        def scan_markdown_files(base_path: Path, category: str) -> list[dict]:
+            nodes = []
+            if not base_path.exists():
+                return nodes
+            for md_file in base_path.rglob("*.md"):
+                if "__pycache__" in str(md_file) or md_file.stat().st_size == 0:
+                    continue
+                try:
+                    content = md_file.read_text(encoding="utf-8", errors="ignore")
+                except:
+                    continue
+
+                rel_path = str(md_file.relative_to(base_path))
+                node_id = rel_path.replace("\\", "/").replace(".md", "")
+
+                title = md_file.stem
+                if node_id == "INDEX" or node_id == "README":
+                    title = md_file.parent.name or title
+
+                tags = hashtag_pattern.findall(content)
+                wikilinks = wikilink_pattern.findall(content)
+
+                description = (
+                    content[:200].replace("\n", " ").strip() if content else ""
+                )
+
+                nodes.append(
+                    {
+                        "id": node_id,
+                        "label": title,
+                        "category": category,
+                        "description": description,
+                        "doc": rel_path.replace("\\", "/"),
+                        "tags": list(set(tags)),
+                        "entity_type": "doc",
+                        "_wikilinks": wikilinks,
+                        "_source_path": str(md_file),
+                    }
+                )
+
+                if tags:
+                    all_tags[node_id] = list(set(tags))
+                node_id_lookup.add(node_id)
+
+            return nodes
+
+        docs_base = _DOCS_BASE
+        kb_base = _KB_BASE
+
+        for path, cat in [(docs_base, "Engine"), (kb_base, "Knowledge")]:
+            file_nodes = scan_markdown_files(path, cat)
+            memo_graph["nodes"].extend(file_nodes)
+            if file_nodes:
+                categories.add(cat)
+
+        explicit_edges = []
+        tag_edges = []
+
+        for node in memo_graph["nodes"]:
+            wikilinks = node.get("_wikilinks", [])
+            for wl in wikilinks:
+                target_id = wl.replace("\\", "/").replace(".md", "")
+                if target_id in node_id_lookup:
+                    explicit_edges.append(
+                        {
+                            "from": node["id"],
+                            "to": target_id,
+                            "label": "LINKS_TO",
+                            "type": "explicit",
+                        }
+                    )
+
+        tag_to_nodes: dict[str, list[str]] = {}
+        for node_id, tags in all_tags.items():
+            for tag in tags:
+                if tag not in tag_to_nodes:
+                    tag_to_nodes[tag] = []
+                tag_to_nodes[tag].append(node_id)
+
+        for tag, node_ids in tag_to_nodes.items():
+            if len(node_ids) > 1:
+                for i, from_id in enumerate(node_ids):
+                    for to_id in node_ids[i + 1 :]:
+                        tag_edges.append(
+                            {
+                                "from": from_id,
+                                "to": to_id,
+                                "label": f"shares#{tag}",
+                                "type": "conceptual",
+                                "weight": len(node_ids),
+                            }
+                        )
+
+        memo_graph["edges"].extend(explicit_edges)
+        memo_graph["edges"].extend(tag_edges)
+
+        for wl_node in memo_graph["nodes"]:
+            wl_node.pop("_wikilinks", None)
+            wl_node.pop("_source_path", None)
+
+    for cat_name in categories:
+        memo_graph["categories"].append(
+            {
+                "id": cat_name,
+                "color": category_colors.get(cat_name, "#6366f1"),
+                "label": cat_name,
+            }
+        )
+
+    memo_graph["_analytics"] = _compute_graph_analytics(
+        memo_graph["nodes"], memo_graph["edges"]
+    )
+
+    logger.info(
+        f"Loaded KB graph: {len(memo_graph['nodes'])} nodes, {len(memo_graph['edges'])} edges"
+    )
     return memo_graph
+
+
+def _compute_graph_analytics(nodes: list[dict], edges: list[dict]) -> dict:
+    """Compute basic graph analytics: centrality, communities, gaps."""
+    from collections import defaultdict
+    import math
+
+    if not nodes or not edges:
+        return {}
+
+    adj: dict[str, set[str]] = defaultdict(set)
+    for e in edges:
+        f, t = e.get("from"), e.get("to")
+        if f and t:
+            adj[f].add(t)
+            adj[t].add(f)
+
+    node_ids = {n["id"] for n in nodes}
+    centrality: dict[str, float] = {nid: 0.0 for nid in node_ids}
+
+    for source in node_ids:
+        if source not in adj:
+            continue
+        bfs_dist = {source: 0}
+        q = [source]
+        idx = 0
+        while idx < len(q):
+            cur = q[idx]
+            idx += 1
+            for nb in adj.get(cur, []):
+                if nb not in bfs_dist:
+                    bfs_dist[nb] = bfs_dist[cur] + 1
+                    q.append(nb)
+            for intermediary in q[:idx]:
+                d_inter = bfs_dist[intermediary]
+                d_cur = bfs_dist.get(cur, 0)
+                if d_inter < d_cur:
+                    for nb in adj.get(cur, []):
+                        if nb in bfs_dist and bfs_dist[nb] > d_inter:
+                            centrality[intermediary] = (
+                                centrality.get(intermediary, 0) + 1
+                            )
+
+    max_c = max(centrality.values()) if centrality.values() else 1
+    for nid in centrality:
+        centrality[nid] = round(centrality[nid] / max_c, 3) if max_c > 0 else 0
+
+    tag_freq: dict[str, int] = defaultdict(int)
+    for n in nodes:
+        for t in n.get("tags", []):
+            tag_freq[t] += 1
+
+    common_tags = sorted(tag_freq.items(), key=lambda x: -x[1])[:20]
+
+    community_nodes: dict[str, list[str]] = defaultdict(list)
+    for n in nodes:
+        cats = n.get("tags", [])
+        if cats:
+            community_nodes[cats[0]].append(n["id"])
+    communities = [
+        {"id": t, "label": t, "node_count": len(ns), "nodes": ns[:10]}
+        for t, ns in sorted(community_nodes.items(), key=lambda x: -len(x[1]))[:10]
+    ]
+
+    all_tags_set = set(tag_freq.keys())
+    gaps = []
+    connected_tags: set[str] = set()
+    for e in edges:
+        if e.get("type") == "conceptual":
+            lbl = e.get("label", "")
+            if lbl.startswith("shares#"):
+                connected_tags.add(lbl[7:])
+    for tag in all_tags_set - connected_tags:
+        if tag_freq[tag] >= 2:
+            gaps.append({"tag": tag, "frequency": tag_freq[tag], "type": "unlinked"})
+
+    return {
+        "centrality": centrality,
+        "top_tags": common_tags,
+        "communities": communities,
+        "gaps": gaps[:10],
+    }
 
 
 # Cache for KB graph
