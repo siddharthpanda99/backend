@@ -8,7 +8,7 @@ from app.core.common_lib_integration import common_memory
 from app.modules.entities.services.vector_search import get_search_service
 from common_lib.modules.orchestration.agents.skill.schemas import CapabilityDefinition
 from common_lib.modules.workflows.standard.schemas import WorkflowDefinition
-from common_lib.modules.orchestration.agents.agent.prompt_resolver import PromptResolver
+from common_lib.modules.orchestration.agents.agent.cognition.resolver import PromptResolver
 from app.modules.agents.runtime.core import get_engine_manager
 from app.modules.agents.runtime.tools.registry import BUILTIN_TOOL_REGISTRY
 from common_lib.modules.orchestration.infrastructure.sd.models import (
@@ -538,7 +538,7 @@ async def list_entities(
                     continue
                 agent_map[a["id"]] = a
 
-            from common_lib.modules.orchestration.agents.agent.schemas import (
+            from common_lib.modules.orchestration.agents.agent.core.schemas import (
                 AgentDefinition,
             )
 
