@@ -1,7 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
-from app.modules.database.service.connection import get_session
+from common_lib.modules.data_storage.database.connection import get_session
 from common_lib.modules.rbac.schemas import PermissionRead
 from common_lib.modules.rbac.service import PermissionService
 

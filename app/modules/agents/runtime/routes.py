@@ -30,7 +30,9 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlmodel import Session, select, func
-from app.modules.database.service.connection import get_session as get_db_session
+from common_lib.modules.data_storage.database.connection import (
+    get_session as get_db_session,
+)
 from app.modules.agents.runtime.session_models import (
     AgentSession,
     AgentConversation,

@@ -2,12 +2,14 @@ import sys
 import subprocess
 import argparse
 
+
 def run_command(command):
     try:
         subprocess.run(command, check=True, shell=True)
     except subprocess.CalledProcessError as e:
         print(f"Error executing command: {e}")
         sys.exit(1)
+
 
 def db_up():
     print("Starting Database Services (Postgres & pgAdmin)...")
@@ -19,13 +21,16 @@ def db_up():
     print("pgAdmin is available at http://localhost:5050")
     print("Default credentials: admin@nexus.ai / nexus_password")
 
+
 def db_down():
     print("Stopping Database Services...")
     run_command("docker-compose down")
     print("Database Services Stopped.")
 
+
 def db_logs():
     run_command("docker-compose logs -f")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Nexus AI Backend Utility CLI")
@@ -35,8 +40,12 @@ def main():
     subparsers.add_parser("db-down", help="Stop database services")
     subparsers.add_parser("db-logs", help="View database logs")
     subparsers.add_parser("init-db", help="Create database tables")
-    seed_parser = subparsers.add_parser("seed", help="Seed the database with initial data")
-    seed_parser.add_argument("--modules", nargs="+", help="Specific modules to seed (e.g. users projects)")
+    seed_parser = subparsers.add_parser(
+        "seed", help="Seed the database with initial data"
+    )
+    seed_parser.add_argument(
+        "--modules", nargs="+", help="Specific modules to seed (e.g. users projects)"
+    )
 
     args = parser.parse_args()
 
@@ -47,7 +56,8 @@ def main():
     elif args.command == "db-logs":
         db_logs()
     elif args.command == "init-db":
-        from app.modules.database.service.connection import init_db
+        from common_lib.modules.data_storage.database.connection import init_db
+
         print("Creating database tables...")
         init_db()
         print("Tables created successfully.")
@@ -56,16 +66,17 @@ def main():
         from app.modules.authorization.seeds.role_seeder import AuthorizationSeeder
         from app.modules.users.seeds.user_seeder import UserSeeder
         from app.modules.projects.seeds.project_seeder import ProjectSeeder
-        
+
         # Register and run
         register_seeder(AuthorizationSeeder)
         register_seeder(UserSeeder)
         register_seeder(ProjectSeeder)
-        
+
         target = args.modules if args.modules else None
         run_seeds(target)
     else:
         parser.print_help()
+
 
 def dev_server():
     """Entry point for 'uv run dev'"""
@@ -74,17 +85,22 @@ def dev_server():
     import uvicorn
     import sys
     from pathlib import Path
-    
-    app_dir = str(Path(__file__).parent.resolve()) # Matches app/
-    common_lib_dir = str((Path(__file__).parent.parent.parent / "Python Libs" / "common_lib" / "src").resolve())
-    
-    uvicorn.run(
-        "app.main:app", 
-        host="0.0.0.0", 
-        port=8000, 
-        reload=True, 
-        reload_dirs=[app_dir, common_lib_dir]
+
+    app_dir = str(Path(__file__).parent.resolve())  # Matches app/
+    common_lib_dir = str(
+        (
+            Path(__file__).parent.parent.parent / "Python Libs" / "common_lib" / "src"
+        ).resolve()
     )
+
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_dirs=[app_dir, common_lib_dir],
+    )
+
 
 if __name__ == "__main__":
     main()

@@ -67,7 +67,7 @@ settings = get_settings()
 import sys
 import time
 from sqlalchemy import text
-from app.modules.database.service.connection import engine
+from common_lib.modules.data_storage.database.connection import engine, get_session
 
 
 @asynccontextmanager
@@ -85,7 +85,7 @@ async def lifespan(app: FastAPI):
                 connection.execute(text("SELECT 1"))
             print("Database connection established successfully.")
 
-            from app.modules.database.service.connection import init_db
+            from common_lib.modules.data_storage.database.connection import init_db
 
             init_db()
             print("Database initialized and models registered.")
@@ -543,7 +543,7 @@ def create_app() -> FastAPI:
 
     # Sync API
     print(f"Startup: Including Sync router with prefix: {settings.API_V1_STR}/sync")
-    from app.modules.sync.routes import router as sync_router
+    from app.modules.sync.routes.index import router as sync_router
 
     app.include_router(
         sync_router,

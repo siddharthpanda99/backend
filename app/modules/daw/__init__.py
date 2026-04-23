@@ -1,69 +1,12 @@
-# DAW Module - Digital Audio Workstation backend
-from .models import (
-    DAWProject as Project,
-    Channel,
-    Pattern,
-    Note,
-    Clip,
-    ProjectStatus,
-    ChannelType,
-    steps_from_string,
-    steps_to_string,
-)
-from .schemas import (
-    DAWProjectCreate,
-    DAWProjectUpdate,
-    DAWProjectResponse,
-    ChannelCreate,
-    ChannelUpdate,
-    ChannelResponse,
-    PatternCreate,
-    PatternUpdate,
-    PatternResponse,
-    NoteCreate,
-    NoteUpdate,
-    NoteResponse,
-    ClipCreate,
-    ClipUpdate,
-    ClipResponse,
-    DAWExport,
-    ProjectStatus as SchemaStatus,
-    ChannelType as SchemaChannelType,
-)
-from .service import DAWService, daw_service
+from common_lib.modules.daw.models import DAWProject, Channel, Pattern, Note, Clip
+from common_lib.modules.daw.service import DAWService, daw_service
 
 __all__ = [
-    # Models (alias DAWProject as Project for backward compat)
-    "Project",
     "DAWProject",
     "Channel",
     "Pattern",
     "Note",
     "Clip",
-    "ProjectStatus",
-    "ChannelType",
-    "steps_from_string",
-    "steps_to_string",
-    # Schemas
-    "DAWProjectCreate",
-    "DAWProjectUpdate",
-    "DAWProjectResponse",
-    "ChannelCreate",
-    "ChannelUpdate",
-    "ChannelResponse",
-    "PatternCreate",
-    "PatternUpdate",
-    "PatternResponse",
-    "NoteCreate",
-    "NoteUpdate",
-    "NoteResponse",
-    "ClipCreate",
-    "ClipUpdate",
-    "ClipResponse",
-    "DAWExport",
-    "SchemaStatus",
-    "SchemaChannelType",
-    # Service
     "DAWService",
     "daw_service",
 ]

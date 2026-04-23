@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Query
-from app.modules.plugins.schemas.plugin_schemas import (
+from common_lib.modules.plugins.schemas import (
     PluginResponse,
     NodeCandidateSchema,
     OnboardRequest,
@@ -12,6 +12,7 @@ from app.modules.plugins.schemas.plugin_schemas import (
     HealthStatus,
     PluginType,
     PluginUpdateRequest,
+    PluginHealth,
 )
 from common_lib.modules.plugins.manager import PluginManager
 from common_lib.modules.plugins.schemas import ExtractionCandidate
@@ -28,7 +29,7 @@ _KB_BASE = (
 
 def _load_kb_graph() -> dict:
     """Load unified project graph from Apache AGE + Knowledgebase filesystem."""
-    from app.modules.database.service.connection import engine
+    from common_lib.modules.data_storage.database.connection import engine
     from sqlalchemy import text
     import logging
     import re

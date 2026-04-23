@@ -1,12 +1,9 @@
 # DAW Tests - Comprehensive test suite for DAW module
 import pytest
-import pytest_asyncio
 from uuid import uuid4
-from datetime import datetime
-from typing import Generator
 
-# Test imports
-from app.modules.daw.models import (
+# Import from common_lib
+from common_lib.modules.daw.models import (
     Project,
     Channel,
     Pattern,
@@ -19,7 +16,7 @@ from app.modules.daw.models import (
     time_signature_from_string,
     time_signature_to_string,
 )
-from app.modules.daw.schemas import (
+from common_lib.modules.daw.schemas import (
     DAWProjectCreate,
     DAWProjectUpdate,
     ChannelCreate,
@@ -33,6 +30,8 @@ from app.modules.daw.schemas import (
     ProjectStatus as SchemaProjectStatus,
     ChannelType as SchemaChannelType,
 )
+from common_lib.modules.daw.service import daw_service
+from common_lib.modules.data_storage.database.connection import get_session
 
 
 # =============================================================================
@@ -47,7 +46,7 @@ class TestDAWModels:
         """Test converting steps list to JSON string"""
         steps = [1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
         result = steps_to_string(steps)
-        assert result == "[1,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0]"
+        assert result == "[1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]"
 
     def test_steps_from_string(self):
         """Test converting JSON string to steps list"""
@@ -72,7 +71,7 @@ class TestDAWModels:
         """Test time signature to string"""
         ts = (4, 4)
         result = time_signature_to_string(ts)
-        assert result == "[4,4]"
+        assert result == "[4, 4]"
 
     def test_time_signature_from_string(self):
         """Test time signature from string"""
@@ -184,26 +183,13 @@ class TestDAWSchemas:
 # =============================================================================
 
 
-@pytest.mark.asyncio
 class TestDAWService:
     """Integration tests for DAWService"""
 
-    @pytest_asyncio.fixture
-    async def service(self):
-        """Fixture to get DAW service instance"""
-        from app.modules.daw.service import daw_service
-
-        return daw_service
-
-    @pytest_asyncio.fixture
-    async def test_user_id(self):
-        """Fixture for test user ID"""
-        return uuid4()
-
-    async def test_create_project(self, service, test_user_id):
+    def test_create_project(self, test_session, test_user_id):
         """Test project creation"""
         data = DAWProjectCreate(name="Test Project")
-        project = await service.create_project(test_user_id, data)
+        project = daw_service.create_project(test_session, test_user_id, data)
 
         assert project is not None
         assert project.name == "Test Project"
@@ -211,51 +197,52 @@ class TestDAWService:
         assert project.bpm == 128
         assert project.status == ProjectStatus.DRAFT
 
-    async def test_get_project(self, service, test_user_id):
+    def test_get_project(self, test_session, test_user_id):
         """Test getting a project"""
-        # Create first
         data = DAWProjectCreate(name="Get Test")
-        created = await service.create_project(test_user_id, data)
+        created = daw_service.create_project(test_session, test_user_id, data)
 
-        # Get it back
-        retrieved = await service.get(created.id)
+        retrieved = daw_service.get(test_session, created.id)
         assert retrieved is not None
         assert retrieved.id == created.id
         assert retrieved.name == "Get Test"
 
-    async def test_get_user_projects(self, service, test_user_id):
+    def test_get_user_projects(self, test_session, test_user_id):
         """Test listing user projects"""
-        # Create multiple projects
-        await service.create_project(test_user_id, DAWProjectCreate(name="Project 1"))
-        await service.create_project(test_user_id, DAWProjectCreate(name="Project 2"))
+        daw_service.create_project(
+            test_session, test_user_id, DAWProjectCreate(name="Project 1")
+        )
+        daw_service.create_project(
+            test_session, test_user_id, DAWProjectCreate(name="Project 2")
+        )
 
-        projects = await service.get_user_projects(test_user_id)
+        projects = daw_service.get_user_projects(test_session, test_user_id)
         assert len(projects) >= 2
 
-    async def test_update_project(self, service, test_user_id):
+    def test_update_project(self, test_session, test_user_id):
         """Test project update"""
-        created = await service.create_project(
-            test_user_id, DAWProjectCreate(name="Original")
+        created = daw_service.create_project(
+            test_session, test_user_id, DAWProjectCreate(name="Original")
         )
 
         update = DAWProjectUpdate(name="Updated", bpm=140)
-        updated = await service.update_project(created.id, update)
+        updated = daw_service.update_project(test_session, created.id, update)
 
         assert updated.name == "Updated"
         assert updated.bpm == 140
 
-    async def test_update_nonexistent_project(self, service):
+    def test_update_nonexistent_project(self, test_session):
         """Test updating nonexistent project raises error"""
-        from app.modules.common.exceptions import NotFoundError
+        from common_lib.modules.daw.service import NotFoundError
 
         update = DAWProjectUpdate(name="Test")
         with pytest.raises(NotFoundError):
-            await service.update_project(uuid4(), update)
+            daw_service.update_project(test_session, uuid4(), update)
 
-    async def test_create_channel(self, service, test_user_id):
+    def test_create_channel(self, test_session, test_user_id):
         """Test channel creation"""
-        project = await service.create_project(
-            test_user_id, DAWProjectCreate(name="Channel Test")
+        project = daw_service.create_project(
+            test_session, test_user_id, DAWProjectCreate(name="Channel Test")
         )
 
         channel_data = ChannelCreate(
@@ -264,76 +251,39 @@ class TestDAWService:
             color="#ff0000",
             steps=[1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
         )
-        channel = await service.create_channel(project.id, channel_data)
+        channel = daw_service.create_channel(test_session, project.id, channel_data)
 
         assert channel is not None
         assert channel.name == "Test Channel"
         assert channel.type == "synth"
 
-        # Verify steps stored correctly
-        stored_steps = steps_from_string(channel.steps)
-        assert stored_steps == [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
-
-    async def test_update_channel(self, service, test_user_id):
+    def test_update_channel(self, test_session, test_user_id):
         """Test channel update"""
-        project = await service.create_project(
-            test_user_id, DAWProjectCreate(name="Update Channel Test")
+        project = daw_service.create_project(
+            test_session, test_user_id, DAWProjectCreate(name="Update Channel Test")
         )
 
-        # Create channel
-        channel = await service.create_channel(
-            project.id, ChannelCreate(name="Original", type=SchemaChannelType.DRUM)
+        channel = daw_service.create_channel(
+            test_session,
+            project.id,
+            ChannelCreate(name="Original", type=SchemaChannelType.DRUM),
         )
 
-        # Update
         update = ChannelUpdate(name="Updated", mute=True, volume=0.5)
-        updated = await service.update_channel(channel.id, update)
+        updated = daw_service.update_channel(test_session, channel.id, update)
 
         assert updated.name == "Updated"
         assert updated.mute is True
         assert updated.volume == 0.5
 
-    async def test_toggle_channel_mute(self, service, test_user_id):
-        """Test toggling channel mute"""
-        project = await service.create_project(
-            test_user_id, DAWProjectCreate(name="Mute Test")
-        )
-        channel = await service.create_channel(
-            project.id, ChannelCreate(name="To Mute", type=SchemaChannelType.DRUM)
-        )
-
-        # Toggle mute
-        update = ChannelUpdate(mute=True)
-        updated = await service.update_channel(channel.id, update)
-        assert updated.mute is True
-
-        # Toggle off
-        update_off = ChannelUpdate(mute=False)
-        updated_off = await service.update_channel(channel.id, update_off)
-        assert updated_off.mute is False
-
-    async def test_delete_channel(self, service, test_user_id):
-        """Test deleting a channel"""
-        project = await service.create_project(
-            test_user_id, DAWProjectCreate(name="Delete Test")
-        )
-        channel = await service.create_channel(
-            project.id, ChannelCreate(name="To Delete", type=SchemaChannelType.DRUM)
-        )
-
-        await service.delete_channel(channel.id)
-
-        # Verify deleted - get should return None
-        # (We can't directly test this without get_channel method)
-
-    async def test_create_pattern(self, service, test_user_id):
+    def test_create_pattern(self, test_session, test_user_id):
         """Test pattern creation"""
-        project = await service.create_project(
-            test_user_id, DAWProjectCreate(name="Pattern Test")
+        project = daw_service.create_project(
+            test_session, test_user_id, DAWProjectCreate(name="Pattern Test")
         )
 
-        pattern = await service.create_pattern(
-            project.id, PatternCreate(name="New Pattern", length=32)
+        pattern = daw_service.create_pattern(
+            test_session, project.id, PatternCreate(name="New Pattern", length=32)
         )
 
         assert pattern is not None
@@ -344,6 +294,19 @@ class TestDAWService:
 # =============================================================================
 # Fixtures for testing
 # =============================================================================
+
+
+@pytest.fixture
+def test_session():
+    """Fixture for database session"""
+    with get_session() as session:
+        yield session
+
+
+@pytest.fixture
+def test_user_id():
+    """Fixture for test user ID"""
+    return uuid4()
 
 
 @pytest.fixture

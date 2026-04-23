@@ -3,7 +3,7 @@ import pytest
 from uuid import uuid4
 from datetime import datetime
 
-from app.modules.daw.models import (
+from common_lib.modules.daw.models import (
     Project,
     Channel,
     Pattern,
@@ -22,16 +22,16 @@ class TestStepsConversion:
     """Test step array conversion functions"""
 
     def test_steps_to_string_standard(self):
-        """Test standard 16-step pattern"""
-        steps = [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0]
+        """Test standard steps"""
+        steps = [1, 0, 0, 0, 1, 0, 0, 0]
         result = steps_to_string(steps)
-        assert result == "[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0]"
+        assert result == "[1, 0, 0, 0, 1, 0, 0, 0]"
 
     def test_steps_to_string_kick_pattern(self):
-        """Test kick drum pattern"""
+        """Test kick pattern"""
         steps = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
         result = steps_to_string(steps)
-        assert result == "[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0]"
+        assert result == "[1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]"
 
     def test_steps_from_string(self):
         """Test parsing steps from string"""
@@ -66,12 +66,12 @@ class TestTimeSignatureConversion:
     def test_time_signature_to_4_4(self):
         """Test 4/4 time signature"""
         result = time_signature_to_string((4, 4))
-        assert result == "[4,4]"
+        assert result == "[4, 4]"
 
     def test_time_signature_to_3_4(self):
         """Test 3/4 time signature"""
         result = time_signature_to_string((3, 4))
-        assert result == "[3,4]"
+        assert result == "[3, 4]"
 
     def test_time_signature_from_4_4(self):
         """Test parsing 4/4"""

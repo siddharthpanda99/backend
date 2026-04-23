@@ -1,7 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
-from app.modules.database.service.connection import get_session
+from common_lib.modules.data_storage.database.connection import get_session
 from common_lib.modules.users.schemas import UserRead, UserCreate, UserUpdate
 from common_lib.modules.users.service import UserService
 

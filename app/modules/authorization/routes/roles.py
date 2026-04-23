@@ -1,7 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
-from app.modules.database.service.connection import get_session
+from common_lib.modules.data_storage.database.connection import get_session
 from common_lib.modules.rbac.schemas import RoleRead, RoleCreate, RoleUpdate
 from common_lib.modules.rbac.service import RoleService
 

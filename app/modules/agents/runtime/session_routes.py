@@ -18,7 +18,9 @@ from sqlmodel import Session, select, func, SQLModel
 from sqlalchemy import desc
 import sqlalchemy as sa
 
-from app.modules.database.service.connection import get_session as get_db_session
+from common_lib.modules.data_storage.database.connection import (
+    get_session as get_db_session,
+)
 from app.modules.agents.runtime.session_models import (
     AgentSession,
     AgentConversation,

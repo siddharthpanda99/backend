@@ -36,7 +36,7 @@ class GraphResponse(BaseModel):
 
 
 def _get_engine():
-    from app.modules.database.service.connection import engine
+    from common_lib.modules.data_storage.database.connection import engine
 
     return engine
 

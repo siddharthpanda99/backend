@@ -2,7 +2,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
-from app.modules.database.service.connection import get_session
+from common_lib.modules.data_storage.database.connection import get_session
 from app.modules.common.types.index import APIResponse
 from common_lib.modules.auth.schemas import (
     LoginRequest,

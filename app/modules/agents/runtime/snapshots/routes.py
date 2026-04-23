@@ -12,7 +12,7 @@ router = APIRouter(tags=["Snapshots"])
 
 
 def get_db_session():
-    from app.modules.database.service.connection import Session
+    from common_lib.modules.data_storage.database.connection import Session
     from sqlmodel import Session as SQLSession
 
     with Session() as session:

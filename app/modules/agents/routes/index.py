@@ -1,13 +1,13 @@
 from typing import List
 from fastapi import APIRouter, HTTPException, Depends
+from common_lib.modules.agents.schemas import AgentRead, AgentCreate, AgentUpdate
+from common_lib.modules.agents.service import agent_service, NotFoundError
 from app.modules.common.types.index import APIResponse
-from app.modules.agents.schemas.index import AgentRead, AgentCreate, AgentUpdate
-from app.modules.agents.service.index import agent_service
+from app.modules.auth.dependencies.index import get_current_active_user
 from app.modules.agents.routes.registry import router as registry_router
 from app.modules.agents.runtime.routes import router as runtime_router
 from app.modules.agents.runtime.session_routes import router as session_router
 from app.modules.agents.runtime.pipeline_routes import router as pipeline_router
-from app.modules.auth.dependencies.index import get_current_active_user
 
 router = APIRouter()
 router.include_router(registry_router, prefix="/registry", tags=["Registry"])
@@ -42,11 +42,20 @@ def get_agent(id: str, current_user=Depends(get_current_active_user)):
 def update_agent(
     id: str, agent_in: AgentUpdate, current_user=Depends(get_current_active_user)
 ):
-    item = agent_service.update(id, agent_in)
-    return APIResponse(data=item, message="Agent updated successfully")
+    try:
+        item = agent_service.update(id, agent_in)
+        return APIResponse(data=item, message="Agent updated successfully")
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Agent not found")
 
 
 @router.delete("/{id}", response_model=APIResponse[dict])
 def delete_agent(id: str, current_user=Depends(get_current_active_user)):
-    agent_service.delete(id)
-    return APIResponse(data={"success": True}, message="Agent deleted successfully")
+    try:
+        agent_service.delete(id)
+        return APIResponse(data={"success": True}, message="Agent deleted successfully")
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+__all__ = ["router"]
