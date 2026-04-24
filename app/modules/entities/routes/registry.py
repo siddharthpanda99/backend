@@ -811,6 +811,68 @@ async def list_entities(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/definitions", response_model=APIResponse[List[Dict[str, Any]]])
+async def get_node_definitions():
+    """
+    Returns a flat list of all registerable nodes (tools, agents, skills)
+    formatted for the Workflow Canvas NodeRegistry.
+    """
+    try:
+        definitions = []
+        registry_svc = _get_registry_svc()
+
+        # 1. Tools
+        if registry_svc:
+            tool_groups = registry_svc.get_tools_by_category()
+            for cat, tools in tool_groups.items():
+                for tool in tools:
+                    definitions.append({
+                        "type": tool.get("id"),
+                        "label": tool.get("name"),
+                        "category": f"Tools/{cat.replace('_', ' ').title()}",
+                        "description": tool.get("description"),
+                        "inputs": tool.get("inputs", []),
+                        "outputs": tool.get("outputs", []),
+                        "defaultProperties": tool.get("default_properties", {}),
+                        "propertyDefinitions": tool.get("property_definitions", []),
+                        "version": tool.get("version", "1.0.0"),
+                        "color": "#10b981" # Default tool color
+                    })
+
+        # 2. Agents
+        db_agents = common_memory.list_agent_definitions()
+        for agent in db_agents:
+            definitions.append({
+                "type": f"agent.{agent.get('id')}",
+                "label": agent.get('name'),
+                "category": f"Agents/{agent.get('category', 'General')}",
+                "description": agent.get('description'),
+                "inputs": [{"id": "input", "label": "User Input", "type": "string"}],
+                "outputs": [{"id": "output", "label": "Response", "type": "string"}],
+                "version": agent.get('version', '1.0.0'),
+                "color": "#3b82f6" # Default agent color
+            })
+
+        # 3. Skills
+        db_skills = common_memory.list_skill_definitions()
+        for skill in db_skills:
+            definitions.append({
+                "type": f"skill.{skill.get('id')}",
+                "label": skill.get('name'),
+                "category": f"Skills/{skill.get('category', 'General')}",
+                "description": skill.get('description'),
+                "inputs": skill.get('inputs', []),
+                "outputs": skill.get('outputs', []),
+                "version": skill.get('version', '1.0.0'),
+                "color": "#f59e0b" # Default skill color
+            })
+
+        return APIResponse(data=definitions, message="Node definitions retrieved successfully")
+    except Exception as e:
+        logger.error(f"Failed to fetch node definitions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/stats", response_model=APIResponse[Dict[str, Any]])
 async def get_registry_stats():
     """
