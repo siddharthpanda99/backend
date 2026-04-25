@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any, AsyncGenerator
 import json
 import asyncio
+from pathlib import Path
 from fastapi import APIRouter, Query, HTTPException, BackgroundTasks, Form
 from fastapi.responses import StreamingResponse
 from app.modules.common.types.index import APIResponse
@@ -8,7 +9,9 @@ from app.core.common_lib_integration import common_memory
 from app.modules.entities.services.vector_search import get_search_service
 from common_lib.modules.orchestration.agents.skill.schemas import CapabilityDefinition
 from common_lib.modules.workflows.standard.schemas import WorkflowDefinition
-from common_lib.modules.orchestration.agents.agent.cognition.resolver import PromptResolver
+from common_lib.modules.orchestration.agents.agent.cognition.resolver import (
+    PromptResolver,
+)
 from app.modules.agents.runtime.core import get_engine_manager
 from app.modules.agents.runtime.tools.registry import BUILTIN_TOOL_REGISTRY
 from common_lib.modules.orchestration.infrastructure.sd.models import (
@@ -821,13 +824,15 @@ async def get_node_definitions():
         definitions = []
         registry_svc = _get_registry_svc()
 
-        # 1. Tools
+        # 1. Tools (from ground-truth auto-discovery)
+        tool_map = {}
         if registry_svc:
             tool_groups = registry_svc.get_tools_by_category()
             for cat, tools in tool_groups.items():
                 for tool in tools:
-                    definitions.append({
-                        "type": tool.get("id"),
+                    t_id = tool.get("id")
+                    tool_map[t_id] = {
+                        "type": t_id,
                         "label": tool.get("name"),
                         "category": f"Tools/{cat.replace('_', ' ').title()}",
                         "description": tool.get("description"),
@@ -836,41 +841,235 @@ async def get_node_definitions():
                         "defaultProperties": tool.get("default_properties", {}),
                         "propertyDefinitions": tool.get("property_definitions", []),
                         "version": tool.get("version", "1.0.0"),
-                        "color": "#10b981" # Default tool color
-                    })
+                        "color": "#10b981",  # Default tool color
+                    }
 
-        # 2. Agents
+        # 2. Sync with Node Definitions from DB (Rich Metadata & UI)
+        db_nodes = common_memory.list_node_definitions()
+        for node in db_nodes:
+            n_id = node.get("id")
+            ui = node.get("ui") or {}
+            props = node.get("properties") or {}
+
+            # Convert properties dict to propertyDefinitions array if needed
+            property_definitions = []
+            if isinstance(props, dict):
+                for p_id, p_val in props.items():
+                    if isinstance(p_val, dict):
+                        p_def = {"id": p_id}
+                        p_def.update(p_val)
+                        property_definitions.append(p_def)
+            elif isinstance(props, list):
+                property_definitions = props
+
+            node_data = {
+                "type": n_id,
+                "label": node.get("name"),
+                "category": node.get("category", "General"),
+                "description": node.get("description"),
+                "inputs": node.get("inputs", []),
+                "outputs": node.get("outputs", []),
+                "propertyDefinitions": property_definitions,
+                "version": node.get("version", "1.0.0"),
+                # Rich UI fields
+                "color": ui.get("color") or "#10b981",
+                "icon": ui.get("icon"),
+                "size": ui.get("size"),
+                "tags": node.get("tags", []),
+            }
+
+            # Merge or append
+            if n_id in tool_map:
+                # Override with rich DB metadata
+                tool_map[n_id].update(
+                    {k: v for k, v in node_data.items() if v is not None}
+                )
+            else:
+                tool_map[n_id] = node_data
+
+        definitions.extend(list(tool_map.values()))
+
+        # 3. Agents
         db_agents = common_memory.list_agent_definitions()
         for agent in db_agents:
-            definitions.append({
-                "type": f"agent.{agent.get('id')}",
-                "label": agent.get('name'),
-                "category": f"Agents/{agent.get('category', 'General')}",
-                "description": agent.get('description'),
-                "inputs": [{"id": "input", "label": "User Input", "type": "string"}],
-                "outputs": [{"id": "output", "label": "Response", "type": "string"}],
-                "version": agent.get('version', '1.0.0'),
-                "color": "#3b82f6" # Default agent color
-            })
+            definitions.append(
+                {
+                    "type": f"agent.{agent.get('id')}",
+                    "label": agent.get("name"),
+                    "category": f"Agents/{agent.get('category', 'General')}",
+                    "description": agent.get("description"),
+                    "inputs": [
+                        {"id": "input", "label": "User Input", "type": "string"}
+                    ],
+                    "outputs": [
+                        {"id": "output", "label": "Response", "type": "string"}
+                    ],
+                    "version": agent.get("version", "1.0.0"),
+                    "color": "#3b82f6",  # Default agent color
+                }
+            )
 
-        # 3. Skills
+        # 4. Skills
         db_skills = common_memory.list_skill_definitions()
         for skill in db_skills:
-            definitions.append({
-                "type": f"skill.{skill.get('id')}",
-                "label": skill.get('name'),
-                "category": f"Skills/{skill.get('category', 'General')}",
-                "description": skill.get('description'),
-                "inputs": skill.get('inputs', []),
-                "outputs": skill.get('outputs', []),
-                "version": skill.get('version', '1.0.0'),
-                "color": "#f59e0b" # Default skill color
-            })
+            definitions.append(
+                {
+                    "type": f"skill.{skill.get('id')}",
+                    "label": skill.get("name"),
+                    "category": f"Skills/{skill.get('category', 'General')}",
+                    "description": skill.get("description"),
+                    "inputs": skill.get("inputs", []),
+                    "outputs": skill.get("outputs", []),
+                    "version": skill.get("version", "1.0.0"),
+                    "color": "#f59e0b",  # Default skill color
+                }
+            )
 
-        return APIResponse(data=definitions, message="Node definitions retrieved successfully")
+        return APIResponse(
+            data=definitions, message="Node definitions retrieved successfully"
+        )
     except Exception as e:
         logger.error(f"Failed to fetch node definitions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/port-types")
+async def get_port_types():
+    """
+    Returns standardized port types for workflow nodes.
+    Extracted from node definitions (tools from RegistryService, nodes from DB).
+    Use these in Node Creator UI.
+    """
+    from app.core.common_lib_integration import common_memory
+
+    port_map = {}
+    registry_svc = _get_registry_svc()
+
+    # Extract from tools (RegistryService)
+    if registry_svc:
+        tool_groups = registry_svc.get_tools_by_category()
+        for cat, tools in tool_groups.items():
+            for tool in tools:
+                node_id = tool.get("id", "")
+                for inp in tool.get("inputs", []):
+                    port_id = inp.get("id")
+                    if port_id and port_id not in port_map:
+                        port_map[port_id] = {
+                            "id": port_id,
+                            "label": inp.get("label", port_id.upper()),
+                            "type": inp.get("type", "any"),
+                            "color": inp.get("color", "#94a3b8"),
+                            "description": inp.get("description", ""),
+                            "required": inp.get("required", False),
+                            "from_node": node_id,
+                            "direction": "input",
+                        }
+                for out in tool.get("outputs", []):
+                    port_id = out.get("id")
+                    if port_id and port_id not in port_map:
+                        port_map[port_id] = {
+                            "id": port_id,
+                            "label": out.get("label", port_id.upper()),
+                            "type": out.get("type", "any"),
+                            "color": out.get("color", "#94a3b8"),
+                            "description": out.get("description", ""),
+                            "required": False,
+                            "from_node": node_id,
+                            "direction": "output",
+                        }
+                    elif port_id in port_map:
+                        port_map[port_id]["direction"] = "input_output"
+
+    # Extract from node definitions in DB
+    try:
+        db_nodes = common_memory.list_node_definitions()
+        for node in db_nodes:
+            node_id = node.get("id", "")
+            for inp in node.get("inputs", []):
+                port_id = inp.get("id")
+                if port_id and port_id not in port_map:
+                    port_map[port_id] = {
+                        "id": port_id,
+                        "label": inp.get("label", port_id.upper()),
+                        "type": inp.get("type", "any"),
+                        "color": inp.get("color", "#94a3b8"),
+                        "description": inp.get("description", ""),
+                        "required": inp.get("required", False),
+                        "from_node": node_id,
+                        "direction": "input",
+                    }
+            for out in node.get("outputs", []):
+                port_id = out.get("id")
+                if port_id and port_id not in port_map:
+                    port_map[port_id] = {
+                        "id": port_id,
+                        "label": out.get("label", port_id.upper()),
+                        "type": out.get("type", "any"),
+                        "color": out.get("color", "#94a3b8"),
+                        "description": out.get("description", ""),
+                        "required": False,
+                        "from_node": node_id,
+                        "direction": "output",
+                    }
+                elif port_id in port_map:
+                    port_map[port_id]["direction"] = "input_output"
+    except Exception as e:
+        logger.warning(f"Failed to fetch DB node definitions: {e}")
+
+    ports = list(port_map.values())
+    return {"success": True, "data": ports}
+
+
+@router.post("/port-types/validate")
+async def validate_port_type(port_data: dict):
+    """
+    Validate if a port connection is valid.
+    Request: { from_port: str, to_port: str, from_node_type: str, to_node_type: str }
+    Returns: { valid: bool, message: str }
+    """
+    from_port = port_data.get("from_port", "")
+    to_port = port_data.get("to_port", "")
+    from_node_type = port_data.get("from_node_type", "")
+    to_node_type = port_data.get("to_node_type", "")
+
+    # Get registered port types
+    port_map = {}
+    registry_svc = _get_registry_svc()
+
+    if registry_svc:
+        tool_groups = registry_svc.get_tools_by_category()
+        for cat, tools in tool_groups.items():
+            for tool in tools:
+                node_id = tool.get("id", "")
+                for inp in tool.get("inputs", []):
+                    port_id = inp.get("id")
+                    if port_id:
+                        port_map[port_id] = {
+                            "type": inp.get("type", "any"),
+                            "direction": "input",
+                        }
+                for out in tool.get("outputs", []):
+                    port_id = out.get("id")
+                    if port_id:
+                        port_map[port_id] = {
+                            "type": out.get("type", "any"),
+                            "direction": "output",
+                        }
+
+    # Validate type compatibility
+    from_info = port_map.get(from_port, {})
+    to_info = port_map.get(to_port, {})
+
+    if not from_info or not to_info:
+        return {"valid": False, "message": f"Port not found: {from_port} or {to_port}"}
+
+    if from_info.get("type") != to_info.get("type"):
+        return {
+            "valid": False,
+            "message": f"Type mismatch: {from_info.get('type')} != {to_info.get('type')}",
+        }
+
+    return {"valid": True, "message": "Compatible"}
 
 
 @router.get("/stats", response_model=APIResponse[Dict[str, Any]])

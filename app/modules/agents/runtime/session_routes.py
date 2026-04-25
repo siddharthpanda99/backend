@@ -1889,7 +1889,8 @@ async def execute_plan(
                     thread_id=request.session_id,
                 )
 
-                executor = EntityExecutor()
+                from app.modules.entities.routes.registry import _get_registry_svc
+                executor = EntityExecutor(registry=_get_registry_svc())
 
                 for i, step_def in enumerate(executor_steps):
                     step_id = step_def["id"]

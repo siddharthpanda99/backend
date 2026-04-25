@@ -80,6 +80,19 @@ def main():
 
 def dev_server():
     """Entry point for 'uv run dev'"""
+    # Pre-check for syntax errors
+    import ast
+    from pathlib import Path
+
+    routes_dir = Path(__file__).parent / "modules" / "workflows" / "routes"
+    for f in routes_dir.glob("*.py"):
+        try:
+            ast.parse(f.read_text())
+        except SyntaxError as e:
+            print(f"Syntax error in {f.name}: {e}")
+            print("Fix the error and restart")
+            return
+
     db_up()
     print("\nStarting Backend Server...")
     import uvicorn

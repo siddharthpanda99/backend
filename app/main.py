@@ -86,6 +86,7 @@ async def lifespan(app: FastAPI):
             print("Database connection established successfully.")
 
             from common_lib.modules.data_storage.database.connection import init_db
+            from common_lib.modules.workflows.standard.models.observability import WorkflowExecution, WorkflowEvent
 
             init_db()
             print("Database initialized and models registered.")
