@@ -146,16 +146,18 @@ async def list_models_by_category(category: str = "sd15"):
     ]
 
 
-@router.get("/samplers", response_model=List[str])
+@router.get("/samplers", response_model=List[Dict[str, str]])
 async def list_samplers(implementation: str = "diffusers"):
     """List available samplers."""
-    return get_all_samplers(implementation)
+    samplers = get_all_samplers(implementation)
+    return [{"id": s, "label": s.replace("_", " ").title(), "backend": implementation} for s in samplers]
 
 
-@router.get("/schedulers", response_model=List[str])
+@router.get("/schedulers", response_model=List[Dict[str, str]])
 async def list_schedulers(provider: str = "diffusers"):
     """List available schedulers."""
-    return get_all_schedulers(provider)
+    schedulers = get_all_schedulers(provider)
+    return [{"id": s, "label": s.replace("_", " ").title(), "backend": provider} for s in schedulers]
 
 
 @router.get("/checkpoints", response_model=List[Dict[str, str]])
