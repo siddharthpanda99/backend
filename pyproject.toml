@@ -22,6 +22,10 @@ dependencies = [
     "tomesd>=0.1.3",
     "google-genai>=0.1.0",
     "mcp>=1.0.0",
+    "pdfplumber>=0.11.9",
+    "pdf2image>=1.17.0",
+    "paddleocr>=3.5.0",
+    "paddlepaddle>=3.3.1",
 ]
 
 

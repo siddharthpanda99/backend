@@ -59,6 +59,9 @@ from app.modules.grid.routes import router as grid_router
 from app.modules.plugins.routes.router import router as plugins_router
 from app.modules.daw.routes import router as daw_router
 from app.modules.memories.routes.external_memory import router as memory_router
+from app.modules.dip.routes.ingestion import router as dip_ingestion_router
+from app.modules.dip.routes.pipeline import pipeline_router
+from app.modules.notification.routes import router as notification_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -86,7 +89,10 @@ async def lifespan(app: FastAPI):
             print("Database connection established successfully.")
 
             from common_lib.modules.data_storage.database.connection import init_db
-            from common_lib.modules.workflows.standard.models.observability import WorkflowExecution, WorkflowEvent
+            from common_lib.modules.workflows.standard.models.observability import (
+                WorkflowExecution,
+                WorkflowEvent,
+            )
 
             init_db()
             print("Database initialized and models registered.")
@@ -551,6 +557,36 @@ def create_app() -> FastAPI:
         prefix=f"{settings.API_V1_STR}/sync",
         tags=["Sync"],
         dependencies=global_deps,
+    )
+
+    # DIP Ingestion API
+    print(
+        f"Startup: Including DIP Ingestion router with prefix: {settings.API_V1_STR}/dip/ingestion"
+    )
+    app.include_router(
+        dip_ingestion_router,
+        prefix=settings.API_V1_STR,
+        tags=["dip/ingestion"],
+    )
+
+    # DIP Pipeline API
+    print(
+        f"Startup: Including DIP Pipeline router with prefix: {settings.API_V1_STR}/dip/pipeline"
+    )
+    app.include_router(
+        pipeline_router,
+        prefix=settings.API_V1_STR,
+        tags=["dip/pipeline"],
+    )
+
+    # Notification SSE API
+    print(
+        f"Startup: Including Notification router with prefix: {settings.API_V1_STR}/notifications"
+    )
+    app.include_router(
+        notification_router,
+        prefix=settings.API_V1_STR,
+        tags=["notifications"],
     )
 
     # Serve generated images as static files
