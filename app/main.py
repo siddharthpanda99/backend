@@ -61,6 +61,8 @@ from app.modules.daw.routes import router as daw_router
 from app.modules.memories.routes.external_memory import router as memory_router
 from app.modules.dip.routes.ingestion import router as dip_ingestion_router
 from app.modules.dip.routes.pipeline import pipeline_router
+from app.modules.file_system import router as file_system_router
+from app.modules.file_browser import router as file_browser_router
 from app.modules.notification.routes import router as notification_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
@@ -587,6 +589,24 @@ def create_app() -> FastAPI:
         notification_router,
         prefix=settings.API_V1_STR,
         tags=["notifications"],
+    )
+
+    # File System API
+    print(
+        f"Startup: Including File Browser router with prefix: {settings.API_V1_STR}/file-browser"
+    )
+    app.include_router(
+        file_browser_router,
+        prefix=settings.API_V1_STR,
+        tags=["file-browser"],
+    )
+    print(
+        f"Startup: Including File System router with prefix: {settings.API_V1_STR}/file-system"
+    )
+    app.include_router(
+        file_system_router,
+        prefix=settings.API_V1_STR,
+        tags=["file-system"],
     )
 
     # Serve generated images as static files
