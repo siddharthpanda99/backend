@@ -26,6 +26,9 @@ dependencies = [
     "pdf2image>=1.17.0",
     "paddleocr>=3.5.0",
     "paddlepaddle>=3.3.1",
+    "liteparse",
+    "docling",
+    "transformers>=4.48.0",
 ]
 
 

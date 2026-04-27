@@ -8,6 +8,7 @@ from fastapi import (
     Query,
 )
 from fastapi.responses import StreamingResponse
+import uuid
 from typing import List, Optional
 from common_lib.modules.dip.ingestion.controller import (
     process_documents,
@@ -33,17 +34,22 @@ async def upload_and_process(
 
 @router.post("/compare")
 async def compare_parsers(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     parsers: Optional[str] = Form(None),
 ):
     parser_list = parsers.split(",") if parsers else None
-    # Read file content before passing to async
+    # Read file content before passing to background task
     content = await file.read()
     filename = file.filename
+    job_id = str(uuid.uuid4())
 
-    # Process inline and notify via SSE
-    result = await parse_file_with_comparator_content(content, filename, parser_list)
-    return result
+    # Offload to background and notify via SSE
+    background_tasks.add_task(
+        parse_file_with_comparator_content, content, filename, parser_list, job_id=job_id
+    )
+
+    return {"job_id": job_id, "filename": filename, "status": "started"}
 
 
 @router.get("/compare/stream")
