@@ -86,3 +86,8 @@ logs/
 **/renders/**
 **/tmp/**
 
+
+# Generated
+app/uploads/
+assets/
+resources/
