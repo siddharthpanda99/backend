@@ -49,3 +49,9 @@ allow-direct-references = true
 
 [tool.uv.sources]
 common_lib = { path = "../Python Libs/common_lib", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "requests>=2.32.5",
+]
