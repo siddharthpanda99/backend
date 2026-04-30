@@ -1,7 +1,8 @@
 """file_browser API routes — extends file_system with directories + enhanced operations."""
 
 from fastapi import APIRouter, Query, HTTPException, UploadFile, File, Form, Body
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel
 from typing import Optional, List
 import json
 
@@ -23,8 +24,8 @@ from common_lib.modules.file_browser.service import (
     get_folder_tree,
     get_storage_stats,
     download_file,
-    get_versions,
-    restore_version,
+    get_versions_legacy,
+    restore_version_legacy,
     copy_folder,
     create_share_link,
     get_share_links,
@@ -36,6 +37,30 @@ from common_lib.modules.file_browser.service import (
     complete_upload_session,
     get_all_tags,
     get_all_labels,
+    compress_files,
+    extract_archive,
+    create_version,
+    list_versions,
+    restore_file_version,
+    get_version_download_path,
+    create_alert,
+    get_user_alerts,
+    mark_alert_read,
+    log_event,
+    get_event_logs,
+    generate_file_preview,
+    get_file_preview,
+    get_preview_image,
+    bulk_move,
+    bulk_copy,
+    bulk_tag,
+    bulk_delete,
+    search_files_fulltext,
+    search_by_content,
+    register_webhook,
+    list_webhooks,
+    delete_webhook,
+    trigger_on_file_event,
     init as _init,
     _row_to_file,
     _engine,
@@ -191,8 +216,36 @@ async def bulk_delete_handler(body: BulkDeleteRequest):
 
 @router.post("/files/bulk-move", response_model=ApiResponse)
 async def bulk_move_handler(body: BulkMoveRequest):
-    moved = sum(1 for id in body.ids if move_file(id, body.target_folder_id))
-    return ApiResponse(success=True, name=f"{moved}/{len(body.ids)} moved")
+    """Move multiple files to a target folder."""
+    result = bulk_move(body.ids, body.target_folder_id)
+    return ApiResponse(
+        success=result["failed"] == 0, name=f"{result['success']}/{len(body.ids)} moved"
+    )
+
+
+@router.post("/files/bulk-copy", response_model=ApiResponse)
+async def bulk_copy_handler(body: BulkMoveRequest):
+    """Copy multiple files to a target folder."""
+    result = bulk_copy(body.ids, body.target_folder_id)
+    return ApiResponse(
+        success=result["failed"] == 0,
+        name=f"{result['success']}/{len(body.ids)} copied",
+    )
+
+
+class BulkTagRequest(BaseModel):
+    ids: List[str]
+    tags: List[str]
+
+
+@router.post("/files/bulk-tag", response_model=ApiResponse)
+async def bulk_tag_handler(body: BulkTagRequest):
+    """Add tags to multiple files."""
+    result = bulk_tag(body.ids, body.tags)
+    return ApiResponse(
+        success=result["failed"] == 0,
+        name=f"{result['success']}/{len(body.ids)} tagged",
+    )
 
 
 @router.delete("/files/{file_id}", response_model=ApiResponse)
@@ -312,12 +365,24 @@ async def search_handler(
     q: str = Query(...),
     folder_id: Optional[str] = Query(None),
     file_types: Optional[str] = Query(None),
+    include_content: bool = Query(True),
     page: int = Query(1),
     limit: int = Query(50),
 ):
-    """Search files by name or path."""
+    """Search files by name or content."""
     types = file_types.split(",") if file_types else None
-    return search_files(q, folder_id, types, page, limit)
+    return search_files_fulltext(q, folder_id, types, include_content, page, limit)
+
+
+@router.get("/search/content")
+async def search_content_handler(
+    q: str = Query(...),
+    folder_id: Optional[str] = Query(None),
+    page: int = Query(1),
+    limit: int = Query(50),
+):
+    """Search only file content."""
+    return search_by_content(q, folder_id, page, limit)
 
 
 # ── Storage ─────────────────────────────────────────────────────────────────
@@ -458,6 +523,15 @@ async def add_tags_handler(file_id: str, body: AddTagsRequest):
     return result
 
 
+@router.delete("/files/{file_id}/tags", response_model=FileNodeResponse)
+async def remove_tags_handler(file_id: str, body: RemoveTagsRequest):
+    """Remove tags from a file."""
+    result = remove_tags(file_id, body.tags)
+    if not result:
+        raise HTTPException(status_code=404, detail="File not found")
+    return result
+
+
 @router.post("/files/{file_id}/label", response_model=FileNodeResponse)
 async def set_label_handler(file_id: str, body: AddLabelRequest):
     """Set label for a file."""
@@ -493,153 +567,220 @@ async def download_handler(file_id: str):
     )
 
 
-# ── Remove Tags ───────────────────────────────────────────────────────────
+# ── S3-Style Compression ────────────────────────────────────────────────────────
 
 
-@router.delete("/files/{file_id}/tags", response_model=FileNodeResponse)
-async def remove_tags_handler(file_id: str, body: RemoveTagsRequest):
-    """Remove tags from a file."""
-    result = remove_tags(file_id, body.tags)
+class CompressRequest(BaseModel):
+    file_ids: List[str]
+    output_name: str
+
+
+@router.post("/files/compress")
+async def compress_files_handler(request: CompressRequest):
+    """Compress multiple files into a zip archive."""
+    result = compress_files(request.file_ids, request.output_name)
     if not result:
-        raise HTTPException(status_code=404, detail="File not found")
+        raise HTTPException(status_code=500, detail="Compression failed")
     return result
 
 
-# ── Versions ───────────────────────────────────────────────────────────────
+@router.post("/files/{file_id}/extract")
+async def extract_archive_handler(file_id: str, folder_id: Optional[str] = None):
+    """Extract a zip archive."""
+    result = extract_archive(file_id, folder_id)
+    return {"extracted_files": result, "count": len(result)}
+
+
+# ── S3-Style Versioning ─────────────────────────────────────────────────────────
+
+
+@router.post("/files/{file_id}/versions")
+async def create_version_handler(file_id: str):
+    """Create a new version of a file."""
+    version = create_version(file_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="File not found")
+    return version
 
 
 @router.get("/files/{file_id}/versions")
-async def versions_handler(file_id: str) -> List[VersionItem]:
-    """Get version history for a file."""
-    versions = get_versions(file_id)
-    return [VersionItem(**v) for v in versions]
-
-
-@router.post(
-    "/files/{file_id}/versions/{version_id}/restore", response_model=FileNodeResponse
-)
-async def restore_version_handler(file_id: str, version_id: str):
-    """Restore a specific version."""
-    result = restore_version(file_id, version_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="File or version not found")
-    return result
-
-
-# ── Copy Folder ───────────────────────────────────────────────────────────
-
-
-@router.post("/folders/{folder_id}/copy", response_model=ApiResponse)
-async def copy_folder_handler(folder_id: str, body: CopyFolderRequest):
-    """Copy a folder recursively."""
-    result = copy_folder(folder_id, body.target_folder_id, body.new_name)
-    if not result.get("success", False):
-        raise HTTPException(
-            status_code=404, detail=result.get("error", "Folder not found")
-        )
-    return ApiResponse(**result)
-
-
-# ── Share Links ───────────────────────────────────────────────────────────
-
-
-@router.post("/files/{file_id}/share", response_model=ShareLinkResponse)
-async def create_share_link_handler(file_id: str, body: ShareLinkRequest):
-    """Create a share link for a file."""
-    file = get_file(file_id)
-    if not file:
+async def list_versions_handler(file_id: str):
+    """List all versions of a file."""
+    versions = list_versions(file_id)
+    return versions
+    """Create a new version of a file."""
+    version = create_version(file_id)
+    if not version:
         raise HTTPException(status_code=404, detail="File not found")
-    result = create_share_link(file_id, body.access_level, body.expires_days)
-    return ShareLinkResponse(**result)
+    return version
 
 
-@router.get("/files/{file_id}/shares")
-async def list_share_links_handler(file_id: str) -> List[ShareLink]:
-    """List share links for a file."""
-    links = get_share_links(file_id)
-    return [ShareLink(**l) for l in links]
+@router.get("/files/{file_id}/versions")
+async def list_versions_handler(file_id: str):
+    """List all versions of a file."""
+    versions = list_versions(file_id)
+    return versions
 
 
-@router.get("/shares")
-async def list_all_share_links_handler() -> List[ShareLink]:
-    """List all share links."""
-    links = get_share_links()
-    return [ShareLink(**l) for l in links]
-
-
-@router.delete("/shares/{link_id}")
-async def revoke_share_link_handler(link_id: str):
-    """Revoke a share link."""
-    revoke_share_link(link_id)
-    return ApiResponse(success=True)
-
-
-@router.get("/share/{token}")
-async def get_shared_file_handler(token: str):
-    """Get file info via share token."""
-    info = get_share_link_by_token(token)
-    if not info:
-        raise HTTPException(status_code=404, detail="Share link invalid or expired")
-    info["file_id"] = info.get("resource_id")
-    return info
-
-
-# ── Chunked Upload ─────────────────────────────────────────────────────────
-
-
-@router.post("/upload/session", response_model=UploadSessionResponse)
-async def create_upload_session_handler(body: UploadSessionCreate):
-    """Create a chunked upload session."""
-    session = create_upload_session(
-        body.filename,
-        body.total_size_bytes,
-        body.mime_type,
-        body.folder_id,
-        None,
-        body.chunk_size_bytes,
-    )
-    return UploadSessionResponse(**session)
-
-
-@router.get("/upload/session/{session_id}")
-async def get_upload_session_handler(session_id: str):
-    """Get upload session status."""
-    session = get_upload_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return session
-
-
-@router.post("/upload/chunk")
-async def upload_chunk_handler(
-    session_id: str = Form(...),
-    chunk_index: int = Form(...),
-    chunk: UploadFile = File(...),
-):
-    """Upload a chunk."""
-    result = update_upload_chunk(session_id, chunk_index)
+@router.post("/files/{file_id}/versions/{version_id}/restore")
+async def restore_version_handler(file_id: str, version_id: str):
+    """Restore a file to a specific version."""
+    result = restore_file_version(file_id, version_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Version not found")
     return result
 
 
-@router.post("/upload/session/{session_id}/complete")
-async def complete_upload_handler(session_id: str, file_id: str):
-    """Mark upload session as complete."""
-    complete_upload_session(session_id, file_id)
+# ── S3-Style Alerts & Events ─────────────────────────────────────────────────────────
+
+
+class CreateAlertRequest(BaseModel):
+    title: str
+    message: str
+    alert_type: str = "info"
+    severity: str = "info"
+    source_type: Optional[str] = None
+    source_id: Optional[str] = None
+    action_url: Optional[str] = None
+
+
+@router.post("/alerts")
+async def create_alert_handler(user_id: str, request: CreateAlertRequest):
+    """Create an alert for a user."""
+    alert = create_alert(
+        user_id=user_id,
+        title=request.title,
+        message=request.message,
+        alert_type=request.alert_type,
+        severity=request.severity,
+        source_type=request.source_type,
+        source_id=request.source_id,
+        action_url=request.action_url,
+    )
+    return alert
+
+
+@router.get("/alerts/{user_id}")
+async def get_user_alerts_handler(user_id: str, unread_only: bool = False):
+    """Get alerts for a user."""
+    alerts = get_user_alerts(user_id, unread_only)
+    return alerts
+
+
+@router.post("/alerts/{alert_id}/read")
+async def mark_alert_read_handler(alert_id: str):
+    """Mark an alert as read."""
+    mark_alert_read(alert_id)
+    return {"success": True}
+
+
+@router.get("/events")
+async def get_event_logs_handler(
+    event_type: Optional[str] = None,
+    source_id: Optional[str] = None,
+    limit: int = 100,
+):
+    """Get event logs."""
+    logs = get_event_logs(event_type, source_id, limit)
+    return logs
+
+
+# ── File Preview/Viewer ─────────────────────────────────────────────────────────
+
+
+@router.post("/files/{file_id}/preview")
+async def generate_preview_handler(file_id: str, preview_type: str = "thumbnail"):
+    """Generate a preview for a file."""
+    preview = generate_file_preview(file_id, preview_type)
+    if not preview:
+        raise HTTPException(
+            status_code=404, detail="File not found or preview generation failed"
+        )
+    return preview
+
+
+@router.get("/files/{file_id}/preview")
+async def get_preview_handler(file_id: str):
+    """Get preview info for a file."""
+    preview = get_file_preview(file_id)
+    if not preview:
+        raise HTTPException(status_code=404, detail="No preview found")
+    return preview
+
+
+@router.get("/files/{file_id}/preview/image")
+async def get_preview_image_handler(file_id: str):
+    """Get the actual preview image."""
+    image_data = get_preview_image(file_id)
+    if not image_data:
+        raise HTTPException(status_code=404, detail="No preview image found")
+    return Response(content=image_data, media_type="image/jpeg")
+
+
+# ── S3-Style Versioning ─────────────────────────────────────────────────────────
+
+
+@router.post("/files/{file_id}/versions")
+async def create_version_handler(file_id: str):
+    """Create a new version of a file."""
+    version = create_version(file_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="File not found")
+    return version
+
+
+@router.get("/files/{file_id}/versions")
+async def list_versions_handler(file_id: str):
+    """List all versions of a file."""
+    versions = list_versions(file_id)
+    return versions
+
+
+@router.post("/files/{file_id}/versions/{version_id}/restore")
+async def restore_version_handler(file_id: str, version_id: str):
+    """Restore a file to a specific version."""
+    result = restore_file_version(file_id, version_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return result
+
+
+@router.get("/versions/{version_id}/download")
+async def download_version_handler(version_id: str):
+    """Download a specific version of a file."""
+    from fastapi.responses import FileResponse
+
+    ver = get_version_download_path(version_id)
+    if not ver or not ver.get("storage_path"):
+        raise HTTPException(status_code=404, detail="Version not found")
+    return FileResponse(
+        path=ver["storage_path"],
+        filename=f"v{ver['version_number']}_{ver.get('file_id', 'file')}",
+    )
+
+
+# ── Webhooks ───────────────────────────────────────────────────────────────
+
+
+class WebhookRequest(BaseModel):
+    url: str
+    events: List[str]
+    name: Optional[str] = None
+    secret: Optional[str] = None
+
+
+@router.post("/webhooks", response_model=ApiResponse)
+async def register_webhook_handler(request: WebhookRequest):
+    result = register_webhook(request.url, request.events, request.name, request.secret)
+    return ApiResponse(success=True, name=result["id"])
+
+
+@router.get("/webhooks")
+async def list_webhooks_handler():
+    return list_webhooks()
+
+
+@router.delete("/webhooks/{webhook_id}", response_model=ApiResponse)
+async def delete_webhook_handler(webhook_id: str):
+    delete_webhook(webhook_id)
     return ApiResponse(success=True)
-
-
-# ── Tags & Labels ──────────────────────────────────────────────────────────
-
-
-@router.get("/tags", response_model=List[TagItem])
-async def list_tags_handler():
-    """List all tags with usage count."""
-    tags = get_all_tags()
-    return [TagItem(**t) for t in tags]
-
-
-@router.get("/labels", response_model=List[LabelItem])
-async def list_labels_handler():
-    """List all labels with usage count."""
-    labels = get_all_labels()
-    return [LabelItem(**l) for l in labels]
