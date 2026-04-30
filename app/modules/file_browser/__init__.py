@@ -61,6 +61,16 @@ from common_lib.modules.file_browser.service import (
     list_webhooks,
     delete_webhook,
     trigger_on_file_event,
+    generate_signed_url,
+    verify_signed_url,
+    revoke_signed_url,
+    add_file_comment,
+    get_file_comments,
+    lock_file,
+    unlock_file,
+    get_file_lock,
+    encrypt_file,
+    decrypt_file,
     init as _init,
     _row_to_file,
     _engine,
@@ -282,6 +292,25 @@ async def upload_alias_handler(
     data = await file.read()
     result = upload_file(data, file.filename, folder_id, None)
     return result
+
+
+@router.get("/upload/{session_id}/status")
+async def get_upload_status_handler(session_id: str):
+    """Get upload session status with chunk info."""
+    from common_lib.modules.file_browser.service import get_upload_session_status
+
+    status = get_upload_session_status(session_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return status
+
+
+@router.get("/upload/{session_id}/resume")
+async def resume_upload_handler(session_id: str):
+    """Get info about which chunks are missing for resuming."""
+    from common_lib.modules.file_browser.service import resume_upload_session
+
+    return resume_upload_session(session_id)
 
 
 # ── Folders ─────────────────────────────────────────────────────────────────
@@ -548,6 +577,25 @@ async def get_storage_stats_handler():
     return get_storage_stats()
 
 
+# ── Tags & Labels ─────────────────────────────────────────────────────────────
+
+
+@router.get("/tags")
+async def get_tags_handler():
+    """Get all tags."""
+    from common_lib.modules.file_browser.service import get_all_tags
+
+    return get_all_tags()
+
+
+@router.get("/labels")
+async def get_labels_handler():
+    """Get all labels."""
+    from common_lib.modules.file_browser.service import get_all_labels
+
+    return get_all_labels()
+
+
 # ── Download ─────────────────────────────────────────────────────────────────
 
 
@@ -784,3 +832,112 @@ async def list_webhooks_handler():
 async def delete_webhook_handler(webhook_id: str):
     delete_webhook(webhook_id)
     return ApiResponse(success=True)
+
+
+# ── Pre-signed URLs ───────────────────────────────────────────────────────
+
+
+class SignedUrlRequest(BaseModel):
+    expires_seconds: int = 3600
+    user_id: Optional[str] = None
+
+
+@router.post("/files/{file_id}/signed-url", response_model=ApiResponse)
+async def generate_signed_url_handler(file_id: str, request: SignedUrlRequest):
+    """Generate a pre-signed URL for secure file download."""
+    result = generate_signed_url(file_id, request.expires_seconds, request.user_id)
+    return ApiResponse(success=True, name=result["url"], id=result["token"])
+
+
+@router.get("/signed/{token}")
+async def verify_signed_url_handler(token: str):
+    """Verify and access a pre-signed URL."""
+    result = verify_signed_url(token)
+    if not result:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return result
+
+
+@router.delete("/signed/{token}", response_model=ApiResponse)
+async def revoke_signed_url_handler(token: str):
+    """Revoke a pre-signed URL."""
+    revoke_signed_url(token)
+    return ApiResponse(success=True)
+
+
+# ── File Comments ───────────────────────────────────────────────────────────────
+
+
+class CommentRequest(BaseModel):
+    content: str
+    user_id: str = "anonymous"
+
+
+@router.post("/files/{file_id}/comments")
+async def add_comment_handler(file_id: str, request: CommentRequest):
+    from common_lib.modules.file_browser.service import add_file_comment
+
+    result = add_file_comment(file_id, request.user_id, request.content)
+    return result
+
+
+@router.get("/files/{file_id}/comments")
+async def list_comments_handler(file_id: str):
+    from common_lib.modules.file_browser.service import get_file_comments
+
+    return get_file_comments(file_id)
+
+
+# ── File Locking ───────────────────────────────────────────────────────────────
+
+
+class LockRequest(BaseModel):
+    user_id: str = "anonymous"
+    reason: Optional[str] = None
+
+
+@router.post("/files/{file_id}/lock")
+async def lock_file_handler(file_id: str, request: LockRequest):
+    from common_lib.modules.file_browser.service import lock_file
+
+    return lock_file(file_id, request.user_id, request.reason)
+
+
+@router.delete("/files/{file_id}/lock")
+async def unlock_file_handler(file_id: str, user_id: str = "anonymous"):
+    from common_lib.modules.file_browser.service import unlock_file
+
+    return unlock_file(file_id, user_id)
+
+
+@router.get("/files/{file_id}/lock")
+async def get_lock_handler(file_id: str):
+    from common_lib.modules.file_browser.service import get_file_lock
+
+    result = get_file_lock(file_id)
+    if not result:
+        return {"locked": False}
+    return {"locked": True, **result}
+
+
+# ── File Encryption ─────────────────────────────────────────────────────────────
+
+
+@router.post("/files/{file_id}/encrypt")
+async def encrypt_file_handler(file_id: str):
+    from common_lib.modules.file_browser.service import encrypt_file
+
+    result = encrypt_file(file_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="File not found")
+    return result
+
+
+@router.post("/files/{file_id}/decrypt")
+async def decrypt_file_handler(file_id: str):
+    from common_lib.modules.file_browser.service import decrypt_file
+
+    result = decrypt_file(file_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="File not found")
+    return result
