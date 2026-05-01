@@ -415,6 +415,7 @@ dependencies = [
     { name = "argon2-cffi" },
     { name = "cachetools" },
     { name = "common-lib" },
+    { name = "croniter" },
     { name = "docling" },
     { name = "fastapi", extra = ["standard"] },
     { name = "google-genai" },
@@ -449,6 +450,7 @@ requires-dist = [
     { name = "argon2-cffi", specifier = ">=25.1.0" },
     { name = "cachetools", specifier = ">=5.0.0" },
     { name = "common-lib", editable = "../Python Libs/common_lib" },
+    { name = "croniter", specifier = ">=2.0.0" },
     { name = "docling" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.128.0" },
     { name = "google-genai", specifier = ">=0.1.0" },
@@ -781,6 +783,7 @@ dependencies = [
     { name = "civitai-py" },
     { name = "compel" },
     { name = "controlnet-aux" },
+    { name = "croniter" },
     { name = "cryptography" },
     { name = "deepcache" },
     { name = "deprecated" },
@@ -858,6 +861,7 @@ requires-dist = [
     { name = "civitai-py", specifier = ">=0.1.10" },
     { name = "compel", specifier = ">=2.0.0" },
     { name = "controlnet-aux", specifier = ">=0.0.7" },
+    { name = "croniter", specifier = ">=2.0.0" },
     { name = "cryptography", specifier = ">=41.0.0" },
     { name = "deepcache", specifier = ">=0.1.1" },
     { name = "deepfilternet", marker = "extra == 'denoising'", specifier = ">=0.5.5" },
@@ -925,6 +929,12 @@ requires-dist = [
     { name = "youtube-transcript-api", specifier = ">=0.6.1" },
 ]
 provides-extras = ["denoising", "audio"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest-asyncio", specifier = ">=1.3.0" },
+]
 
 [[package]]
 name = "compel"
@@ -1122,6 +1132,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/fc/3a/00cc578cd27ed0b22c9be25cef2c24539d92df9fa80ebd67a3fc5419724c/crc32c-2.8-pp311-pypy311_pp73-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:15905fa78344654e241371c47e6ed2411f9eeb2b8095311c68c88eccf541e8b4", size = 64108, upload-time = "2025-10-17T06:20:11.072Z" },
     { url = "https://files.pythonhosted.org/packages/6b/bc/0587ef99a1c7629f95dd0c9d4f3d894de383a0df85831eb16c48a6afdae4/crc32c-2.8-pp311-pypy311_pp73-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:c596f918688821f796434e89b431b1698396c38bf0b56de873621528fe3ecb1e", size = 64815, upload-time = "2025-10-17T06:20:11.919Z" },
     { url = "https://files.pythonhosted.org/packages/73/42/94f2b8b92eae9064fcfb8deef2b971514065bd606231f8857ff8ae02bebd/crc32c-2.8-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:8d23c4fe01b3844cb6e091044bc1cebdef7d16472e058ce12d9fadf10d2614af", size = 66659, upload-time = "2025-10-17T06:20:12.766Z" },
+]
+
+[[package]]
+name = "croniter"
+version = "6.2.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/df/de/5832661ed55107b8a09af3f0a2e71e0957226a59eb1dcf0a445cce6daf20/croniter-6.2.2.tar.gz", hash = "sha256:ba60832a5ec8e12e51b8691c3309a113d1cf6526bdf1a48150ce8ec7a532d0ab", size = 113762, upload-time = "2026-03-15T08:43:48.112Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/39/783980e78cb92c2d7bdb1fc7dbc86e94ccc6d58224d76a7f1f51b6c51e30/croniter-6.2.2-py3-none-any.whl", hash = "sha256:a5d17b1060974d36251ea4faf388233eca8acf0d09cbd92d35f4c4ac8f279960", size = 45422, upload-time = "2026-03-15T08:43:46.626Z" },
 ]
 
 [[package]]
