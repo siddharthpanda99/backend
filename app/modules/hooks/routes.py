@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from typing import Optional, List
 from pydantic import BaseModel
 
-from common_lib.modules.orchestration.hooks import (
+from common_lib.modules.hooks import (
     HookEngine,
     get_hook_engine,
     HookPhase,
