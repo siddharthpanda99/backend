@@ -58,6 +58,7 @@ from app.modules.data_forge.routes import router as data_forge_router
 from app.modules.grid.routes import router as grid_router
 from app.modules.plugins.routes.router import router as plugins_router
 from app.modules.daw.routes import router as daw_router
+from app.modules.hooks.routes import router as hooks_router
 from app.modules.memories.routes.external_memory import router as memory_router
 from app.modules.dip.routes.ingestion import router as dip_ingestion_router
 from app.modules.dip.routes.pipeline import pipeline_router
@@ -390,6 +391,13 @@ def create_app() -> FastAPI:
         projects_router,
         prefix=f"{settings.API_V1_STR}/projects",
         tags=["Projects"],
+        dependencies=global_deps,
+    )
+
+    app.include_router(
+        hooks_router,
+        prefix=f"{settings.API_V1_STR}/hooks",
+        tags=["Hooks"],
         dependencies=global_deps,
     )
 
