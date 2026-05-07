@@ -18,6 +18,9 @@ def get_master_agent() -> Optional[Any]:
 def get_active_session() -> Dict[str, Any]:
     return cl_loader.get_active_session()
 
+def set_human_feedback_mode(enabled: bool) -> None:
+    return cl_loader.set_human_feedback_mode(enabled)
+
 def clear_checkpointer():
     return cl_loader.clear_checkpointer()
 
@@ -42,6 +45,7 @@ def load_agent(
     skip_engine_deploy: bool      = False,
     engine_id: str                = "main",
     auto_deploy_llm: bool         = False,
+    exhaustive_discovery: bool    = False,
 ) -> Any:
     """
     Proxy to common_lib.load_agent with backend-specific context (common_memory).
@@ -82,7 +86,8 @@ def load_agent(
         # preload=True triggers vLLM deploy inside EngineManager — only allow when auto_deploy_llm
         preload=auto_deploy_llm,
         memory_store=common_memory,
-        engine_id=engine_id
+        engine_id=engine_id,
+        exhaustive_discovery=exhaustive_discovery
     )
 
 def load_agent_generator(
@@ -101,6 +106,7 @@ def load_agent_generator(
     skip_engine_deploy: bool      = False,
     engine_id: str                = "main",
     auto_deploy_llm: bool         = False,
+    exhaustive_discovery: bool    = False,
 ) -> Any:
     """
     Generator version of load_agent for streaming deployment status.
@@ -164,7 +170,14 @@ def load_agent_generator(
         yield "data: STATUS:STARTING:Configuring non-vLLM provider...\n\n"
 
     # Final Compilation
+    import time
+    start_time = time.time()
+    yield "data: STATUS:LOADING:Starting agent compilation...\n\n"
+    
     try:
+        print(f"[AgentLoader] Starting load_agent for {agent_id}...")
+        yield "data: STATUS:INITIALIZING:Syncing registries and loading engine...\n\n"
+        
         load_agent(
             model_path=model_path,
             provider=provider,
@@ -180,7 +193,19 @@ def load_agent_generator(
             skip_engine_deploy=skip_engine_deploy,
             engine_id=engine_id,
             auto_deploy_llm=auto_deploy_llm,
+            exhaustive_discovery=exhaustive_discovery,
         )
-        yield "data: STATUS:READY:Agent successfully deployed.\n\n"
+        duration = time.time() - start_time
+        print(f"[AgentLoader] load_agent completed in {duration:.2f}s. Preparing to signal READY status.")
+        
+        # Explicitly signal readiness to the frontend
+        ready_payload = f"STATUS:READY:Agent successfully deployed in {duration:.2f}s."
+        print(f"[AgentLoader] Yielding: {ready_payload}")
+        yield f"data: {ready_payload}\n\n"
+        print(f"[AgentLoader] Deployment generator finished successfully.")
     except Exception as e:
-        yield f"data: STATUS:ERROR:Compilation failed: {str(e)}\n\n"
+        import traceback
+        error_msg = f"Compilation failed: {str(e)}"
+        print(f"[AgentLoader] ERROR: {error_msg}")
+        print(traceback.format_exc())
+        yield f"data: STATUS:ERROR:{error_msg}\n\n"

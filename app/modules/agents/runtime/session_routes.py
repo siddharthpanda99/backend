@@ -100,6 +100,7 @@ class ConversationResponse(BaseModel):
 
 
 class MessageCreate(BaseModel):
+    id: Optional[str] = None  # Caller may supply a pre-generated ID; backend auto-generates if absent
     conversation_id: Optional[str] = None
     session_id: Optional[str] = None
     role: str  # user, assistant, system
@@ -525,24 +526,15 @@ def create_session(data: SessionCreate, session: Session = Depends(get_db_sessio
     ID format: {agent_name}_{model_name}_{ddmmyyyy}
     Example: pdf_planner_qwen_08042026
     """
-    # Generate readable ID: agentname_modelname_ddmmyyyy
-    agent_part = (
-        (data.agent_name or "agent").lower().replace(" ", "_").replace("-", "_")
-    )
-    model_part = (
-        (data.model_name or "model")
-        .lower()
-        .replace(" ", "_")
-        .replace("-", "_")
-        .replace(".", "")
-    )
+    # Generate neutral ID: session_ddmmyyyy_suffix
     date_part = datetime.now().strftime("%d%m%Y")
-    sid = f"{agent_part}_{model_part}_{date_part}"
+    suffix = uuid4().hex[:8]
+    sid = f"session_{date_part}_{suffix}"
 
     # Handle name - use provided name or generate readable one
     name = (
         data.name
-        or f"{data.agent_name or 'Agent'} / {data.model_name or 'Model'} / {datetime.now().strftime('%d-%m-%Y')}"
+        or f"{data.agent_name or 'Agent'} / {data.model_name or 'Model'} / {datetime.now().strftime('%d-%m-%Y %H:%M')}"
     )
 
     s = AgentSession(
@@ -555,8 +547,8 @@ def create_session(data: SessionCreate, session: Session = Depends(get_db_sessio
         model_name=data.model_name,
         engine=data.engine,
         description=data.description,
-        tags=json.dumps(data.tags) if data.tags else None,
-        session_metadata=json.dumps(data.metadata) if data.metadata else None,
+        tags=data.tags if data.tags else None,
+        session_metadata=data.metadata if data.metadata else None,
         is_pinned=False,
         is_active=True,
     )
@@ -642,8 +634,8 @@ def get_session(session_id: str, session: Session = Depends(get_db_session)):
         message_count=msg_count,
         conversation_id=conversation,
         description=s.description,
-        tags=json.loads(s.tags) if s.tags else [],
-        metadata=json.loads(s.session_metadata) if s.session_metadata else {},
+        tags=s.tags if s.tags else [],
+        metadata=s.session_metadata if s.session_metadata else {},
     )
 
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import traceback
 from datetime import datetime
-from typing import AsyncGenerator, Any
+from typing import AsyncGenerator, Any, Optional, Dict
 
 from langchain_core.agents import AgentFinish
 
@@ -32,11 +32,11 @@ ALLOWED_NODES = {
 }
 NODE_TITLES = {
     "preprocess_input": "🔍 Analysing Input",
-    "agent_thinking": "[Reasoning] Agent Reasoning",
-    "execute_tool": "[Tool] Executing Tool",
-    "auto_extract": "[Extract] Extracting Knowledge",
-    "aggregate_results": "[Link] Aggregating Results",
-    "finalize_turn": "[Save] Saving History",
+    "agent_thinking": "🧠 Agent Reasoning turn",
+    "execute_tool": "🔧 Executing Tool / Procedure",
+    "auto_extract": "📝 Extracting Knowledge",
+    "aggregate_results": "🔗 Aggregating Results",
+    "finalize_turn": "💾 Saving History",
 }
 
 
@@ -71,7 +71,19 @@ async def stream_agent_generator(
             )
             return
 
-        initial: dict[str, Any] = {"input": message, "intermediate_steps": []}
+        initial: dict[str, Any] = {
+            "input": message,
+            "intermediate_steps": [],
+            # --- Provide defaults for ALL ReActState keys so LangGraph does not
+            # silently reject the input on the first call to a fresh thread_id.
+            "conversation_history": "",
+            "agent_outcome": None,
+            "structured_state": {},
+            "hints": [],
+            "operational_metadata": {},
+            "context_metrics": {},
+            "execution_constraints": {},
+        }
 
         # Handle HITL Decision: If the user approved/modified a tool call
         if decision:
@@ -105,17 +117,122 @@ async def stream_agent_generator(
 
         # Inject operational metadata on the very first turn of this thread
         current = agent.graph.get_state({"configurable": {"thread_id": session_id}})
+        existing = current.values if current and current.values else {}
+        logger.info(
+            "[Streaming] Checkpointed state keys=%s steps=%d outcome_type=%s",
+            list(existing.keys()) if existing else "[]",
+            len(existing.get("intermediate_steps", [])),
+            type(existing.get("agent_outcome")).__name__,
+        )
+
+        # Reset stale execution state so the graph runs fresh on each new message.
+        # Without this, a previous AgentFinish/intermediate_steps in the checkpointer
+        # causes the graph to immediately route to END with zero events.
+        if not decision and existing:
+            agent.graph.update_state(
+                {"configurable": {"thread_id": session_id}},
+                {"agent_outcome": None, "intermediate_steps": []},
+            )
+            logger.info("[Streaming] Reset stale agent_outcome and intermediate_steps.")
+
         if not current.values.get("operational_metadata"):
-            initial["operational_metadata"] = {
-                "agent_name": active_session.get("agent_display_name", "Agent"),
-                "model": active_session.get("model_path", "unknown"),
+            vram = {}
+            try:
+                from common_lib.modules.ai_models.llm.vllm_fleet_manager import vllm_fleet
+
+                vram = vllm_fleet.get_gpu_memory()
+            except:
+                pass
+
+            op_meta = {
+                "agent_name": active_session.get("agent", "Agent"),
+                "agent_id": active_session.get("agent_id", "unknown"),
+                "model": active_session.get("model", "unknown"),
+                "provider": active_session.get("provider", "unknown"),
                 "deployed_at": datetime.now().isoformat(),
                 "status": "active",
+                "vram_usage": vram,
+                "tools": active_session.get("tools", []),
+                "capabilities": active_session.get("capabilities", {}),
+                "discovery_status": active_session.get("discovery_status", {}),
+                "system_prompt": active_session.get("system_prompt", ""),
+                "full_definition": active_session.get("full_definition", {}),
             }
+            initial["operational_metadata"] = op_meta
 
-        # If it's a resume (decision), we pass None as input to LangGraph to continue from checkpoint
+            # ── DB SYNC: Hydrate AgentSession & SessionState ──────────────────
+            try:
+                from app.modules.agents.runtime.session_routes import get_db_session
+                from app.modules.agents.runtime.session_models import (
+                    AgentSession,
+                    SessionState,
+                )
+                from sqlmodel import select
+
+                # Use a local session context to ensure commit
+                from common_lib.modules.data_pipeline.storage.db.engine import get_engine as _get_engine
+                db_engine = _get_engine()
+                from sqlmodel import Session as SQLSession
+
+                with SQLSession(db_engine) as db_sync:
+                    session_record = db_sync.get(AgentSession, session_id)
+                    if session_record:
+                        # Hydrate summary if missing
+                        if not session_record.summary:
+                            caps = op_meta.get("capabilities", {})
+                            summary_parts = [
+                                f"Active session with {op_meta['agent_name']} using {op_meta['model']}.",
+                                f"Accessible: {len(op_meta['tools'])} tools",
+                                f"{len(caps.get('skills', []))} skills",
+                                f"{len(caps.get('workflows', []))} workflows",
+                                f"{len(caps.get('prompts', []))} prompts",
+                                f"{len(caps.get('procedures', []))} procedures",
+                                f"{len(caps.get('knowledge_bases', []))} knowledge bases",
+                            ]
+                            session_record.summary = ", ".join(summary_parts) + "."
+
+                        # Update metadata
+                        if not session_record.session_metadata:
+                            session_record.session_metadata = op_meta
+
+                        # Ensure SessionState exists
+                        state_record = db_sync.exec(
+                            select(SessionState).where(
+                                SessionState.session_id == session_id
+                            )
+                        ).first()
+                        if not state_record:
+                            state_record = SessionState(
+                                id=f"state_{session_id}",
+                                session_id=session_id,
+                                status="active",
+                                state_variables=json.dumps({"tools": op_meta["tools"]}),
+                                metrics=json.dumps({"vram": vram}),
+                            )
+                            db_sync.add(state_record)
+                        else:
+                            state_record.status = "active"
+                            if not state_record.state_variables:
+                                state_record.state_variables = json.dumps(
+                                    {"tools": op_meta["tools"]}
+                                )
+
+                        db_sync.add(session_record)
+                        db_sync.commit()
+                        logger.info(
+                            f"[Streaming] Hydrated session state for {session_id}"
+                        )
+            except Exception as sync_err:
+                logger.warning(f"[Streaming] DB Hydration failed: {sync_err}")
+
+        # Use direct graph.astream_events — the agent.astream_events() wrapper
+        # breaks event emission (do not await it).
         stream_input = initial if not decision else None
-
+        logger.info(
+            "[Streaming] Calling graph.astream_events | decision=%s | input_keys=%s",
+            bool(decision),
+            list(stream_input.keys()) if stream_input else "None (resume)",
+        )
         stream = agent.graph.astream_events(
             stream_input,
             config={"configurable": {"thread_id": session_id}, "recursion_limit": 25},
@@ -124,10 +241,12 @@ async def stream_agent_generator(
 
         step = 0
         final_answer = None
+        final_answer_thought = None
         accum = ""
         tool_call_counts: dict[str, int] = {}
         consecutive_same_tool = 0
         last_tool_name = ""
+        llm_call_count = 0  # hard kill guard: abort after too many LLM turns with no answer
 
         def ts() -> str:
             return datetime.now().strftime("%H:%M:%S.%f")[:-3]
@@ -155,11 +274,25 @@ async def stream_agent_generator(
             "transition", f"▶ Agent started ({VERSION_ID})", f'Input: "{message}"'
         )
 
+        event_count = 0
         async for ev in stream:
             kind = ev.get("event", "")
             name = ev.get("name", "")
+            event_count += 1
+            # Only log every 50 events for streaming chunks to avoid log spam
+            if event_count <= 30 or event_count % 50 == 0 or kind not in ("on_chat_model_stream",):
+                logger.info("[Streaming] Event #%d: kind=%s name=%s", event_count, kind, name)
 
             if kind in ("on_llm_start", "on_chat_model_start"):
+                llm_call_count += 1
+                logger.info("[Streaming] LLM call #%d started", llm_call_count)
+                # Hard kill: abort if the agent has reasoned too many times without an answer
+                if llm_call_count > 8:
+                    yield trace("error", "🛑 Loop detected: LLM called 8+ times without final answer",
+                                "Terminating to prevent infinite loop.")
+                    yield _enc({"event_type": "agent_complete",
+                                "content": "Agent terminated: exceeded maximum reasoning turns."})
+                    return
                 prompt_content = _prompt_preview(ev)
                 yield trace(
                     "llm_payload",
@@ -215,7 +348,7 @@ async def stream_agent_generator(
                     }
                 )
                 yield trace(
-                    "tool_call", f"🔧 Tool called: {name}", inp, {"tool_name": name}
+                    "tool_execution", f"🔧 Tool called: {name}", inp, {"tool_name": name}
                 )
 
             elif kind == "on_tool_end":
@@ -242,10 +375,18 @@ async def stream_agent_generator(
                 out = ev.get("data", {}).get("output", {})
                 if isinstance(out, dict):
                     outcome = out.get("agent_outcome")
+                    logger.info("[Streaming] on_chain_end name=%s | outcome=%s | keys=%s",
+                                name, type(outcome).__name__, list(out.keys()))
                     if isinstance(outcome, AgentFinish):
                         ans = outcome.return_values.get("output", "")
+                        thought = outcome.return_values.get("thought", "")
                         if ans:
                             final_answer = ans
+                            if thought:
+                                # Prepend thought to final answer or send separately? 
+                                # Better: include in the decision trace
+                                final_answer_thought = thought
+                            logger.info("[Streaming] final_answer SET, len=%d", len(ans))
                 if name in ALLOWED_NODES:
                     out_s = (
                         json.dumps(out, indent=2, default=str)[:1000]
@@ -301,13 +442,22 @@ async def stream_agent_generator(
                 if action in ("phase_start", "status_change", "error"):
                     yield _enc({"event_type": "thought", "content": f"{msg}\n"})
 
+            elif kind == "on_custom_event" and name == "tool_trace":
+                # Direct tool-emitted trace events (Option 3)
+                data = ev.get("data", {})
+                if data:
+                    yield _enc(data)
+
             elif kind in ("on_llm_error", "on_tool_error", "on_chain_error"):
                 err = ev.get("data", {}).get("error", "Unknown error")
                 yield trace("error", f"❌ Error in {name or kind}", str(err))
                 logger.error("Error in %s: %s", name, err)
 
         if final_answer:
-            yield trace("decision", "✅ Final Answer", str(final_answer))
+            body = final_answer
+            if final_answer_thought:
+                body = f"THOUGHT: {final_answer_thought}\nFINAL: {final_answer}"
+            yield trace("decision", "✅ Final Answer", body)
             yield _enc({"event_type": "agent_complete", "content": str(final_answer)})
         else:
             yield trace("error", "⚠️ Agent terminated without a final answer")

@@ -44,7 +44,7 @@ def setup_logging(log_file: str = "logs/server.log"):
         force=True,  # Ensure we override any existing basicConfig
     )
 
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.info(f"[LOGGER] Persistent hourly rotating logs enabled at {log_file}")
 

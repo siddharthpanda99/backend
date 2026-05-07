@@ -7,6 +7,7 @@ from app.modules.agents.runtime.core.agent_loader import (
     get_master_agent,
     get_engine_manager,
     get_active_session,
+    set_human_feedback_mode,
     clear_checkpointer,
     get_system_vram_gb,
     get_vram_usage,

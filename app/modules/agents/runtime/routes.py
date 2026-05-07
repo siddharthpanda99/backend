@@ -9,6 +9,7 @@ Endpoints:
     POST /deploy                   — load/reload a custom agent
     GET  /session                  — current session info
     POST /stream                   — stream SSE events for a message
+    POST /set_human_feedback_mode  — toggle HITL mode dynamically
     GET  /session_state/{id}       — read full LangGraph state for a thread
     POST /session_state/{id}       — override state (history, hints, etc.)
     GET  /available_tools          — list all available tools (builtins + registry)
@@ -50,6 +51,7 @@ from app.modules.agents.runtime.core import (
     get_master_agent,
     get_engine_manager,
     get_active_session,
+    set_human_feedback_mode,
     clear_checkpointer,
     get_system_vram_gb,
     get_vram_usage,
@@ -126,9 +128,20 @@ class ClearSessionRequest(BaseModel):
     hard_reset: bool = False
 
 
+class HITLModeRequest(BaseModel):
+    enabled: bool
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+
+@router.post("/set_human_feedback_mode")
+async def set_hitl_mode(req: HITLModeRequest):
+    """Toggle Human-in-the-Loop feedback mode dynamically."""
+    set_human_feedback_mode(req.enabled)
+    return {"status": "success", "human_feedback_mode": req.enabled}
 
 
 @router.post("/deploy")
@@ -578,7 +591,11 @@ async def read_session_state(
         "intermediate_steps": v.get("intermediate_steps", []),
         "structured_state": v.get("structured_state", {}),
         "hints": v.get("hints", []),
-        "operational_metadata": v.get("operational_metadata", {}),
+        "operational_metadata": (
+            v.get("operational_metadata")
+            or (session.session_metadata if session and session.session_metadata else None)
+            or get_active_session()
+        ),
         "last_input": v.get("input", ""),
         "checkpoint_id": checkpoint_id,
     }
