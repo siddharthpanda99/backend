@@ -26,7 +26,7 @@ from common_lib.modules.memory.config import DEFAULT_MEMORY_CONFIG
 from common_lib.modules.memory.retrieval import HybridRetrievalEngine, ContextualView
 from common_lib.modules.memory.triggers import MemoryTriggers, TriggerScheduler
 from common_lib.modules.memory.versioning import MemoryVersioning
-from common_lib.modules.memory.composite import (
+from common_lib.modules.memory import (
     CompositeMemoryStore,
     MemoryContextStore,
     MemoryLinkStore,
