@@ -65,6 +65,7 @@ from app.modules.dip.routes.pipeline import pipeline_router
 from app.modules.file_browser import router as file_browser_router
 from app.modules.file_browser.macro_routes import router as macro_router
 from app.modules.notification.routes import router as notification_router
+from app.modules.dashboard.routes import router as dashboard_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -597,6 +598,16 @@ def create_app() -> FastAPI:
         notification_router,
         prefix=settings.API_V1_STR,
         tags=["notifications"],
+    )
+
+    # Dashboard API
+    print(
+        f"Startup: Including Dashboard router with prefix: {settings.API_V1_STR}/dashboard"
+    )
+    app.include_router(
+        dashboard_router,
+        prefix=f"{settings.API_V1_STR}/dashboard",
+        tags=["dashboard"],
     )
 
     print(
