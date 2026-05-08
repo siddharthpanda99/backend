@@ -59,13 +59,13 @@ from app.modules.grid.routes import router as grid_router
 from app.modules.plugins.routes.router import router as plugins_router
 from app.modules.daw.routes import router as daw_router
 from app.modules.hooks.routes import router as hooks_router
-from app.modules.memories.routes.external_memory import router as memory_router
+from app.modules.dashboard.routes import router as dashboard_router
+from app.modules.system.routes import router as system_router
 from app.modules.dip.routes.ingestion import router as dip_ingestion_router
 from app.modules.dip.routes.pipeline import pipeline_router
 from app.modules.file_browser import router as file_browser_router
 from app.modules.file_browser.macro_routes import router as macro_router
 from app.modules.notification.routes import router as notification_router
-from app.modules.dashboard.routes import router as dashboard_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -446,12 +446,6 @@ def create_app() -> FastAPI:
         dependencies=global_deps,
     )
     app.include_router(
-        memories_router,
-        prefix=f"{settings.API_V1_STR}/memories",
-        tags=["Memories"],
-        dependencies=global_deps,
-    )
-    app.include_router(
         models_router,
         prefix=f"{settings.API_V1_STR}/models",
         tags=["Models Hub"],
@@ -540,10 +534,10 @@ def create_app() -> FastAPI:
     )
 
     # Memory Module
-    print(f"Startup: Including Memory router with prefix: {settings.API_V1_STR}/memory")
+    print(f"Startup: Including Memory router with prefix: {settings.API_V1_STR}/memories")
     app.include_router(
-        memory_router,
-        prefix=f"{settings.API_V1_STR}/memory",
+        memories_router,
+        prefix=f"{settings.API_V1_STR}/memories",
         tags=["Memory"],
         dependencies=global_deps,
     )
@@ -608,6 +602,15 @@ def create_app() -> FastAPI:
         dashboard_router,
         prefix=f"{settings.API_V1_STR}/dashboard",
         tags=["dashboard"],
+    )
+
+    # System API
+    print(f"Startup: Including System router with prefix: {settings.API_V1_STR}/system")
+    app.include_router(
+        system_router,
+        prefix=f"{settings.API_V1_STR}/system",
+        tags=["System"],
+        dependencies=global_deps,
     )
 
     print(
