@@ -480,7 +480,7 @@ def create_app() -> FastAPI:
     )
 
     # MCP (Model Context Protocol)
-    from app.modules.mcp.routes import router as mcp_router
+    from app.mcp.routes import router as mcp_router
 
     app.include_router(
         mcp_router,

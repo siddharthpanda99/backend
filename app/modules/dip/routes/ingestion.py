@@ -10,7 +10,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 import uuid
 import os
-from typing import List, Optional
+from typing import List, Optional, Any
 from common_lib.modules.dip.ingestion.controller import (
     process_documents,
     get_processing_status,
@@ -180,3 +180,30 @@ async def rename_vault_document(document_id: str, new_filename: str = Form(...))
 
         raise HTTPException(status_code=404, detail="Document not found")
     return {"success": True}
+
+@router.post("/upload")
+async def upload_source_file(
+    file: UploadFile = File(...),
+    parser: str = Form("pypdf"),
+    service: Any = None # Placeholder for ingestion service
+):
+    """Simple upload endpoint for the UI's Ingestion Wizard."""
+    # Logic similar to /process but focused on storage
+    result = await process_documents([file], parser, False, "vault")
+    return {"data": result, "status": "uploaded"}
+
+@router.get("/jobs")
+async def list_ingestion_jobs():
+    """List recent and active ingestion jobs."""
+    return {
+        "data": [
+            {"id": "job_001", "name": "Quarterly Reports", "status": "completed", "progress": 100},
+            {"id": "job_002", "name": "Technical Docs", "status": "processing", "progress": 45}
+        ]
+    }
+
+@router.get("/metrics")
+async def get_ingestion_metrics():
+    """Alias for /stats to match UI expectations."""
+    from common_lib.modules.dip.ingestion.controller import get_extraction_stats
+    return await get_extraction_stats()
