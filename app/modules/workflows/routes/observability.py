@@ -60,20 +60,20 @@ def get_execution_summary(trace_id: str, session: Session = Depends(get_session)
     node_durations = {}
     
     for event in events:
-        if "node" in event.event_type:
-            node_id = event.node_id or event.event_metadata.get("node_id")
+        if "state" in event.event_type:
+            node_id = event.node_id
             if not node_id: continue
             
             node_stats["total_nodes"].add(node_id)
-            if ".started" in event.event_type:
+            if "entered" in event.event_type:
                 node_stats["started"] += 1
                 node_durations[node_id] = {"start": event.timestamp}
-            elif ".completed" in event.event_type:
+            elif "exited" in event.event_type:
                 node_stats["completed"] += 1
                 if node_id in node_durations:
                     node_durations[node_id]["end"] = event.timestamp
                     node_durations[node_id]["duration"] = (event.timestamp - node_durations[node_id]["start"]).total_seconds()
-            elif ".failed" in event.event_type:
+            elif "failed" in event.event_type: # Note: we don't have state.failed yet, but tool.failed
                 node_stats["failed"] += 1
     
     # Format slow nodes
@@ -140,7 +140,7 @@ def get_execution_summary(trace_id: str, session: Session = Depends(get_session)
     # In a real app, we'd query historical executions for this flow_id
     # Mocking for now as we don't have the full history query yet, but calculating current success
     reliability = {
-        "success_rate": 100.0 if execution.status == "SUCCESS" else 0.0,
+        "success_rate": 100.0 if execution.status == "completed" else 0.0,
         "retry_count": sum(1 for e in events if e.event_metadata and e.event_metadata.get("retry_count")),
         "stability_score": 98.5 # Mock historical avg
     }

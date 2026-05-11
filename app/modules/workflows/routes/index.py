@@ -22,65 +22,101 @@ logger.propagate = True
 print("[WorkflowRoutes] Module loaded")
 
 router = APIRouter()
- 
+
 # Port Aliases for backward compatibility between UI and Backend node definitions
 PORT_ALIASES = {
-    "nexus.vision.empty_latent": {
-        "latent": "samples"
-    },
-    "nexus.vision.clip_encode": {
-        "text": "positive", 
-        "latent": "latent_image", 
+    # New comfy.vision.* canonical names
+    "comfy.vision.empty_latent": {"latent": "samples"},
+    "comfy.vision.clip_encode": {
+        "text": "positive",
+        "latent": "latent_image",
         "images": "latent",
         "latent_image": "latent_image",
-        "conditioning": "positive"  # UI might send conditioning
+        "conditioning": "positive",
     },
-    "nexus.vision.vae_decode": {
-        "latent": "samples", 
+    "comfy.vision.vae_decode": {
+        "latent": "samples",
         "image": "images",
         "images": "samples",
-        "samples": "latent"  # Map samples input to latent argument
-    },
-    "nexus.vision.upscale_latent": {
-        "images": "samples",
         "samples": "latent",
-        "latent": "latent"
     },
-    "nexus.vision.ksampler": {
+    "comfy.vision.ksampler": {
         "latent_image": "latent",
         "positive": "positive",
         "negative": "negative",
-        "model": "model"
+        "model": "model",
     },
-    "nexus.vision.save_image": {
-        "image": "images",
-        "samples": "images"
-    }
+    "comfy.vision.upscale_latent": {
+        "images": "samples",
+        "samples": "samples",
+        "latent": "samples",
+    },
+    "comfy.vision.save_image": {"image": "images", "samples": "images"},
+    # Legacy vision.* aliases (maps to comfy.vision)
+    "vision.empty_latent": {"latent": "samples"},
+    "vision.clip_encode": {
+        "text": "positive",
+        "latent": "latent_image",
+        "conditioning": "positive",
+    },
+    "vision.vae_decode": {
+        "latent": "samples",
+        "images": "samples",
+        "samples": "latent",
+    },
+    "vision.ksampler": {
+        "latent_image": "latent",
+        "positive": "positive",
+        "negative": "negative",
+        "model": "model",
+    },
+    "vision.upscale_latent": {
+        "images": "samples",
+        "samples": "samples",
+        "latent": "samples",
+    },
+    "vision.save_image": {"image": "images", "samples": "images"},
 }
 
 
 def resolve_port(node_id: str, port_name: str) -> str:
-    """Resolve UI port name to backend canonical port name."""
-    # Handle nexus prefix for tool lookup
-    canonical_id = node_id
-    if node_id.startswith("vision.") and not node_id.startswith("nexus."):
-        canonical_id = f"nexus.{node_id}"
-    
-    # Check aliases for the specific node type
-    if canonical_id in PORT_ALIASES:
-        return PORT_ALIASES[canonical_id].get(port_name, port_name)
+    """Resolve UI port name to tool's canonical port name."""
+    if not port_name:
+        return "output"
+
+    # 1. Check specialized PORT_ALIASES for the specific node type
     if node_id in PORT_ALIASES:
-        return PORT_ALIASES[node_id].get(port_name, port_name)
-        
-    # Generic aliases
+        if port_name in PORT_ALIASES[node_id]:
+            return PORT_ALIASES[node_id][port_name]
+
+    # 2. Case-insensitive common mappings (UI often sends caps)
+    COMMON_UI_MAP = {
+        "MODEL": "model",
+        "CLIP": "clip",
+        "VAE": "vae",
+        "CONDITIONING": "conditioning",
+        "LATENT": "latent",
+        "IMAGE": "image",
+        "IMAGES": "images",
+        "MASK": "mask",
+    }
+    if port_name.upper() in COMMON_UI_MAP:
+        return COMMON_UI_MAP[port_name.upper()]
+
+    # 3. Generic aliases - maps UI port names to tool port names
     GENERIC_ALIASES = {
         "images": "samples",
         "latent": "latent_image",
         "latent_image": "latent",
         "conditioning": "positive",
-        "samples": "latent"
+        "samples": "latent",
+        # Additional sampler port aliases
+        "model_output": "model",
+        "clip_output": "clip",
+        "latent_output": "latent",
+        "images_output": "images",
     }
-    return GENERIC_ALIASES.get(port_name, port_name)
+    return GENERIC_ALIASES.get(port_name.lower(), port_name)
 
 
 class QueueEventBackend:
@@ -92,8 +128,10 @@ class QueueEventBackend:
     def emit(self, event):
         try:
             data = event.to_dict() if hasattr(event, "to_dict") else event
-            event_name = event.event_type.value if hasattr(event, 'event_type') else 'unknown'
-            
+            event_name = (
+                event.event_type.value if hasattr(event, "event_type") else "unknown"
+            )
+
             # Enhanced Tracing: Log failures with full data
             if event_name == "tool.execution.failed":
                 logger.error(f"[QueueEventBackend] TOOL FAILURE: {data}")
@@ -101,10 +139,8 @@ class QueueEventBackend:
                 logger.error(f"[QueueEventBackend] WORKFLOW FAILURE: {data}")
             else:
                 print(f"[QueueEventBackend] Emitting: {event_name}")
-                
-            self.loop.call_soon_threadsafe(
-                lambda: self.queue.put_nowait(data)
-            )
+
+            self.loop.call_soon_threadsafe(lambda: self.queue.put_nowait(data))
         except Exception as e:
             print(f"[QueueEventBackend] Emit error: {e}")
 
@@ -138,7 +174,9 @@ async def run_workflow_stream(
     from common_lib.modules.workflows.standard.execution.executor import GraphExecutor
     from common_lib.modules.workflows.standard.execution.context import ExecutionContext
 
-    from common_lib.modules.workflows.standard.observability.backends import SQLAlchemyBackend
+    from common_lib.modules.workflows.standard.observability.backends import (
+        SQLAlchemyBackend,
+    )
 
     tracer = EventTracer()
     tracer.add_backend(QueueEventBackend(queue, loop))
@@ -155,13 +193,43 @@ async def run_workflow_stream(
         from common_lib.modules.workflows.standard.execution.primitives import State
 
         tool_id = n.get("toolId", n.get("type", "unknown"))
-        if tool_id.startswith("vision.") and not tool_id.startswith("nexus."):
-            tool_id = f"nexus.{tool_id}"
-            
+        # Standardize vision tool IDs
+        if tool_id.startswith("vision.") and not tool_id.startswith("comfy."):
+            # We keep it as vision.* since our Registry and Node mappings use that
+            pass
+
+        # Store edge info for centralized state
+        edges_by_target = {}
+        for e in edges:
+            source = e.get("from") or e.get("source")
+            target = e.get("to") or e.get("target")
+            if target == node_id:
+                from_port_raw = e.get("fromPort", "output")
+                to_port_raw = e.get("toPort", "input")
+                
+                # Resolve ports
+                source_node_type = next((n.get("toolId", n.get("type")) for n in nodes if n.get("id") == source), "")
+                target_node_type = n.get("toolId", n.get("type"))
+                
+                from_port = resolve_port(source_node_type, from_port_raw)
+                to_port = resolve_port(target_node_type, to_port_raw)
+
+                if node_id not in edges_by_target:
+                    edges_by_target[node_id] = []
+                edges_by_target[node_id].append(
+                    {
+                        "source": source,
+                        "from_port": from_port,
+                        "to_port": to_port,
+                    }
+                )
+
+
         s = State(
             id=node_id,
             tool_id=tool_id,
             static_inputs=n.get("properties", {}),
+            metadata={"edges_in": edges_by_target.get(node_id, [])},
         )
         state_map[node_id] = s
         logger.info(f"  Created state: {node_id} -> {s.tool_id}")
@@ -204,13 +272,17 @@ async def run_workflow_stream(
         if source and target:
             source_node = state_map.get(source)
             target_node = state_map.get(target)
-            
+
             from_port_raw = e.get("fromPort", "output")
             to_port_raw = e.get("toPort", "input")
-            
-            from_port = resolve_port(source_node.tool_id if source_node else "", from_port_raw)
-            to_port = resolve_port(target_node.tool_id if target_node else "", to_port_raw)
-            
+
+            from_port = resolve_port(
+                source_node.tool_id if source_node else "", from_port_raw
+            )
+            to_port = resolve_port(
+                target_node.tool_id if target_node else "", to_port_raw
+            )
+
             if source not in edge_map:
                 edge_map[source] = {}
             if from_port not in edge_map[source]:
@@ -219,50 +291,30 @@ async def run_workflow_stream(
     logger.info(f"[Workflow] Edge map: {edge_map}")
 
     # Setup execution
-    context = ExecutionContext(trace_id=str(uuid.uuid4()), agent_id="workflow", role="executor")
-    
+    context = ExecutionContext(
+        trace_id=str(uuid.uuid4()), agent_id="workflow", role="executor"
+    )
+
     try:
-        from common_lib.modules.orchestration.agent_loader import get_engine_manager
-        from common_lib.modules.workflows.standard.observability.events import WorkflowEvent, EventType
+        from app.modules.entities.routes.registry import _get_registry_svc
 
-
-
-        em = get_engine_manager()
-        logger.info(f"[Workflow] Engine manager: {em}")
-        if em and em.registry_svc:
-            registry = em.registry_svc
-        else:
-            import os
-            from common_lib.modules.core_infrastructure.registry.tool_registry import (
-                RegistryService,
-            )
-
-            file_path = os.path.abspath(__file__)
-            # index.py -> routes -> workflows -> modules -> app -> Backend
-            backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(file_path)))))
-            monorepo_root = os.path.dirname(backend_dir)
-            common_lib_root = os.path.join(monorepo_root, "Python Libs", "common_lib")
-            
-            tools_dir = os.path.join(
-                common_lib_root, "src", "common_lib", "templates", "tools"
-            )
-            registry = RegistryService()
-            if os.path.exists(tools_dir):
-                registry.load_from_directory(tools_dir)
+        registry = _get_registry_svc()
+        if registry:
+            # Only log if already populated, avoid triggering discovery just for logging
+            tool_count = len(registry._tools) if hasattr(registry, "_tools") else 0
             logger.info(
-                f"[Workflow] Created fallback registry with tools from: {tools_dir}"
+                f"[Workflow] Using shared registry with {tool_count} tools cached"
             )
-        logger.info(f"[Workflow] Registry: {registry}")
+        
+        engine = ExecutionEngine(registry=registry, tracer=tracer)
     except Exception as e:
-        logger.warning(f"[Workflow] Could not get registry: {e}")
-        import traceback
-
-        logger.warning(f"[Workflow] Traceback: {traceback.format_exc()}")
+        logger.warning(f"[Workflow] Could not get shared registry: {e}")
         from common_lib.modules.core_infrastructure.registry.tool_registry import (
             RegistryService,
         )
 
         registry = RegistryService()
+        engine = ExecutionEngine(registry=registry, tracer=tracer)
 
     # Topological sort for execution order
     execution_order = []
@@ -272,13 +324,13 @@ async def run_workflow_stream(
 
         def visit(n_id):
             if n_id in temp_visited:
-                return # Cycle detected, but we'll let the executor handle it or just break
+                return  # Cycle detected, but we'll let the executor handle it or just break
             if n_id not in visited:
                 temp_visited.add(n_id)
                 # Find all neighbors (targets of this node)
                 neighbors = []
                 for e in edges:
-                    if (e.get("from") == n_id or e.get("source") == n_id):
+                    if e.get("from") == n_id or e.get("source") == n_id:
                         target = e.get("to") or e.get("target")
                         if target:
                             neighbors.append(target)
@@ -292,7 +344,7 @@ async def run_workflow_stream(
         for n in nodes:
             if n.get("id") not in visited:
                 visit(n.get("id"))
-        
+
         graph.execution_order = execution_order
         logger.info(f"[Workflow] Computed execution order: {execution_order}")
     except Exception as e:
@@ -304,17 +356,16 @@ async def run_workflow_stream(
     # Actually run the executor
     async def run_executor():
         try:
-            logger.info(f"[Workflow] Starting execution of graph {graph.id} in background thread")
+            logger.info(
+                f"[Workflow] Starting execution of graph {graph.id} in background thread"
+            )
             # GraphExecutor.execute is synchronous, so run it in a thread
             result = await asyncio.to_thread(executor.execute, graph, inputs, context)
-            
 
             logger.info(f"[Workflow] Execution completed for graph {graph.id}")
         except Exception as e:
             logger.error(f"[Workflow] Execution failed: {e}")
             logger.error(traceback.format_exc())
-
-
 
     # Start execution in background
     asyncio.create_task(run_executor())
@@ -326,10 +377,12 @@ async def run_workflow_stream(
                 try:
                     data = await asyncio.wait_for(queue.get(), timeout=30.0)
                     yield f"data: {json.dumps(data)}\n\n"
-                    
+
                     event_type = data.get("event_type")
                     if event_type in ["workflow.completed", "workflow.failed"]:
-                        logger.info(f"[Workflow] Stream closing on terminal event: {event_type}")
+                        logger.info(
+                            f"[Workflow] Stream closing on terminal event: {event_type}"
+                        )
                         break
                 except asyncio.TimeoutError:
                     # Keepalive

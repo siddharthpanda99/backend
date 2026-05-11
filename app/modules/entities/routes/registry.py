@@ -59,6 +59,24 @@ def _get_registry_svc():
             _shared_registry.auto_register_common_lib_tools(
                 exclude_categories=set(settings.EXCLUDE_TOOL_CATEGORIES)
             )
+
+            # Register VisionPlugin tools (ComfyUI-style image generation)
+            try:
+                from common_lib.modules.plugins.native.vision.vision_plugin import (
+                    VisionPlugin,
+                )
+
+                vp = VisionPlugin()
+                for node in vp.get_nodes():
+                    _shared_registry.register_tool(node)
+                logger.info(
+                    f"[EntityRegistry] Registered {len(vp.get_nodes())} vision tools"
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[EntityRegistry] VisionPlugin registration failed: %s", exc
+                )
+
             logger.info(
                 "[EntityRegistry] Shared RegistryService initialised (%d tools)",
                 len(_shared_registry.list_tools()),
