@@ -47,7 +47,9 @@ async def preview_prompts(request: VisionPromptPreviewRequest):
     try:
         repo_root = get_repo_root()
         wildcard_path = os.path.join(repo_root, "resources", "wildcards")
-        
+        if not os.path.exists(wildcard_path):
+            wildcard_path = os.path.join(repo_root, "Resources", "wildcards")
+            
         if not os.path.exists(wildcard_path):
             os.makedirs(wildcard_path, exist_ok=True)
             
@@ -631,10 +633,13 @@ async def sync_wildcards():
     """
     try:
         repo_root = get_repo_root()
+        # Handle both lowercase and capitalized resource directory names
         wildcard_path = os.path.join(repo_root, "resources", "wildcards")
+        if not os.path.exists(wildcard_path):
+            wildcard_path = os.path.join(repo_root, "Resources", "wildcards")
         
         with next(get_session()) as session:
-            sm = WildcardSyncManager(session, root_path=wildcard_path)
+            sm = WildcardSyncManager(session, root_dir=wildcard_path)
             stats = sm.sync(force=True)
             return {"status": "success", "stats": stats}
     except Exception as e:
