@@ -1,8 +1,13 @@
 from fastapi import APIRouter, HTTPException
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from common_lib.modules.image_processing.controllers.vision_task_controller import (
     VisionTaskController,
 )
+from common_lib.modules.image_processing.functions.text.dynamic_engine.models import WildcardRecord
+from common_lib.modules.image_processing.functions.text.dynamic_engine.sync import WildcardSyncManager
+from common_lib.modules.data_storage.database.connection import get_session
+from sqlalchemy import or_, func
+from sqlmodel import select
 from common_lib.modules.vision.schemas import (
     VisionGenerateRequest,
     VisionGenerateResponse,
@@ -11,17 +16,65 @@ from common_lib.modules.vision.schemas import (
     VisionGalleryResponse,
     VisionGalleryItem,
     VisionGalleryFolder,
+    VisionPromptPreviewRequest,
+    VisionPromptPreviewResponse,
+    WildcardRecordSchema,
+    WildcardCreateRequest,
+    WildcardUpdateRequest,
+    WildcardListResponse,
 )
+from common_lib.modules.image_processing.functions.text.dynamic_engine import PromptEngine, WildcardManager as WManager
 from common_lib.modules.image_processing.nodes.sampling.samplers_library import (
     get_all_samplers,
     get_all_schedulers,
 )
-from common_lib.paths import IMAGE_MODELS_ROOT, GENERATED_CONTENT
+from common_lib.modules.image_processing.constants import SAMPLER_METADATA, SCHEDULER_METADATA
+from common_lib.paths import IMAGE_MODELS_ROOT, GENERATED_CONTENT, get_repo_root
 import os
 import time
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 controller = VisionTaskController()
+
+
+@router.post("/prompts/preview", response_model=VisionPromptPreviewResponse)
+async def preview_prompts(request: VisionPromptPreviewRequest):
+    """
+    Preview dynamic prompt expansion.
+    """
+    try:
+        repo_root = get_repo_root()
+        wildcard_path = os.path.join(repo_root, "resources", "wildcards")
+        
+        if not os.path.exists(wildcard_path):
+            os.makedirs(wildcard_path, exist_ok=True)
+            
+        wm = WManager(wildcard_path)
+        engine = PromptEngine(wm)
+        
+        if request.combinatorial:
+            prompts = engine.expand_combinatorial(request.template, limit=request.limit or 10)
+        else:
+            prompts = engine.expand_random(
+                request.template, 
+                num_prompts=request.limit or 10, 
+                seed=request.seed
+            )
+            
+        return VisionPromptPreviewResponse(
+            status="success",
+            prompts=prompts,
+            count=len(prompts)
+        )
+    except Exception as e:
+        return VisionPromptPreviewResponse(
+            status="error",
+            prompts=[],
+            count=0,
+            message=str(e)
+        )
 
 
 def _get_checkpoints_from_filesystem(category: str = None) -> List[Dict[str, str]]:
@@ -192,18 +245,50 @@ async def list_models_by_category(category: str = "sd15"):
     ]
 
 
-@router.get("/samplers", response_model=List[Dict[str, str]])
+@router.get("/samplers", response_model=List[Dict[str, Any]])
 async def list_samplers(implementation: str = "diffusers"):
-    """List available samplers."""
+    """List available samplers with metadata."""
     samplers = get_all_samplers(implementation)
-    return [{"id": s, "label": s.replace("_", " ").title(), "backend": implementation} for s in samplers]
+    results = []
+    for s in samplers:
+        # Normalize key for metadata lookup (strip _comfy etc)
+        meta_key = s.replace("_comfy", "").replace("_ancestral", "_a").replace("ancestral", "a")
+        if meta_key == "euler_a": meta_key = "euler_ancestral" # Match our constants
+        
+        meta = SAMPLER_METADATA.get(meta_key, SAMPLER_METADATA.get(s, {}))
+        
+        results.append({
+            "id": s,
+            "label": s.replace("_", " ").title(),
+            "backend": implementation,
+            "description": meta.get("description", "A sampling algorithm for noise reduction."),
+            "bestFor": meta.get("best_for", "General purpose generation."),
+            "type": meta.get("type", "Standard"),
+            "recommendedSteps": meta.get("steps", "20-30"),
+            "compatibleSchedulers": meta.get("compatible_schedulers", ["normal"])
+        })
+    return results
 
 
-@router.get("/schedulers", response_model=List[Dict[str, str]])
+@router.get("/schedulers", response_model=List[Dict[str, Any]])
 async def list_schedulers(provider: str = "diffusers"):
-    """List available schedulers."""
+    """List available schedulers with metadata."""
     schedulers = get_all_schedulers(provider)
-    return [{"id": s, "label": s.replace("_", " ").title(), "backend": provider} for s in schedulers]
+    results = []
+    for s in schedulers:
+        meta_key = s.replace("_comfy", "")
+        meta = SCHEDULER_METADATA.get(meta_key, SCHEDULER_METADATA.get(s, {}))
+        
+        results.append({
+            "id": s,
+            "label": s.replace("_", " ").title(),
+            "backend": provider,
+            "description": meta.get("description", "A schedule for noise levels across steps."),
+            "bestFor": meta.get("best_for", "Standard models."),
+            "behavior": meta.get("behavior", "Linear"),
+            "gotchas": meta.get("gotchas", {"default": ""})
+        })
+    return results
 
 
 @router.get("/checkpoints", response_model=List[Dict[str, str]])
@@ -428,4 +513,133 @@ async def list_gallery():
     return VisionGalleryResponse(folders=gallery_folders)
 
 
+@router.get("/wildcards", response_model=WildcardListResponse)
+async def list_wildcards(
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    offset: int = 0,
+    limit: int = 50,
+):
+    """
+    List wildcards with search and category filters.
+    """
+    with next(get_session()) as session:
+        query = session.query(WildcardRecord)
+        
+        if search:
+            query = query.filter(or_(
+                WildcardRecord.name.ilike(f"%{search}%"),
+                WildcardRecord.description.ilike(f"%{search}%")
+            ))
+            
+        if category:
+            query = query.filter(WildcardRecord.category == category)
+            
+        total = query.count()
+        
+        items = query.order_by(WildcardRecord.name).offset(offset).limit(limit).all()
+        
+        # Get unique categories
+        categories = [r[0] for r in session.query(WildcardRecord.category).distinct().all() if r[0]]
+        
+        return WildcardListResponse(
+            items=[WildcardRecordSchema(
+                id=item.id,
+                name=item.name,
+                category=item.category,
+                values=item.values,
+                description=item.description,
+                source_path=item.source_path,
+                checksum=item.checksum,
+                created_at=item.created_at,
+                updated_at=item.updated_at
+            ) for item in items],
+            total=total,
+            categories=categories
+        )
+
+@router.post("/wildcards", response_model=WildcardRecordSchema)
+async def create_wildcard(request: WildcardCreateRequest):
+    """
+    Create a new wildcard record.
+    """
+    with next(get_session()) as session:
+        new_record = WildcardRecord(
+            name=request.name,
+            category=request.category,
+            values=request.values,
+            description=request.description
+        )
+        session.add(new_record)
+        session.commit()
+        session.refresh(new_record)
+        return WildcardRecordSchema(
+            id=new_record.id,
+            name=new_record.name,
+            category=new_record.category,
+            values=new_record.values,
+            description=new_record.description,
+            created_at=new_record.created_at,
+            updated_at=new_record.updated_at
+        )
+
+@router.put("/wildcards/{wildcard_id}", response_model=WildcardRecordSchema)
+async def update_wildcard(wildcard_id: int, request: WildcardUpdateRequest):
+    """
+    Update an existing wildcard record.
+    """
+    with next(get_session()) as session:
+        record = session.query(WildcardRecord).filter(WildcardRecord.id == wildcard_id).first()
+        if not record:
+            raise HTTPException(status_code=404, detail="Wildcard not found")
+            
+        if request.name is not None: record.name = request.name
+        if request.category is not None: record.category = request.category
+        if request.values is not None: record.values = request.values
+        if request.description is not None: record.description = request.description
+        
+        session.commit()
+        session.refresh(record)
+        return WildcardRecordSchema(
+            id=record.id,
+            name=record.name,
+            category=record.category,
+            values=record.values,
+            description=record.description,
+            created_at=record.created_at,
+            updated_at=record.updated_at
+        )
+
+@router.delete("/wildcards/{wildcard_id}")
+async def delete_wildcard(wildcard_id: int):
+    """
+    Delete a wildcard record.
+    """
+    with next(get_session()) as session:
+        record = session.query(WildcardRecord).filter(WildcardRecord.id == wildcard_id).first()
+        if not record:
+            raise HTTPException(status_code=404, detail="Wildcard not found")
+        
+        session.delete(record)
+        session.commit()
+        return {"status": "success"}
+
+@router.post("/wildcards/sync")
+async def sync_wildcards():
+    """
+    Trigger a manual sync of wildcards from the filesystem to the database.
+    """
+    try:
+        repo_root = get_repo_root()
+        wildcard_path = os.path.join(repo_root, "resources", "wildcards")
+        
+        with next(get_session()) as session:
+            sm = WildcardSyncManager(session, root_path=wildcard_path)
+            stats = sm.sync(force=True)
+            return {"status": "success", "stats": stats}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 __all__ = ["router"]
+
+
