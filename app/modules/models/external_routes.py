@@ -4,6 +4,7 @@ from common_lib.modules.external_platforms.civitai.client import CivitAIClient
 from common_lib.modules.external_platforms.civitai.downloader import CivitAIDownloader
 from common_lib.modules.ai_models.container import AIModelsContainer
 from common_lib.modules.ai_models.domain.entities import ModelEntity
+from common_lib.modules.notification.controller import PlatformEventBus, Channels
 from app.modules.common.types.index import APIResponse
 from app.modules.models.routes import get_container
 import logging
@@ -11,6 +12,30 @@ import os
 import re
 
 logger = logging.getLogger(__name__)
+
+# Initialize platform event bus for system notifications
+notification_bus = PlatformEventBus()
+
+
+def send_download_notification(
+    task_id: str, status: str, message: str, progress: int = 0, metadata: dict = None
+):
+    """Send download notification to system"""
+    try:
+        notification_data = {
+            "type": "download",
+            "task_id": task_id,
+            "status": status,
+            "message": message,
+            "progress": progress,
+            "metadata": metadata or {},
+            "timestamp": "N/A",
+        }
+        notification_bus.publish(Channels.MODELS_DOWNLOAD, notification_data)
+        logger.info(f"[Notification] {status}: {message} ({progress}%)")
+    except Exception as e:
+        logger.warning(f"Failed to send notification: {e}")
+
 
 router = APIRouter()
 
@@ -245,7 +270,6 @@ async def download_civitai_model(
         destination_subfolder = subfolder
 
     try:
-        from common_lib.modules.ai_models.event_bus import EventBus
         from common_lib.modules.external_platforms.civitai.client import CivitAIClient
         import threading
         import os
@@ -256,7 +280,11 @@ async def download_civitai_model(
         task_id = f"civitai-{model_id}-{version_id}"
 
         # Get the event bus from the container's downloader
-        event_bus = container.downloader.event_bus
+        event_bus = (
+            container.downloader.event_bus
+            if hasattr(container.downloader, "event_bus")
+            else None
+        )
 
         # Create CivitAI client for API calls
         client = CivitAIClient()
@@ -302,7 +330,7 @@ async def download_civitai_model(
         def run_download():
             try:
                 # Emit started event
-                event_bus.publish(
+                event_bus.emit(
                     task_id,
                     {
                         "task_id": task_id,
@@ -315,6 +343,22 @@ async def download_civitai_model(
                     },
                 )
 
+                # Send system notification - download started
+                try:
+                    send_download_notification(
+                        task_id=task_id,
+                        status="started",
+                        message=f"Starting download for model {model_id}, version {version_id}",
+                        progress=0,
+                        metadata={
+                            "model_id": model_id,
+                            "version_id": version_id,
+                            "destination": destination_subfolder,
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(f"Start notification failed: {e}")
+
                 downloader = CivitAIDownloader(mirror_service=container.mirror_service)
 
                 # Track disk-based progress while download runs
@@ -322,6 +366,8 @@ async def download_civitai_model(
 
                 last_disk_size = 0
                 disk_check_interval = 2  # seconds
+
+                last_progress_reported = [0]  # Track last notified progress
 
                 def disk_progress_check():
                     nonlocal last_disk_size
@@ -334,7 +380,7 @@ async def download_civitai_model(
                                     disk_progress = int(
                                         (current_size / expected_size) * 100
                                     )
-                                    event_bus.publish(
+                                    event_bus.emit(
                                         task_id,
                                         {
                                             "task_id": task_id,
@@ -346,6 +392,25 @@ async def download_civitai_model(
                                             "source": "disk",
                                         },
                                     )
+                                    # Send notification at 25%, 50%, 75%
+                                    if (
+                                        disk_progress in [25, 50, 75]
+                                        and disk_progress > last_progress_reported[0]
+                                    ):
+                                        last_progress_reported[0] = disk_progress
+                                        try:
+                                            send_download_notification(
+                                                task_id=task_id,
+                                                status="downloading",
+                                                message=f"Download progress: {disk_progress}%",
+                                                progress=disk_progress,
+                                                metadata={
+                                                    "downloaded": current_size,
+                                                    "total": expected_size,
+                                                },
+                                            )
+                                        except Exception:
+                                            pass
                         time.sleep(disk_check_interval)
 
                 disk_thread = threading.Thread(target=disk_progress_check, daemon=True)
@@ -357,7 +422,7 @@ async def download_civitai_model(
                     file_id=file_id,
                     destination_subfolder=destination_subfolder,
                     model_type=model_type,
-                    progress_callback=lambda d, t: event_bus.publish(
+                    progress_callback=lambda d, t: event_bus.emit(
                         task_id,
                         {
                             "task_id": task_id,
@@ -391,8 +456,28 @@ async def download_civitai_model(
 
                 logger.info(f"Verified download: {target_path} ({file_size} bytes)")
 
+                # Send system notification - download complete
+                try:
+                    model_name = (
+                        model_info.get("name", f"Model {model_id}")
+                        if "model_info" in locals()
+                        else f"Model {model_id}"
+                    )
+                    send_download_notification(
+                        task_id=task_id,
+                        status="completed",
+                        message=f"Download complete: {model_name}",
+                        progress=100,
+                        metadata={
+                            "file_path": str(target_path),
+                            "file_size": file_size,
+                        },
+                    )
+                except Exception as notify_err:
+                    logger.warning(f"Completion notification failed: {notify_err}")
+
                 # Emit completion event
-                event_bus.publish(
+                event_bus.emit(
                     task_id,
                     {
                         "task_id": task_id,
@@ -404,7 +489,7 @@ async def download_civitai_model(
                     },
                 )
 
-                event_bus.publish(
+                event_bus.emit(
                     "__global__",
                     {
                         "task_id": task_id,
@@ -414,23 +499,27 @@ async def download_civitai_model(
                     },
                 )
 
-                # Register in local registry (registry_user.yaml)
+                # Register in local registry (registry_user.yaml) and DB
                 try:
                     from common_lib.modules.ai_models.registry.exporter import (
                         RegistryExporter,
                     )
                     from common_lib.modules.ai_models.domain.entities import ModelEntity
+                    from common_lib.modules.orchestration.infrastructure.sd.models import (
+                        SdModelRecord,
+                    )
 
                     # Get model info from Civitai
                     client = CivitAIClient()
                     model_info = client.get_model_details(model_id)
+                    version_info = client.get_version_details(version_id)
 
-                    # Extract version info
-                    version_info = None
-                    for v in model_info.get("modelVersions", []):
-                        if v.get("id") == version_id:
-                            version_info = v
-                            break
+                    # Extract version from model_versions list if not in version_info
+                    if not version_info or not version_info.get("id"):
+                        for v in model_info.get("modelVersions", []):
+                            if v.get("id") == version_id:
+                                version_info = v
+                                break
 
                     # Build model entity for registry
                     model_data = {
@@ -466,6 +555,95 @@ async def download_civitai_model(
 
                     logger.info(f"Registered model to {user_reg_path}")
 
+                    # Save to PostgreSQL database with full metadata
+                    try:
+                        import uuid
+
+                        # Use container's existing session (connected to PostgreSQL)
+                        db_session = container.session
+
+                        # Extract trigger words from version info
+                        trigger_words = []
+                        if version_info:
+                            trained_words = version_info.get("trainedWords", [])
+                            if trained_words:
+                                trigger_words = trained_words[:20]  # Limit to 20
+
+                        # Extract base model
+                        base_model = None
+                        if version_info:
+                            base_model = version_info.get("baseModel")
+
+                        # Extract files metadata
+                        file_metadata = {}
+                        if version_info and version_info.get("files"):
+                            for f in version_info["files"]:
+                                if f.get("id") == file_id or f.get(
+                                    "id"
+                                ) == version_info["files"][0].get("id"):
+                                    file_metadata = {
+                                        "name": f.get("name"),
+                                        "size": f.get("size"),
+                                        "hash": f.get("hashes", {}),
+                                        "download_url": f.get("downloadUrl"),
+                                    }
+
+                        # Build metadata JSON
+                        metadata = {
+                            "civitai_model_id": model_id,
+                            "civitai_version_id": version_id,
+                            "model_name": model_info.get("name"),
+                            "version_name": version_info.get("name")
+                            if version_info
+                            else None,
+                            "description": model_info.get("description"),
+                            "type": model_info.get("type"),
+                            "tags": model_info.get("tags", [])[:50],  # Limit tags
+                            "creator": {
+                                "username": model_info.get("creator", {}).get(
+                                    "username"
+                                ),
+                                "image": model_info.get("creator", {}).get("image"),
+                            },
+                            "base_model": base_model,
+                            "download_count": model_info.get("downloadCount"),
+                            "like_count": model_info.get("likeCount"),
+                            "comment_count": model_info.get("commentCount"),
+                            "rating": model_info.get("rating"),
+                            "model_options": version_info.get("modelOptions", [])
+                            if version_info
+                            else [],
+                            "training_data": version_info.get("trainingData", [])
+                            if version_info
+                            else [],
+                            "file_metadata": file_metadata,
+                            "source": "civitai",
+                        }
+
+                        # Create SD Model Record
+                        sd_record = SdModelRecord(
+                            id=f"civitai_{model_id}_{version_id}_{uuid.uuid4().hex[:8]}",
+                            name=f"{model_info.get('name')} ({version_info.get('name') if version_info else 'latest'})"
+                            if version_info
+                            else model_info.get("name"),
+                            type=model_type.lower()
+                            .replace("checkpoint", "checkpoint")
+                            .replace("lora", "lora"),
+                            fs_path=str(target_path),
+                            trigger_words=trigger_words,
+                            metadata_json=metadata,
+                            is_active=True,
+                        )
+
+                        db_session.add(sd_record)
+                        db_session.commit()
+                        logger.info(
+                            f"Saved SD model record to database: {sd_record.id}"
+                        )
+
+                    except Exception as db_err:
+                        logger.warning(f"Could not save to SD models DB: {db_err}")
+
                 except Exception as reg_err:
                     logger.warning(f"Could not auto-register: {reg_err}")
 
@@ -478,9 +656,20 @@ async def download_civitai_model(
 
             except Exception as e:
                 logger.error(f"Background download failed: {e}")
+                # Send failure notification
+                try:
+                    send_download_notification(
+                        task_id=task_id,
+                        status="failed",
+                        message=f"Download failed: {str(e)}",
+                        progress=0,
+                        metadata={"error": str(e)},
+                    )
+                except:
+                    pass
                 # Emit failed event
                 try:
-                    event_bus.publish(
+                    event_bus.emit(
                         task_id,
                         {
                             "task_id": task_id,
@@ -488,7 +677,7 @@ async def download_civitai_model(
                             "error": str(e),
                         },
                     )
-                    event_bus.publish(
+                    event_bus.emit(
                         "__global__",
                         {
                             "task_id": task_id,
@@ -520,7 +709,7 @@ async def download_civitai_model(
         logger.error(f"Failed to trigger Civitai download: {e}")
         # Emit error event
         try:
-            event_bus.publish(
+            event_bus.emit(
                 task_id,
                 {
                     "task_id": task_id,
@@ -530,7 +719,7 @@ async def download_civitai_model(
                     "version_id": version_id,
                 },
             )
-            event_bus.publish(
+            event_bus.emit(
                 "__global__",
                 {
                     "task_id": task_id,

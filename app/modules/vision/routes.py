@@ -189,15 +189,29 @@ def _get_discovered_nodes() -> List[Dict[str, Any]]:
     from common_lib.modules.workflows.standard.nodes.comfyui import (
         CLIPTextEncode, CheckpointLoaderSimple, KSampler, EmptyLatentImage,
         VAEDecode, SaveImage, LoadImage, LoraLoader, ControlNetLoader,
-        ControlNetApply, LatentUpscale, ImageScale, ImageInvert
+        ControlNetApply, LatentUpscale, ImageScale, ImageInvert,
+        VAEEncodeForInpaint, InpaintModelConditioning, ImagePadForOutpaint,
+        MaskInvert, MaskBlur,
+        InpaintCrop, InpaintStitch
     )
+
+
+
+
     import inspect
     
     node_classes = [
         CLIPTextEncode, CheckpointLoaderSimple, KSampler, EmptyLatentImage,
         VAEDecode, SaveImage, LoadImage, LoraLoader, ControlNetLoader,
-        ControlNetApply, LatentUpscale, ImageScale, ImageInvert
+        ControlNetApply, LatentUpscale, ImageScale, ImageInvert,
+        VAEEncodeForInpaint, InpaintModelConditioning, ImagePadForOutpaint,
+        MaskInvert, MaskBlur,
+        InpaintCrop, InpaintStitch
     ]
+
+
+
+
     
     definitions = []
     for cls in node_classes:
@@ -447,61 +461,98 @@ async def list_nodes():
 @router.post("/execute", response_model=VisionWorkflowResponse)
 async def execute_workflow(request: VisionWorkflowRequest):
     """
-    Execute a workflow with the provided configuration.
-    All node execution happens on backend - UI only sends config.
+    Execute a vision workflow based on ID and parameters (stateless).
+    Backend acts as the single source of truth for workflow definitions.
     """
     try:
-        from common_lib.modules.workflows.standard.registry.workflow_registry import get_workflow_registry
-        registry = get_workflow_registry()
-        
-        workflow_def = registry.get_workflow(request.workflow_id)
-        if not workflow_def:
-            return VisionWorkflowResponse(
-                status="error",
-                message=f"Workflow '{request.workflow_id}' not found"
-            )
-        
-        config = request.config or {}
-        config.update(request.parameters or {})
-        
         from common_lib.modules.workflows.standard.builder import WorkflowBuilder
+        from common_lib.modules.workflows.standard.registry.workflow_registry import get_workflow_registry
+        from common_lib.modules.workflows.standard.executor import WorkflowExecutor
+        from common_lib.modules.workflows.standard.state import WorkflowStatus
         
         builder = WorkflowBuilder()
+        registry = get_workflow_registry()
         
+        workflow_id = request.workflow_id
+        
+        # Consolidate all inputs into a single 'state' dict
+        # Prioritize 'state' field, then 'parameters', then 'config'
+        execution_state = request.state or {}
+        if request.parameters:
+            execution_state.update(request.parameters)
+        if request.config:
+            execution_state.update(request.config)
+        
+        # 1. Resolve workflow definition
+        workflow_def = None
+        if workflow_id:
+            workflow_def = registry.get_workflow(workflow_id)
+            if workflow_def:
+                logger.info(f"Resolved workflow '{workflow_id}' from registry")
+        
+        # 2. Fallback to ad-hoc graph if no registry match
+        if not workflow_def and request.nodes:
+            logger.info(f"Using ad-hoc workflow graph from request (Studio mode)")
+            workflow_def = {
+                'id': workflow_id or "adhoc",
+                'nodes': request.nodes,
+                'edges': request.edges or request.connections or []
+            }
+            
+        if not workflow_def:
+            if workflow_id:
+                raise ValueError(f"Workflow '{workflow_id}' not found in registry and no ad-hoc nodes provided.")
+            else:
+                raise ValueError("No workflow_id or ad-hoc nodes provided.")
+
+        # 3. Build the executable workflow
         workflow_data = {
             'id': workflow_def.get('id'),
-            'name': workflow_def.get('name', ''),
-            'description': workflow_def.get('description', ''),
-            'category': workflow_def.get('category', 'vision'),
             'nodes': workflow_def.get('nodes', []),
-            'connections': workflow_def.get('edges', [])
+            'edges': workflow_def.get('edges', []) or workflow_def.get('connections', [])
         }
         
         workflow = builder.load_from_dict(workflow_data)
         
-        from common_lib.modules.workflows.standard.executor import WorkflowExecutor
-        
+        # 3. Execute
         executor = WorkflowExecutor()
-        state = executor.execute(workflow, config)
+        logger.info(f"Executing workflow '{workflow_id}' with {len(execution_state)} parameters")
+        state = executor.execute(workflow, execution_state)
         
+        # 4. Extract results (images) from execution state
         result_images = []
-        for node_id, output in state.data.get("outputs", {}).items():
-            if isinstance(output, dict) and "image" in str(output):
-                result_images.append(output.get("image", ""))
+        # Check node outputs
+        for node_id, node_outputs in state.data.items():
+            if isinstance(node_outputs, dict):
+                img = node_outputs.get("image") or node_outputs.get("images") or node_outputs.get("output")
+                if img:
+                    if isinstance(img, list):
+                        result_images.extend([i for i in img if isinstance(i, str)])
+                    elif isinstance(img, str):
+                        result_images.append(img)
+
+        # Also check state_vars for any standard image keys
+        for var_name in ["image", "images", "output"]:
+            val = state.state_vars.get(var_name)
+            if val:
+                if isinstance(val, list):
+                    result_images.extend([i for i in val if isinstance(i, str) and i not in result_images])
+                elif isinstance(val, str) and val not in result_images:
+                    result_images.append(val)
         
         return VisionWorkflowResponse(
-            status="success" if state.status.value == "completed" else "error",
+            status="success" if state.status == WorkflowStatus.COMPLETED else "error",
             message=f"Workflow completed with status: {state.status.value}",
             metadata={
                 "execution_id": state.execution_id,
+                "workflow_id": workflow_id,
                 "steps_completed": len(state.steps),
                 "nodes_executed": list(state.data.keys())
             },
             images=result_images
         )
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"Error executing vision workflow: {e}")
         return VisionWorkflowResponse(
             status="error",
             message=str(e)
@@ -595,7 +646,14 @@ async def list_gallery():
     for name in sorted_folder_names:
         images = folders_dict[name]
         # Sort images by timestamp descending
-        images.sort(key=lambda x: (x.metadata or {}).get("timestamp", 0), reverse=True)
+        def sort_key(x):
+            ts = (x.metadata or {}).get("timestamp", 0)
+            try:
+                return float(ts)
+            except (ValueError, TypeError):
+                return 0.0
+        
+        images.sort(key=sort_key, reverse=True)
         if images:
             gallery_folders.append(VisionGalleryFolder(name=name, images=images))
 
