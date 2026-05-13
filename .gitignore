@@ -91,3 +91,8 @@ logs/
 app/uploads/
 assets/
 resources/
+
+# Scratch directories
+scratch/external_wildcards/
+scratch/nul
+nul
