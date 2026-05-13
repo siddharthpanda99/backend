@@ -22,7 +22,12 @@ from common_lib.modules.vision.schemas import (
     WildcardCreateRequest,
     WildcardUpdateRequest,
     WildcardListResponse,
+    VisionPresetSchema,
+    VisionPresetCreateRequest,
+    VisionPresetUpdateRequest,
 )
+from common_lib.modules.orchestration.infrastructure.sd.models import SdPresetRecord, SdModelRecord
+
 from common_lib.modules.image_processing.functions.text.dynamic_engine import PromptEngine, WildcardManager as WManager
 from common_lib.modules.image_processing.nodes.sampling.samplers_library import (
     get_all_samplers,
@@ -37,6 +42,23 @@ import logging
 logger = logging.getLogger(__name__)
 router = APIRouter()
 controller = VisionTaskController()
+
+
+@router.get("/prompts/configs/legacy")
+async def get_prompt_configs():
+    """
+    Get default prompt configurations from JSON file.
+    """
+    import json
+    try:
+        config_path = os.path.join(os.path.dirname(__file__), "prompts_config.json")
+        if not os.path.exists(config_path):
+            return []
+        with open(config_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load prompt configs: {e}")
+        return []
 
 
 @router.post("/prompts/preview", response_model=VisionPromptPreviewResponse)
@@ -230,21 +252,55 @@ async def generate(request: VisionGenerateRequest):
 
 @router.get("/models", response_model=List[Dict[str, Any]])
 async def list_models():
-    """List all available models/checkpoints."""
-    checkpoints = _get_checkpoints_from_filesystem()
-    return [
-        {"id": c["id"], "name": c["name"], "category": c.get("category", "")}
-        for c in checkpoints
-    ]
+    """List all available models/checkpoints from database."""
+    with next(get_session()) as session:
+        # Query only checkpoints for the generic models list
+        stmt = select(SdModelRecord).where(SdModelRecord.type == "checkpoint")
+        models = session.execute(stmt).scalars().all()
+        
+        # If DB is empty, fallback to filesystem scan once
+        if not models:
+            logger.info("DB models empty, falling back to filesystem scan")
+            checkpoints = _get_checkpoints_from_filesystem()
+            return [
+                {"id": c["id"], "name": c["name"], "category": c.get("category", "")}
+                for c in checkpoints
+            ]
+            
+        return [
+            {
+                "id": m.id, 
+                "name": m.name, 
+                "category": m.metadata_json.get("category", ""),
+                "is_active": m.is_active,
+                "trigger_words": m.trigger_words
+            }
+            for m in models
+        ]
 
 
 @router.get("/models/list", response_model=List[Dict[str, Any]])
 async def list_models_by_category(category: str = "sd15"):
-    """List models filtered by category (sd15, sdxl, etc.)"""
-    checkpoints = _get_checkpoints_from_filesystem(category)
-    return [
-        {"id": c["id"], "name": c["name"], "category": category} for c in checkpoints
-    ]
+    """List models filtered by category (sd15, sdxl, etc.) using database."""
+    with next(get_session()) as session:
+        stmt = select(SdModelRecord).where(SdModelRecord.type == "checkpoint")
+        models = session.execute(stmt).scalars().all()
+        
+        # Filter by category in metadata_json
+        results = [
+            {"id": m.id, "name": m.name, "category": category} 
+            for m in models 
+            if m.metadata_json.get("category") == category
+        ]
+        
+        # Fallback to filesystem if no results
+        if not results:
+            checkpoints = _get_checkpoints_from_filesystem(category)
+            return [
+                {"id": c["id"], "name": c["name"], "category": category} for c in checkpoints
+            ]
+            
+        return results
 
 
 @router.get("/samplers", response_model=List[Dict[str, Any]])
@@ -293,10 +349,41 @@ async def list_schedulers(provider: str = "diffusers"):
     return results
 
 
-@router.get("/checkpoints", response_model=List[Dict[str, str]])
+@router.get("/checkpoints", response_model=List[Dict[str, Any]])
 async def list_checkpoints(category: str = None):
-    """List checkpoints from filesystem."""
-    return _get_checkpoints_from_filesystem(category)
+    """List checkpoints from database with filesystem fallback."""
+    with next(get_session()) as session:
+        stmt = select(SdModelRecord).where(SdModelRecord.type == "checkpoint")
+        models = session.execute(stmt).scalars().all()
+        
+        if category:
+            results = [
+                {
+                    "id": m.id, 
+                    "value": m.id,
+                    "name": m.name, 
+                    "label": f"{m.name} [{category}]",
+                    "category": category
+                } 
+                for m in models 
+                if m.metadata_json.get("category") == category
+            ]
+        else:
+            results = [
+                {
+                    "id": m.id, 
+                    "value": m.id,
+                    "name": m.name, 
+                    "label": f"{m.name} [{m.metadata_json.get('category', 'default')}]",
+                    "category": m.metadata_json.get('category', 'default')
+                } 
+                for m in models
+            ]
+            
+        if not results:
+            return _get_checkpoints_from_filesystem(category)
+            
+        return results
 
 
 @router.get("/swap-models", response_model=List[str])
@@ -515,135 +602,9 @@ async def list_gallery():
     return VisionGalleryResponse(folders=gallery_folders)
 
 
-@router.get("/wildcards", response_model=WildcardListResponse)
-async def list_wildcards(
-    search: Optional[str] = None,
-    category: Optional[str] = None,
-    offset: int = 0,
-    limit: int = 50,
-):
-    """
-    List wildcards with search and category filters.
-    """
-    with next(get_session()) as session:
-        query = session.query(WildcardRecord)
-        
-        if search:
-            query = query.filter(or_(
-                WildcardRecord.name.ilike(f"%{search}%"),
-                WildcardRecord.description.ilike(f"%{search}%")
-            ))
-            
-        if category:
-            query = query.filter(WildcardRecord.category == category)
-            
-        total = query.count()
-        
-        items = query.order_by(WildcardRecord.name).offset(offset).limit(limit).all()
-        
-        # Get unique categories
-        categories = [r[0] for r in session.query(WildcardRecord.category).distinct().all() if r[0]]
-        
-        return WildcardListResponse(
-            items=[WildcardRecordSchema(
-                id=item.id,
-                name=item.name,
-                category=item.category,
-                values=item.values,
-                description=item.description,
-                source_path=item.source_path,
-                checksum=item.checksum,
-                created_at=item.created_at,
-                updated_at=item.updated_at
-            ) for item in items],
-            total=total,
-            categories=categories
-        )
 
-@router.post("/wildcards", response_model=WildcardRecordSchema)
-async def create_wildcard(request: WildcardCreateRequest):
-    """
-    Create a new wildcard record.
-    """
-    with next(get_session()) as session:
-        new_record = WildcardRecord(
-            name=request.name,
-            category=request.category,
-            values=request.values,
-            description=request.description
-        )
-        session.add(new_record)
-        session.commit()
-        session.refresh(new_record)
-        return WildcardRecordSchema(
-            id=new_record.id,
-            name=new_record.name,
-            category=new_record.category,
-            values=new_record.values,
-            description=new_record.description,
-            created_at=new_record.created_at,
-            updated_at=new_record.updated_at
-        )
 
-@router.put("/wildcards/{wildcard_id}", response_model=WildcardRecordSchema)
-async def update_wildcard(wildcard_id: int, request: WildcardUpdateRequest):
-    """
-    Update an existing wildcard record.
-    """
-    with next(get_session()) as session:
-        record = session.query(WildcardRecord).filter(WildcardRecord.id == wildcard_id).first()
-        if not record:
-            raise HTTPException(status_code=404, detail="Wildcard not found")
-            
-        if request.name is not None: record.name = request.name
-        if request.category is not None: record.category = request.category
-        if request.values is not None: record.values = request.values
-        if request.description is not None: record.description = request.description
-        
-        session.commit()
-        session.refresh(record)
-        return WildcardRecordSchema(
-            id=record.id,
-            name=record.name,
-            category=record.category,
-            values=record.values,
-            description=record.description,
-            created_at=record.created_at,
-            updated_at=record.updated_at
-        )
 
-@router.delete("/wildcards/{wildcard_id}")
-async def delete_wildcard(wildcard_id: int):
-    """
-    Delete a wildcard record.
-    """
-    with next(get_session()) as session:
-        record = session.query(WildcardRecord).filter(WildcardRecord.id == wildcard_id).first()
-        if not record:
-            raise HTTPException(status_code=404, detail="Wildcard not found")
-        
-        session.delete(record)
-        session.commit()
-        return {"status": "success"}
-
-@router.post("/wildcards/sync")
-async def sync_wildcards():
-    """
-    Trigger a manual sync of wildcards from the filesystem to the database.
-    """
-    try:
-        repo_root = get_repo_root()
-        # Handle both lowercase and capitalized resource directory names
-        wildcard_path = os.path.join(repo_root, "resources", "wildcards")
-        if not os.path.exists(wildcard_path):
-            wildcard_path = os.path.join(repo_root, "Resources", "wildcards")
-        
-        with next(get_session()) as session:
-            sm = WildcardSyncManager(session, root_dir=wildcard_path)
-            stats = sm.sync(force=True)
-            return {"status": "success", "stats": stats}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 __all__ = ["router"]
 

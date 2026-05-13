@@ -66,6 +66,7 @@ from app.modules.dip.routes.pipeline import pipeline_router
 from app.modules.file_browser import router as file_browser_router
 from app.modules.file_browser.macro_routes import router as macro_router
 from app.modules.notification.routes import router as notification_router
+from app.modules.wildcards.routes import router as wildcards_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -466,6 +467,35 @@ def create_app() -> FastAPI:
         vision_router,
         prefix=f"{settings.API_V1_STR}/vision",
         tags=["Vision"],
+        dependencies=global_deps,
+    )
+
+    # Wildcards API
+    print(f"Startup: Including Wildcards router with prefix: {settings.API_V1_STR}/vision/wildcards")
+    app.include_router(
+        wildcards_router,
+        prefix=f"{settings.API_V1_STR}/vision",
+        tags=["Wildcards"],
+        dependencies=global_deps,
+    )
+
+    # Configs API (Industrialized Vision Presets)
+    from app.modules.configs.routes import router as configs_router
+    print(f"Startup: Including Configs router with prefix: {settings.API_V1_STR}")
+    app.include_router(
+        configs_router,
+        prefix=f"{settings.API_V1_STR}",
+        tags=["Configs"],
+        dependencies=global_deps,
+    )
+
+    # SD Models Registry
+    from app.modules.sd_models.routes import router as sd_models_router
+    print(f"Startup: Including SD Models router with prefix: {settings.API_V1_STR}")
+    app.include_router(
+        sd_models_router,
+        prefix=f"{settings.API_V1_STR}",
+        tags=["SD Models"],
         dependencies=global_deps,
     )
 
