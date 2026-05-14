@@ -6,6 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from pydantic import ValidationError
+from common_lib.modules.ai_models.domain.exceptions import ModelNotFoundError
 from app.core.settings import get_settings
 
 
@@ -54,7 +55,6 @@ def _build_error_response(
 
     return JSONResponse(status_code=status_code, content=content)
 
-
 async def nexus_exception_handler(request: Request, exc: NexusException):
     module = exc.module or _get_module_from_request(str(request.url))
     return _build_error_response(
@@ -63,6 +63,18 @@ async def nexus_exception_handler(request: Request, exc: NexusException):
         message=exc.message,
         module=module,
         detail=exc.details,
+        exc=exc,
+    )
+
+
+async def model_not_found_exception_handler(request: Request, exc: ModelNotFoundError):
+    module = _get_module_from_request(str(request.url))
+    return _build_error_response(
+        status_code=status.HTTP_404_NOT_FOUND,
+        code="MODEL_NOT_FOUND",
+        message=str(exc),
+        module=module,
+        detail=None,
         exc=exc,
     )
 

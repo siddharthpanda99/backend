@@ -117,6 +117,8 @@ async def list_model_files(
             data=files, message=f"Found {len(files)} files in repository"
         )
     except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail=str(e))
         logger.error(f"Failed to list files for {model_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

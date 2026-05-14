@@ -704,6 +704,9 @@ def create_app() -> FastAPI:
     )
 
     app.add_exception_handler(NexusException, nexus_exception_handler)
+    from common_lib.modules.ai_models.domain.exceptions import ModelNotFoundError
+    from app.core.exceptions import model_not_found_exception_handler
+    app.add_exception_handler(ModelNotFoundError, model_not_found_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     from pydantic import ValidationError
 
