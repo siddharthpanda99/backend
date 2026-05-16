@@ -79,6 +79,48 @@ PORT_ALIASES = {
 }
 
 
+def extract_references_from_properties(properties: Dict[str, Any]) -> Dict[str, List]:
+    """Extract node references from {{nodes.X.Y}} patterns in properties.
+    Returns: {property_name: [(source_node_id, source_port)]}
+    """
+    import re
+
+    references = {}
+    prop_str = json.dumps(properties)
+    # Match {{nodes.NODE_ID.PORT}} patterns
+    matches = re.findall(r"\{\{nodes\.(\w+)\.(\w+)\}\}", prop_str)
+    for source_id, source_port in matches:
+        if source_port not in references:
+            references[source_port] = []
+        references[source_port].append((source_id, source_port))
+    return references
+
+
+def build_edge_map_from_properties(
+    state_map: Dict[str, Any],
+) -> Dict[str, Dict[str, List]]:
+    """Build edge map by parsing {{nodes.X.Y}} references in properties."""
+    edge_map = {}
+
+    for node_id, state in state_map.items():
+        props = state.static_inputs or {}
+        prop_str = json.dumps(props)
+
+        # Match {{nodes.SOURCE_ID.PORT}} patterns
+        import re
+
+        matches = re.findall(r"\{\{nodes\.(\w+)\.(\w+)\}\}", prop_str)
+
+        for source_id, source_port in matches:
+            if source_id not in edge_map:
+                edge_map[source_id] = {}
+            if source_port not in edge_map[source_id]:
+                edge_map[source_id][source_port] = []
+            edge_map[source_id][source_port].append((node_id, source_port))
+
+    return edge_map
+
+
 def resolve_port(node_id: str, port_name: str) -> str:
     """Resolve UI port name to tool's canonical port name."""
     if not port_name:
@@ -159,12 +201,36 @@ def list_workflows():
 @router.post("/run-stream")
 async def run_workflow_stream(
     nodes: List[Dict[str, Any]] = [],
-    edges: List[Dict[str, Any]] = [],
+    edges: List[Dict[str, Any]] = None,
     inputs: Dict[str, Any] = {},
 ):
+    if edges is None:
+        edges = []
     logger.info(
-        f"[Workflow] run-stream called with {len(nodes)} nodes, {len(edges)} edges"
+        f"[Workflow] run-stream called with {len(nodes)} nodes, {len(edges)} edges (or derived from properties)"
     )
+
+    # DEBUG: Log full payload from frontend
+    logger.info(f"[Workflow] Raw payload - nodes count: {len(nodes)}")
+    for i, n in enumerate(nodes):
+        node_id = n.get("id", f"unknown_{i}")
+        tool_id = n.get("toolId", n.get("type", "unknown"))
+        props = n.get("properties", {})
+        logger.info(
+            f"  Node[{i}] id={node_id} toolId={tool_id} properties_count={len(props)} keys={list(props.keys())[:10]}"
+        )
+    logger.info(
+        f"[Workflow] Full payload: {json.dumps({'nodes': [{'id': n.get('id'), 'toolId': n.get('toolId'), 'propertiesKeys': list(n.get('properties', {}).keys())} for n in nodes]}, indent=2)}"
+    )
+
+    # CRITICAL: Check if properties are missing or empty
+    if not any(n.get("properties") for n in nodes):
+        logger.error(
+            "[Workflow] CRITICAL: NO NODES HAVE properties! This means UI is not sending node data!"
+        )
+        logger.error(f"[Workflow] First node: {nodes[0] if nodes else 'NONE'}")
+    else:
+        logger.info("[Workflow] Properties present in at least one node")
 
     loop = asyncio.get_event_loop()
     queue = asyncio.Queue()
@@ -193,6 +259,12 @@ async def run_workflow_stream(
         from common_lib.modules.workflows.standard.execution.primitives import State
 
         tool_id = n.get("toolId", n.get("type", "unknown"))
+
+        # DEBUG: Log ALL properties from frontend
+        logger.info(
+            f"[Workflow] Node '{node_id}' ({tool_id}) properties: {json.dumps(n.get('properties', {}), indent=2, default=str)[:500]}"
+        )
+
         # Standardize vision tool IDs
         if tool_id.startswith("vision.") and not tool_id.startswith("comfy."):
             # We keep it as vision.* since our Registry and Node mappings use that
@@ -206,11 +278,18 @@ async def run_workflow_stream(
             if target == node_id:
                 from_port_raw = e.get("fromPort", "output")
                 to_port_raw = e.get("toPort", "input")
-                
+
                 # Resolve ports
-                source_node_type = next((n.get("toolId", n.get("type")) for n in nodes if n.get("id") == source), "")
+                source_node_type = next(
+                    (
+                        n.get("toolId", n.get("type"))
+                        for n in nodes
+                        if n.get("id") == source
+                    ),
+                    "",
+                )
                 target_node_type = n.get("toolId", n.get("type"))
-                
+
                 from_port = resolve_port(source_node_type, from_port_raw)
                 to_port = resolve_port(target_node_type, to_port_raw)
 
@@ -223,7 +302,6 @@ async def run_workflow_stream(
                         "to_port": to_port,
                     }
                 )
-
 
         s = State(
             id=node_id,
@@ -256,6 +334,20 @@ async def run_workflow_stream(
         graph.add_state(s)
     logger.info(f"[Workflow] Graph built with {len(graph.states)} states")
 
+    # Store full workflow definition (nodes + edges) for metadata
+    graph.workflow_definition = {
+        "nodes": [
+            {
+                "id": n.get("id"),
+                "type": n.get("type"),
+                "tool_id": n.get("toolId"),
+                "properties": n.get("properties", {}),
+            }
+            for n in nodes
+        ],
+        "edges": edges if edges else [],
+    }
+
     # Add transitions
     for e in edges:
         if isinstance(e, dict):
@@ -264,30 +356,37 @@ async def run_workflow_stream(
             if source in state_map and target in state_map:
                 state_map[source].transitions.append(Transition(to_state_id=target))
 
-    # Build edge map with port resolution
+    # Build edge map with port resolution (from edges OR from properties)
     edge_map = {}
-    for e in edges:
-        source = e.get("from") or e.get("source")
-        target = e.get("to") or e.get("target")
-        if source and target:
-            source_node = state_map.get(source)
-            target_node = state_map.get(target)
 
-            from_port_raw = e.get("fromPort", "output")
-            to_port_raw = e.get("toPort", "input")
+    if edges:
+        for e in edges:
+            source = e.get("from") or e.get("source")
+            target = e.get("to") or e.get("target")
+            if source and target:
+                source_node = state_map.get(source)
+                target_node = state_map.get(target)
 
-            from_port = resolve_port(
-                source_node.tool_id if source_node else "", from_port_raw
-            )
-            to_port = resolve_port(
-                target_node.tool_id if target_node else "", to_port_raw
-            )
+                from_port_raw = e.get("fromPort", "output")
+                to_port_raw = e.get("toPort", "input")
 
-            if source not in edge_map:
-                edge_map[source] = {}
-            if from_port not in edge_map[source]:
-                edge_map[source][from_port] = []
-            edge_map[source][from_port].append((target, to_port))
+                from_port = resolve_port(
+                    source_node.tool_id if source_node else "", from_port_raw
+                )
+                to_port = resolve_port(
+                    target_node.tool_id if target_node else "", to_port_raw
+                )
+
+                if source not in edge_map:
+                    edge_map[source] = {}
+                if from_port not in edge_map[source]:
+                    edge_map[source][from_port] = []
+                edge_map[source][from_port].append((target, to_port))
+    else:
+        # Extract edges from {{nodes.X.Y}} references in properties
+        logger.info("[Workflow] No edges provided - extracting from node properties")
+        edge_map = build_edge_map_from_properties(state_map)
+
     logger.info(f"[Workflow] Edge map: {edge_map}")
 
     # Setup execution
@@ -305,7 +404,7 @@ async def run_workflow_stream(
             logger.info(
                 f"[Workflow] Using shared registry with {tool_count} tools cached"
             )
-        
+
         engine = ExecutionEngine(registry=registry, tracer=tracer)
     except Exception as e:
         logger.warning(f"[Workflow] Could not get shared registry: {e}")
@@ -316,39 +415,56 @@ async def run_workflow_stream(
         registry = RegistryService()
         engine = ExecutionEngine(registry=registry, tracer=tracer)
 
-    # Topological sort for execution order
+    # Build explicit execution order from EDGES (data flow)
+    # Edge: from -> to means "to" depends on "from" output
+    # So "from" must execute BEFORE "to"
+
+    node_ids = [n.get("id") for n in nodes]
+    consumers = {nid: [] for nid in node_ids}  # node -> nodes that depend on it
+    producers = {nid: [] for nid in node_ids}  # node -> nodes it depends on
+
+    for e in edges:
+        source = e.get("from") or e.get("source")
+        target = e.get("to") or e.get("target")
+        if source in producers and target in consumers:
+            producers[target].append(source)  # target needs source's output
+            consumers[source].append(target)  # source feeds target
+
+    # Kahn's algorithm for topological sort
+    # in_degree = number of producers each node has
+    in_degree = {nid: len(producers[nid]) for nid in node_ids}
+
+    # Start with nodes that have no producers (can run immediately)
+    queue = [nid for nid, deg in in_degree.items() if deg == 0]
     execution_order = []
-    try:
-        visited = set()
-        temp_visited = set()
 
-        def visit(n_id):
-            if n_id in temp_visited:
-                return  # Cycle detected, but we'll let the executor handle it or just break
-            if n_id not in visited:
-                temp_visited.add(n_id)
-                # Find all neighbors (targets of this node)
-                neighbors = []
-                for e in edges:
-                    if e.get("from") == n_id or e.get("source") == n_id:
-                        target = e.get("to") or e.get("target")
-                        if target:
-                            neighbors.append(target)
-                for m in neighbors:
-                    visit(m)
-                temp_visited.remove(n_id)
-                visited.add(n_id)
-                execution_order.insert(0, n_id)
+    logger.info(f"[Workflow] Nodes with no dependencies (start): {queue}")
 
-        # Start from all nodes to ensure disconnected components are included
-        for n in nodes:
-            if n.get("id") not in visited:
-                visit(n.get("id"))
+    while queue:
+        node_id = queue.pop(0)
+        execution_order.append(node_id)
 
-        graph.execution_order = execution_order
-        logger.info(f"[Workflow] Computed execution order: {execution_order}")
-    except Exception as e:
-        logger.warning(f"[Workflow] Topological sort failed: {e}")
+        # This node executed, reduce in-degree for all its consumers
+        for consumer_id in consumers.get(node_id, []):
+            in_degree[consumer_id] -= 1
+            if in_degree[consumer_id] <= 0 and consumer_id not in execution_order:
+                queue.append(consumer_id)
+
+    # Handle disconnected nodes or cycles (append in original order)
+    for nid in node_ids:
+        if nid not in execution_order:
+            execution_order.append(nid)
+
+    logger.info(f"[Workflow] Explicit execution order: {execution_order}")
+    logger.info(
+        f"[Workflow] Edge-based dependencies: {json.dumps({k: v for k, v in producers.items() if v}, indent=2)}"
+    )
+
+    # SET execution_order on graph so executor uses it
+    graph.execution_order = execution_order
+
+    # Store edge_map in graph for metadata
+    graph.edge_map = edge_map
 
     engine = ExecutionEngine(registry=registry, tracer=tracer)
     executor = GraphExecutor(engine, tracer, edge_map)

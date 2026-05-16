@@ -3,8 +3,12 @@ from typing import Any, Dict, List, Optional
 from common_lib.modules.image_processing.controllers.vision_task_controller import (
     VisionTaskController,
 )
-from common_lib.modules.image_processing.functions.text.dynamic_engine.models import WildcardRecord
-from common_lib.modules.image_processing.functions.text.dynamic_engine.sync import WildcardSyncManager
+from common_lib.modules.image_processing.functions.text.dynamic_engine.models import (
+    WildcardRecord,
+)
+from common_lib.modules.image_processing.functions.text.dynamic_engine.sync import (
+    WildcardSyncManager,
+)
 from common_lib.modules.data_storage.database.connection import get_session
 from sqlalchemy import or_, func
 from sqlmodel import select
@@ -26,14 +30,23 @@ from common_lib.modules.vision.schemas import (
     VisionPresetCreateRequest,
     VisionPresetUpdateRequest,
 )
-from common_lib.modules.orchestration.infrastructure.sd.models import SdPresetRecord, SdModelRecord
+from common_lib.modules.orchestration.infrastructure.sd.models import (
+    SdPresetRecord,
+    SdModelRecord,
+)
 
-from common_lib.modules.image_processing.functions.text.dynamic_engine import PromptEngine, WildcardManager as WManager
+from common_lib.modules.image_processing.functions.text.dynamic_engine import (
+    PromptEngine,
+    WildcardManager as WManager,
+)
 from common_lib.modules.image_processing.nodes.sampling.samplers_library import (
     get_all_samplers,
     get_all_schedulers,
 )
-from common_lib.modules.image_processing.constants import SAMPLER_METADATA, SCHEDULER_METADATA
+from common_lib.modules.image_processing.constants import (
+    SAMPLER_METADATA,
+    SCHEDULER_METADATA,
+)
 from common_lib.paths import IMAGE_MODELS_ROOT, GENERATED_CONTENT, get_repo_root
 import os
 import time
@@ -50,6 +63,7 @@ async def get_prompt_configs():
     Get default prompt configurations from JSON file.
     """
     import json
+
     try:
         config_path = os.path.join(os.path.dirname(__file__), "prompts_config.json")
         if not os.path.exists(config_path):
@@ -71,33 +85,28 @@ async def preview_prompts(request: VisionPromptPreviewRequest):
         wildcard_path = os.path.join(repo_root, "resources", "wildcards")
         if not os.path.exists(wildcard_path):
             wildcard_path = os.path.join(repo_root, "Resources", "wildcards")
-            
+
         if not os.path.exists(wildcard_path):
             os.makedirs(wildcard_path, exist_ok=True)
-            
+
         wm = WManager(wildcard_path)
         engine = PromptEngine(wm)
-        
+
         if request.combinatorial:
-            prompts = engine.expand_combinatorial(request.template, limit=request.limit or 10)
+            prompts = engine.expand_combinatorial(
+                request.template, limit=request.limit or 10
+            )
         else:
             prompts = engine.expand_random(
-                request.template, 
-                num_prompts=request.limit or 10, 
-                seed=request.seed
+                request.template, num_prompts=request.limit or 10, seed=request.seed
             )
-            
+
         return VisionPromptPreviewResponse(
-            status="success",
-            prompts=prompts,
-            count=len(prompts)
+            status="success", prompts=prompts, count=len(prompts)
         )
     except Exception as e:
         return VisionPromptPreviewResponse(
-            status="error",
-            prompts=[],
-            count=0,
-            message=str(e)
+            status="error", prompts=[], count=0, message=str(e)
         )
 
 
@@ -187,60 +196,86 @@ def get_cached_checkpoints() -> List[Dict[str, str]]:
 def _get_discovered_nodes() -> List[Dict[str, Any]]:
     """Get node definitions from auto-discovery via @node decorator."""
     from common_lib.modules.workflows.standard.nodes.comfyui import (
-        CLIPTextEncode, CheckpointLoaderSimple, KSampler, EmptyLatentImage,
-        VAEDecode, SaveImage, LoadImage, LoraLoader, ControlNetLoader,
-        ControlNetApply, LatentUpscale, ImageScale, ImageInvert,
-        VAEEncodeForInpaint, InpaintModelConditioning, ImagePadForOutpaint,
-        MaskInvert, MaskBlur,
-        InpaintCrop, InpaintStitch
+        CLIPTextEncode,
+        CheckpointLoaderSimple,
+        KSampler,
+        EmptyLatentImage,
+        VAEDecode,
+        SaveImage,
+        LoadImage,
+        LoraLoader,
+        ControlNetLoader,
+        ControlNetApply,
+        LatentUpscale,
+        ImageScale,
+        ImageInvert,
+        VAEEncodeForInpaint,
+        InpaintModelConditioning,
+        ImagePadForOutpaint,
+        MaskInvert,
+        MaskBlur,
+        InpaintCrop,
+        InpaintStitch,
     )
 
-
-
-
     import inspect
-    
+
     node_classes = [
-        CLIPTextEncode, CheckpointLoaderSimple, KSampler, EmptyLatentImage,
-        VAEDecode, SaveImage, LoadImage, LoraLoader, ControlNetLoader,
-        ControlNetApply, LatentUpscale, ImageScale, ImageInvert,
-        VAEEncodeForInpaint, InpaintModelConditioning, ImagePadForOutpaint,
-        MaskInvert, MaskBlur,
-        InpaintCrop, InpaintStitch
+        CLIPTextEncode,
+        CheckpointLoaderSimple,
+        KSampler,
+        EmptyLatentImage,
+        VAEDecode,
+        SaveImage,
+        LoadImage,
+        LoraLoader,
+        ControlNetLoader,
+        ControlNetApply,
+        LatentUpscale,
+        ImageScale,
+        ImageInvert,
+        VAEEncodeForInpaint,
+        InpaintModelConditioning,
+        ImagePadForOutpaint,
+        MaskInvert,
+        MaskBlur,
+        InpaintCrop,
+        InpaintStitch,
     ]
 
-
-
-
-    
     definitions = []
     for cls in node_classes:
-        if hasattr(cls, '_is_plugin_node') and getattr(cls, '_is_plugin_node', False):
-            node_id = getattr(cls, '_node_metadata', {}).get('name') or cls.__name__
-            node_id = "vision." + node_id.lower().replace('_', '_')
-            
+        if hasattr(cls, "_is_plugin_node") and getattr(cls, "_is_plugin_node", False):
+            node_id = getattr(cls, "_node_metadata", {}).get("name") or cls.__name__
+            node_id = "vision." + node_id.lower().replace("_", "_")
+
             sig = inspect.signature(cls.__call__) if callable(cls) else None
             inputs = []
             if sig:
                 for param_name, param in sig.parameters.items():
-                    if param_name != 'self':
-                        inputs.append({
-                            "name": param_name,
-                            "type": "any",
-                            "required": param.default == inspect.Parameter.empty
-                        })
-            
-            definitions.append({
-                "type": node_id,
-                "label": cls.__name__.replace('_', ' '),
-                "category": "vision",
-                "description": getattr(cls, '__doc__', '') or cls.__name__ + " node",
-                "color": "#6b7280",
-                "inputs": inputs,
-                "outputs": [{"name": "output", "type": "any"}],
-                "properties": []
-            })
-    
+                    if param_name != "self":
+                        inputs.append(
+                            {
+                                "name": param_name,
+                                "type": "any",
+                                "required": param.default == inspect.Parameter.empty,
+                            }
+                        )
+
+            definitions.append(
+                {
+                    "type": node_id,
+                    "label": cls.__name__.replace("_", " "),
+                    "category": "vision",
+                    "description": getattr(cls, "__doc__", "")
+                    or cls.__name__ + " node",
+                    "color": "#6b7280",
+                    "inputs": inputs,
+                    "outputs": [{"name": "output", "type": "any"}],
+                    "properties": [],
+                }
+            )
+
     return definitions
 
 
@@ -271,7 +306,7 @@ async def list_models():
         # Query only checkpoints for the generic models list
         stmt = select(SdModelRecord).where(SdModelRecord.type == "checkpoint")
         models = session.execute(stmt).scalars().all()
-        
+
         # If DB is empty, fallback to filesystem scan once
         if not models:
             logger.info("DB models empty, falling back to filesystem scan")
@@ -280,14 +315,14 @@ async def list_models():
                 {"id": c["id"], "name": c["name"], "category": c.get("category", "")}
                 for c in checkpoints
             ]
-            
+
         return [
             {
-                "id": m.id, 
-                "name": m.name, 
+                "id": m.id,
+                "name": m.name,
                 "category": m.metadata_json.get("category", ""),
                 "is_active": m.is_active,
-                "trigger_words": m.trigger_words
+                "trigger_words": m.trigger_words,
             }
             for m in models
         ]
@@ -299,21 +334,22 @@ async def list_models_by_category(category: str = "sd15"):
     with next(get_session()) as session:
         stmt = select(SdModelRecord).where(SdModelRecord.type == "checkpoint")
         models = session.execute(stmt).scalars().all()
-        
+
         # Filter by category in metadata_json
         results = [
-            {"id": m.id, "name": m.name, "category": category} 
-            for m in models 
+            {"id": m.id, "name": m.name, "category": category}
+            for m in models
             if m.metadata_json.get("category") == category
         ]
-        
+
         # Fallback to filesystem if no results
         if not results:
             checkpoints = _get_checkpoints_from_filesystem(category)
             return [
-                {"id": c["id"], "name": c["name"], "category": category} for c in checkpoints
+                {"id": c["id"], "name": c["name"], "category": category}
+                for c in checkpoints
             ]
-            
+
         return results
 
 
@@ -324,21 +360,30 @@ async def list_samplers(implementation: str = "diffusers"):
     results = []
     for s in samplers:
         # Normalize key for metadata lookup (strip _comfy etc)
-        meta_key = s.replace("_comfy", "").replace("_ancestral", "_a").replace("ancestral", "a")
-        if meta_key == "euler_a": meta_key = "euler_ancestral" # Match our constants
-        
+        meta_key = (
+            s.replace("_comfy", "")
+            .replace("_ancestral", "_a")
+            .replace("ancestral", "a")
+        )
+        if meta_key == "euler_a":
+            meta_key = "euler_ancestral"  # Match our constants
+
         meta = SAMPLER_METADATA.get(meta_key, SAMPLER_METADATA.get(s, {}))
-        
-        results.append({
-            "id": s,
-            "label": s.replace("_", " ").title(),
-            "backend": implementation,
-            "description": meta.get("description", "A sampling algorithm for noise reduction."),
-            "bestFor": meta.get("best_for", "General purpose generation."),
-            "type": meta.get("type", "Standard"),
-            "recommendedSteps": meta.get("steps", "20-30"),
-            "compatibleSchedulers": meta.get("compatible_schedulers", ["normal"])
-        })
+
+        results.append(
+            {
+                "id": s,
+                "label": s.replace("_", " ").title(),
+                "backend": implementation,
+                "description": meta.get(
+                    "description", "A sampling algorithm for noise reduction."
+                ),
+                "bestFor": meta.get("best_for", "General purpose generation."),
+                "type": meta.get("type", "Standard"),
+                "recommendedSteps": meta.get("steps", "20-30"),
+                "compatibleSchedulers": meta.get("compatible_schedulers", ["normal"]),
+            }
+        )
     return results
 
 
@@ -350,16 +395,20 @@ async def list_schedulers(provider: str = "diffusers"):
     for s in schedulers:
         meta_key = s.replace("_comfy", "")
         meta = SCHEDULER_METADATA.get(meta_key, SCHEDULER_METADATA.get(s, {}))
-        
-        results.append({
-            "id": s,
-            "label": s.replace("_", " ").title(),
-            "backend": provider,
-            "description": meta.get("description", "A schedule for noise levels across steps."),
-            "bestFor": meta.get("best_for", "Standard models."),
-            "behavior": meta.get("behavior", "Linear"),
-            "gotchas": meta.get("gotchas", {"default": ""})
-        })
+
+        results.append(
+            {
+                "id": s,
+                "label": s.replace("_", " ").title(),
+                "backend": provider,
+                "description": meta.get(
+                    "description", "A schedule for noise levels across steps."
+                ),
+                "bestFor": meta.get("best_for", "Standard models."),
+                "behavior": meta.get("behavior", "Linear"),
+                "gotchas": meta.get("gotchas", {"default": ""}),
+            }
+        )
     return results
 
 
@@ -369,48 +418,54 @@ async def list_checkpoints(category: str = None):
     with next(get_session()) as session:
         stmt = select(SdModelRecord).where(SdModelRecord.type == "checkpoint")
         models = session.execute(stmt).scalars().all()
-        
+
         if category:
             results = [
                 {
-                    "id": m.id, 
+                    "id": m.id,
                     "value": m.id,
-                    "name": m.name, 
+                    "name": m.name,
                     "label": f"{m.name} [{category}]",
-                    "category": category
-                } 
-                for m in models 
+                    "category": category,
+                }
+                for m in models
                 if m.metadata_json.get("category") == category
             ]
         else:
             results = [
                 {
-                    "id": m.id, 
+                    "id": m.id,
                     "value": m.id,
-                    "name": m.name, 
+                    "name": m.name,
                     "label": f"{m.name} [{m.metadata_json.get('category', 'default')}]",
-                    "category": m.metadata_json.get('category', 'default')
-                } 
+                    "category": m.metadata_json.get("category", "default"),
+                }
                 for m in models
             ]
-            
+
         if not results:
             return _get_checkpoints_from_filesystem(category)
-            
+
         return results
 
 
 @router.get("/swap-models", response_model=List[str])
 async def list_swap_models():
     """List available face swap models (InSwapper, etc)."""
-    from common_lib.modules.image_processing.nodes.reactor.base import get_insightface_models
+    from common_lib.modules.image_processing.nodes.reactor.base import (
+        get_insightface_models,
+    )
+
     return get_insightface_models()
 
 
 @router.get("/face-restore-models", response_model=List[str])
 async def list_face_restore_models():
     """List available face restoration models (CodeFormer, GFPGAN, etc)."""
-    from common_lib.modules.image_processing.nodes.reactor.base import get_facerestore_models
+    from common_lib.modules.image_processing.nodes.reactor.base import (
+        get_facerestore_models,
+    )
+
     return get_facerestore_models()
 
 
@@ -421,7 +476,10 @@ async def list_workflow_presets():
     Reads from YAML files in templates/workflows/executable - single source of truth.
     """
     try:
-        from common_lib.modules.workflows.standard.registry.workflow_registry import get_workflow_registry
+        from common_lib.modules.workflows.standard.registry.workflow_registry import (
+            get_workflow_registry,
+        )
+
         registry = get_workflow_registry()
         return registry.list_workflows()
     except Exception as e:
@@ -435,7 +493,10 @@ async def get_workflow_preset(id: str):
     Returns the full workflow definition for a specific preset from central registry.
     """
     try:
-        from common_lib.modules.workflows.standard.registry.workflow_registry import get_workflow_registry
+        from common_lib.modules.workflows.standard.registry.workflow_registry import (
+            get_workflow_registry,
+        )
+
         registry = get_workflow_registry()
         workflow = registry.get_workflow_preset(id)
 
@@ -445,6 +506,7 @@ async def get_workflow_preset(id: str):
         logger.error(f"Error loading workflow {id}: {e}")
 
     from fastapi import HTTPException
+
     raise HTTPException(status_code=404, detail=f"Workflow '{id}' not found")
 
 
@@ -455,7 +517,11 @@ async def list_nodes():
     Nodes are registered at startup, synced from backend to frontend.
     Workflows include node references - execution is fully backend.
     """
-    return _get_discovered_nodes()
+    from common_lib.modules.image_processing.nodes_registry.discovery import (
+        get_all_nodes,
+    )
+
+    return get_all_nodes()
 
 
 @router.post("/execute", response_model=VisionWorkflowResponse)
@@ -466,15 +532,17 @@ async def execute_workflow(request: VisionWorkflowRequest):
     """
     try:
         from common_lib.modules.workflows.standard.builder import WorkflowBuilder
-        from common_lib.modules.workflows.standard.registry.workflow_registry import get_workflow_registry
+        from common_lib.modules.workflows.standard.registry.workflow_registry import (
+            get_workflow_registry,
+        )
         from common_lib.modules.workflows.standard.executor import WorkflowExecutor
         from common_lib.modules.workflows.standard.state import WorkflowStatus
-        
+
         builder = WorkflowBuilder()
         registry = get_workflow_registry()
-        
+
         workflow_id = request.workflow_id
-        
+
         # Consolidate all inputs into a single 'state' dict
         # Prioritize 'state' field, then 'parameters', then 'config'
         execution_state = request.state or {}
@@ -482,49 +550,58 @@ async def execute_workflow(request: VisionWorkflowRequest):
             execution_state.update(request.parameters)
         if request.config:
             execution_state.update(request.config)
-        
+
         # 1. Resolve workflow definition
         workflow_def = None
         if workflow_id:
             workflow_def = registry.get_workflow(workflow_id)
             if workflow_def:
                 logger.info(f"Resolved workflow '{workflow_id}' from registry")
-        
+
         # 2. Fallback to ad-hoc graph if no registry match
         if not workflow_def and request.nodes:
             logger.info(f"Using ad-hoc workflow graph from request (Studio mode)")
             workflow_def = {
-                'id': workflow_id or "adhoc",
-                'nodes': request.nodes,
-                'edges': request.edges or request.connections or []
+                "id": workflow_id or "adhoc",
+                "nodes": request.nodes,
+                "edges": request.edges or request.connections or [],
             }
-            
+
         if not workflow_def:
             if workflow_id:
-                raise ValueError(f"Workflow '{workflow_id}' not found in registry and no ad-hoc nodes provided.")
+                raise ValueError(
+                    f"Workflow '{workflow_id}' not found in registry and no ad-hoc nodes provided."
+                )
             else:
                 raise ValueError("No workflow_id or ad-hoc nodes provided.")
 
         # 3. Build the executable workflow
         workflow_data = {
-            'id': workflow_def.get('id'),
-            'nodes': workflow_def.get('nodes', []),
-            'edges': workflow_def.get('edges', []) or workflow_def.get('connections', [])
+            "id": workflow_def.get("id"),
+            "nodes": workflow_def.get("nodes", []),
+            "edges": workflow_def.get("edges", [])
+            or workflow_def.get("connections", []),
         }
-        
+
         workflow = builder.load_from_dict(workflow_data)
-        
+
         # 3. Execute
         executor = WorkflowExecutor()
-        logger.info(f"Executing workflow '{workflow_id}' with {len(execution_state)} parameters")
+        logger.info(
+            f"Executing workflow '{workflow_id}' with {len(execution_state)} parameters"
+        )
         state = executor.execute(workflow, execution_state)
-        
+
         # 4. Extract results (images) from execution state
         result_images = []
         # Check node outputs
         for node_id, node_outputs in state.data.items():
             if isinstance(node_outputs, dict):
-                img = node_outputs.get("image") or node_outputs.get("images") or node_outputs.get("output")
+                img = (
+                    node_outputs.get("image")
+                    or node_outputs.get("images")
+                    or node_outputs.get("output")
+                )
                 if img:
                     if isinstance(img, list):
                         result_images.extend([i for i in img if isinstance(i, str)])
@@ -536,10 +613,16 @@ async def execute_workflow(request: VisionWorkflowRequest):
             val = state.state_vars.get(var_name)
             if val:
                 if isinstance(val, list):
-                    result_images.extend([i for i in val if isinstance(i, str) and i not in result_images])
+                    result_images.extend(
+                        [
+                            i
+                            for i in val
+                            if isinstance(i, str) and i not in result_images
+                        ]
+                    )
                 elif isinstance(val, str) and val not in result_images:
                     result_images.append(val)
-        
+
         return VisionWorkflowResponse(
             status="success" if state.status == WorkflowStatus.COMPLETED else "error",
             message=f"Workflow completed with status: {state.status.value}",
@@ -547,16 +630,13 @@ async def execute_workflow(request: VisionWorkflowRequest):
                 "execution_id": state.execution_id,
                 "workflow_id": workflow_id,
                 "steps_completed": len(state.steps),
-                "nodes_executed": list(state.data.keys())
+                "nodes_executed": list(state.data.keys()),
             },
-            images=result_images
+            images=result_images,
         )
     except Exception as e:
         logger.exception(f"Error executing vision workflow: {e}")
-        return VisionWorkflowResponse(
-            status="error",
-            message=str(e)
-        )
+        return VisionWorkflowResponse(status="error", message=str(e))
 
 
 @router.get("/gallery", response_model=VisionGalleryResponse)
@@ -580,17 +660,22 @@ async def list_gallery():
 
         if folder_name not in folders_dict:
             folders_dict[folder_name] = []
-        
+
         try:
             for item in current_path.iterdir():
                 if item.is_dir() and not item.name.startswith("."):
                     scan_recursive(base_path, item)
-                elif item.is_file() and item.suffix.lower() in [".png", ".jpg", ".jpeg", ".webp"]:
+                elif item.is_file() and item.suffix.lower() in [
+                    ".png",
+                    ".jpg",
+                    ".jpeg",
+                    ".webp",
+                ]:
                     metadata = {}
                     stats = item.stat()
                     metadata["timestamp"] = stats.st_mtime
                     metadata["size"] = stats.st_size
-                    
+
                     # Try to extract metadata for PNGs
                     if item.suffix.lower() == ".png":
                         try:
@@ -599,7 +684,9 @@ async def list_gallery():
                                     for key, val in img.info.items():
                                         if isinstance(val, (str, int, float, bool)):
                                             # Special handling for our platform's parameters JSON
-                                            if key == "parameters" and isinstance(val, str):
+                                            if key == "parameters" and isinstance(
+                                                val, str
+                                            ):
                                                 try:
                                                     params = json.loads(val)
                                                     if isinstance(params, dict):
@@ -613,18 +700,18 @@ async def list_gallery():
                                 metadata["format"] = img.format
                         except Exception:
                             pass
-                    
+
                     # Calculate relative URL for static mounting
                     # The static mount point is /generated/ mapping to GENERATED_CONTENT
                     rel_to_root = item.relative_to(base_path)
                     url_path = str(rel_to_root).replace("\\", "/")
-                    
+
                     folders_dict[folder_name].append(
                         VisionGalleryItem(
                             filename=item.name,
                             url=f"/generated/{url_path}",
                             metadata=metadata,
-                            folder=folder_name
+                            folder=folder_name,
                         )
                     )
         except Exception as e:
@@ -635,16 +722,17 @@ async def list_gallery():
 
     # Convert to Response schema
     gallery_folders = []
-    
+
     # Priority order for folders if we want to show them in a specific order
     # root, upscale, others
     sorted_folder_names = sorted(
-        folders_dict.keys(), 
-        key=lambda n: (0 if n == "root" else 1, 0 if n == "upscale" else 1, n.lower())
+        folders_dict.keys(),
+        key=lambda n: (0 if n == "root" else 1, 0 if n == "upscale" else 1, n.lower()),
     )
 
     for name in sorted_folder_names:
         images = folders_dict[name]
+
         # Sort images by timestamp descending
         def sort_key(x):
             ts = (x.metadata or {}).get("timestamp", 0)
@@ -652,7 +740,7 @@ async def list_gallery():
                 return float(ts)
             except (ValueError, TypeError):
                 return 0.0
-        
+
         images.sort(key=sort_key, reverse=True)
         if images:
             gallery_folders.append(VisionGalleryFolder(name=name, images=images))
@@ -660,10 +748,4 @@ async def list_gallery():
     return VisionGalleryResponse(folders=gallery_folders)
 
 
-
-
-
-
 __all__ = ["router"]
-
-
