@@ -168,6 +168,11 @@ async def list_references(
                     "name": "Workflows",
                     "description": "Workflow definitions",
                 },
+                {
+                    "id": "workflow_configs",
+                    "name": "Workflow Configs",
+                    "description": "Workflow configuration presets",
+                },
                 {"id": "prompts", "name": "Prompts", "description": "Prompt templates"},
             ]
 
@@ -245,6 +250,22 @@ async def list_references(
                         "description": w.get("description", "")[:100]
                         if w.get("description")
                         else "",
+                    }
+                )
+
+        if category == "workflow_configs" or not category:
+            configs = memory.list_workflow_config_definitions()
+            for c in configs:
+                items.append(
+                    {
+                        "id": c.get("id", ""),
+                        "name": c.get("name", ""),
+                        "type": "workflow_config",
+                        "description": c.get("description", "")[:100]
+                        if c.get("description")
+                        else "",
+                        "workflow_id": c.get("workflow_id"),
+                        "category": c.get("category", "General"),
                     }
                 )
 
@@ -824,6 +845,29 @@ async def list_entities(
                 except Exception:
                     results["models"] = []
 
+        # 5. WORKFLOW CONFIGS — standalone config presets
+        if not entity_type or entity_type == "workflow_configs":
+            try:
+                db_configs = common_memory.list_workflow_config_definitions()
+                results["workflow_configs"] = [
+                    {
+                        "id": c.get("id", ""),
+                        "name": c.get("name", ""),
+                        "description": normalize_description(c.get("description")),
+                        "category": c.get("category", "General"),
+                        "tags": c.get("tags", []),
+                        "status": c.get("status", "ACTIVE"),
+                        "workflow_id": c.get("workflow_id"),
+                        "version": c.get("version", "1.0.0"),
+                        "metadata": c.get("metadata_json", {}),
+                        "artifacts": c.get("artifacts", {}),
+                    }
+                    for c in db_configs
+                ]
+            except Exception as _wc_err:
+                logger.warning("Failed to fetch workflow configs: %s", _wc_err)
+                results["workflow_configs"] = []
+
         return APIResponse(
             data=results, message="Unified entity registry retrieved successfully"
         )
@@ -1102,6 +1146,7 @@ async def get_registry_stats():
             "skills": {"total": 0},
             "tools": {"total": 0, "categories": {}},
             "workflows": {"total": 0, "categories": {}},
+            "workflow_configs": {"total": 0},
             "prompts": {"total": 0, "categories": {}},
             "commands": {"total": 0},
             "models": {"total": 0},
@@ -1220,6 +1265,13 @@ async def get_registry_stats():
         except Exception:
             stats["snippets"]["total"] = 0
             stats["profiles"]["total"] = 0
+
+        # 11. Workflow Configs
+        try:
+            db_configs = common_memory.list_workflow_config_definitions()
+            stats["workflow_configs"] = {"total": len(db_configs)}
+        except Exception:
+            stats["workflow_configs"] = {"total": 0}
 
         return APIResponse(data=stats, message="Registry statistics retrieved")
     except Exception as e:

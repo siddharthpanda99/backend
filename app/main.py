@@ -50,6 +50,7 @@ from app.modules.agents.runtime.policy_routes import router as policy_router
 from app.modules.entities.routes.registry import router as entities_router
 from app.modules.workflows.routes.index import router as workflows_router
 from app.modules.workflows.routes.observability import router as observability_router
+from app.modules.workflows.routes.configs import router as workflow_configs_router
 from app.modules.tools.routes.index import router as tools_router
 from app.modules.memories.routes.index import router as memories_router
 from app.modules.models.routes import router as models_router
@@ -67,6 +68,7 @@ from app.modules.file_browser import router as file_browser_router
 from app.modules.file_browser.macro_routes import router as macro_router
 from app.modules.notification.routes import router as notification_router
 from app.modules.wildcards.routes import router as wildcards_router
+from app.modules.sam3.routes import router as sam3_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -140,12 +142,24 @@ async def lifespan(app: FastAPI):
             t_count = len(common_memory.list_tool_definitions())
             w_count = len(common_memory.list_workflow_definitions())
             a_count = len(common_memory.list_agent_definitions())
+            s_count = len(common_memory.list_skill_definitions())
+            p_count = len(common_memory.list_prompt_definitions())
+            c_count = len(common_memory.list_command_definitions())
+            wc_count = len(common_memory.list_workflow_config_definitions())
+            kb_count = len(common_memory.list_kb_entries())
+            tpl_count = len(common_memory.list_template_definitions())
 
             print("=" * 60)
             print(f"Registry Sync Complete:")
             print(f"- Tools Indexed: {t_count}")
             print(f"- Workflows Indexed: {w_count}")
             print(f"- Agents Indexed: {a_count}")
+            print(f"- Skills Indexed: {s_count}")
+            print(f"- Prompts Indexed: {p_count}")
+            print(f"- Commands Indexed: {c_count}")
+            print(f"- Workflow Configs Indexed: {wc_count}")
+            print(f"- Knowledgebase Indexed: {kb_count}")
+            print(f"- Templates Indexed: {tpl_count}")
             print(f"Sync Report: {report.entities_processed} entities processed.")
             print("=" * 60)
         except Exception as e:
@@ -357,12 +371,17 @@ def create_app() -> FastAPI:
     global_deps = [Depends(get_current_active_user)] if not settings.DEV_MODE else []
 
     # Include Routers
+    print(f"Startup: Including Common router with prefix: {settings.API_V1_STR}")
     app.include_router(
         common_router, prefix=settings.API_V1_STR, dependencies=global_deps
     )
+    print(f"Startup: Including Auth router with prefix: {settings.API_V1_STR}/auth")
     app.include_router(
         auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"]
     )  # Auth handles its own security
+    print(
+        f"Startup: Including Sessions router with prefix: {settings.API_V1_STR}/sessions"
+    )
     app.include_router(
         sessions_router,
         prefix=f"{settings.API_V1_STR}/sessions",
@@ -371,11 +390,15 @@ def create_app() -> FastAPI:
     )
 
     # Module Routers
+    print(f"Startup: Including Roles router with prefix: {settings.API_V1_STR}/roles")
     app.include_router(
         roles_router,
         prefix=f"{settings.API_V1_STR}/roles",
         tags=["Roles"],
         dependencies=global_deps,
+    )
+    print(
+        f"Startup: Including Permissions router with prefix: {settings.API_V1_STR}/permissions"
     )
     app.include_router(
         permissions_router,
@@ -383,11 +406,15 @@ def create_app() -> FastAPI:
         tags=["Permissions"],
         dependencies=global_deps,
     )
+    print(f"Startup: Including Users router with prefix: {settings.API_V1_STR}/users")
     app.include_router(
         users_router,
         prefix=f"{settings.API_V1_STR}/users",
         tags=["Users"],
         dependencies=global_deps,
+    )
+    print(
+        f"Startup: Including Projects router with prefix: {settings.API_V1_STR}/projects"
     )
     app.include_router(
         projects_router,
@@ -396,6 +423,7 @@ def create_app() -> FastAPI:
         dependencies=global_deps,
     )
 
+    print(f"Startup: Including Hooks router with prefix: {settings.API_V1_STR}/hooks")
     app.include_router(
         hooks_router,
         prefix=f"{settings.API_V1_STR}/hooks",
@@ -404,17 +432,24 @@ def create_app() -> FastAPI:
     )
 
     # Entities & Orchestration
+    print(
+        f"Startup: Including Entities Registry router with prefix: {settings.API_V1_STR}/entities/registry"
+    )
     app.include_router(
         entities_router,
         prefix=f"{settings.API_V1_STR}/entities/registry",
         tags=["Entities Registry"],
         dependencies=global_deps,
     )
+    print(f"Startup: Including Agents router with prefix: {settings.API_V1_STR}/agents")
     app.include_router(
         agents_router,
         prefix=f"{settings.API_V1_STR}/agents",
         tags=["Agents (Management)"],
         dependencies=global_deps,
+    )
+    print(
+        f"Startup: Including Pipelines router with prefix: {settings.API_V1_STR}/agents/pipelines"
     )
     app.include_router(
         pipeline_router,
@@ -422,11 +457,15 @@ def create_app() -> FastAPI:
         tags=["Pipelines"],
         dependencies=global_deps,
     )
+    print(f"Startup: Including Policy router with prefix: {settings.API_V1_STR}/agents")
     app.include_router(
         policy_router,
         prefix=f"{settings.API_V1_STR}/agents",
         tags=["Policy & Multi-Agent"],
         dependencies=global_deps,
+    )
+    print(
+        f"Startup: Including Workflows router with prefix: {settings.API_V1_STR}/workflows"
     )
     app.include_router(
         workflows_router,
@@ -434,23 +473,42 @@ def create_app() -> FastAPI:
         tags=["Workflows"],
         dependencies=global_deps,
     )
+    print(
+        f"Startup: Including Workflow Observability router with prefix: {settings.API_V1_STR}/workflows/observability"
+    )
     app.include_router(
         observability_router,
         prefix=f"{settings.API_V1_STR}/workflows/observability",
         tags=["Workflow Observability"],
         dependencies=global_deps,
     )
+    print(
+        f"Startup: Including Workflow Configs router with prefix: {settings.API_V1_STR}/workflow-configs"
+    )
+    app.include_router(
+        workflow_configs_router,
+        prefix=f"{settings.API_V1_STR}/workflow-configs",
+        tags=["Workflow Configs"],
+        dependencies=global_deps,
+    )
+    print(f"Startup: Including Tools router with prefix: {settings.API_V1_STR}/tools")
     app.include_router(
         tools_router,
         prefix=f"{settings.API_V1_STR}/tools",
         tags=["Tools"],
         dependencies=global_deps,
     )
+    print(
+        f"Startup: Including Models Hub router with prefix: {settings.API_V1_STR}/models"
+    )
     app.include_router(
         models_router,
         prefix=f"{settings.API_V1_STR}/models",
         tags=["Models Hub"],
         dependencies=global_deps,
+    )
+    print(
+        f"Startup: Including External Models router with prefix: {settings.API_V1_STR}/models/external"
     )
     app.include_router(
         external_models_router,
@@ -459,10 +517,19 @@ def create_app() -> FastAPI:
         dependencies=global_deps,
     )
 
+    # SAM3 Segmentation
+    print(f"Startup: Including SAM3 router with prefix: {settings.API_V1_STR}/sam3")
+    app.include_router(
+        sam3_router,
+        prefix=f"{settings.API_V1_STR}/sam3",
+        tags=["SAM3 Segmentation"],
+        dependencies=global_deps,
+    )
+
     # New Vision API
     from app.modules.vision.routes import router as vision_router
 
-    print(f"Including Vision router with prefix: {settings.API_V1_STR}/vision")
+    print(f"Startup: Including Vision router with prefix: {settings.API_V1_STR}/vision")
     app.include_router(
         vision_router,
         prefix=f"{settings.API_V1_STR}/vision",
@@ -470,8 +537,21 @@ def create_app() -> FastAPI:
         dependencies=global_deps,
     )
 
+    # Nodes Catalog API (Unified node definitions for Nodes Studio)
+    from app.modules.nodes.routes import router as nodes_router
+
+    print(f"Startup: Including Nodes router with prefix: {settings.API_V1_STR}/nodes")
+    app.include_router(
+        nodes_router,
+        prefix=f"{settings.API_V1_STR}",
+        tags=["Nodes"],
+        dependencies=global_deps,
+    )
+
     # Wildcards API
-    print(f"Startup: Including Wildcards router with prefix: {settings.API_V1_STR}/vision/wildcards")
+    print(
+        f"Startup: Including Wildcards router with prefix: {settings.API_V1_STR}/vision/wildcards"
+    )
     app.include_router(
         wildcards_router,
         prefix=f"{settings.API_V1_STR}/vision",
@@ -481,6 +561,7 @@ def create_app() -> FastAPI:
 
     # Configs API (Industrialized Vision Presets)
     from app.modules.configs.routes import router as configs_router
+
     print(f"Startup: Including Configs router with prefix: {settings.API_V1_STR}")
     app.include_router(
         configs_router,
@@ -491,6 +572,7 @@ def create_app() -> FastAPI:
 
     # SD Models Registry
     from app.modules.sd_models.routes import router as sd_models_router
+
     print(f"Startup: Including SD Models router with prefix: {settings.API_V1_STR}")
     app.include_router(
         sd_models_router,
@@ -502,6 +584,7 @@ def create_app() -> FastAPI:
     # New Audio API
     from app.modules.audio.routes import router as audio_router
 
+    print(f"Startup: Including Audio router with prefix: {settings.API_V1_STR}/audio")
     app.include_router(
         audio_router,
         prefix=f"{settings.API_V1_STR}/audio",
@@ -512,6 +595,7 @@ def create_app() -> FastAPI:
     # MCP (Model Context Protocol)
     from app.mcp.routes import router as mcp_router
 
+    print(f"Startup: Including MCP router with prefix: {settings.API_V1_STR}/mcp")
     app.include_router(
         mcp_router,
         prefix=f"{settings.API_V1_STR}/mcp",
@@ -522,6 +606,7 @@ def create_app() -> FastAPI:
     # SOTA Debug (Simulating Parallel Spans)
     from app.modules.debug.routes import router as debug_router
 
+    print(f"Startup: Including Debug router with prefix: {settings.API_V1_STR}/debug")
     app.include_router(
         debug_router,
         prefix=f"{settings.API_V1_STR}/debug",
@@ -530,12 +615,16 @@ def create_app() -> FastAPI:
     )
 
     # DataForge & Grid Persistence
+    print(
+        f"Startup: Including DataForge router with prefix: {settings.API_V1_STR}/data-forge"
+    )
     app.include_router(
         data_forge_router,
         prefix=f"{settings.API_V1_STR}/data-forge",
         tags=["DataForge Simulation"],
         dependencies=global_deps,
     )
+    print(f"Startup: Including Grid router with prefix: {settings.API_V1_STR}/grid")
     app.include_router(
         grid_router,
         prefix=f"{settings.API_V1_STR}/grid",
@@ -564,7 +653,9 @@ def create_app() -> FastAPI:
     )
 
     # Memory Module
-    print(f"Startup: Including Memory router with prefix: {settings.API_V1_STR}/memories")
+    print(
+        f"Startup: Including Memory router with prefix: {settings.API_V1_STR}/memories"
+    )
     app.include_router(
         memories_router,
         prefix=f"{settings.API_V1_STR}/memories",
@@ -706,6 +797,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(NexusException, nexus_exception_handler)
     from common_lib.modules.ai_models.domain.exceptions import ModelNotFoundError
     from app.core.exceptions import model_not_found_exception_handler
+
     app.add_exception_handler(ModelNotFoundError, model_not_found_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     from pydantic import ValidationError

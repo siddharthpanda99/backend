@@ -6,6 +6,7 @@ from app.mcp.tools.agents import register_agent_tools
 from app.mcp.tools.memories import register_memory_tools
 from app.mcp.tools.models import register_model_tools
 from app.mcp.tools.workflows import register_workflow_tools
+from app.mcp.tools.workflow_configs import register_workflow_config_tools
 from app.mcp.tools.graph import register_graph_tools
 from app.mcp.tools.vision import register_vision_tools
 from app.mcp.tools.audio import register_audio_tools
@@ -40,6 +41,7 @@ register_agent_tools(mcp_server)
 register_memory_tools(mcp_server)
 register_model_tools(mcp_server)
 register_workflow_tools(mcp_server)
+register_workflow_config_tools(mcp_server)
 register_graph_tools(mcp_server)
 register_vision_tools(mcp_server)
 register_audio_tools(mcp_server)
