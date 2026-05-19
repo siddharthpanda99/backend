@@ -49,8 +49,10 @@ class WildcardService:
             select(func.count()).select_from(WildcardRecord)
         ).scalar()
 
-        stmt = select(WildcardRecord.category, func.count()).order_by(
-            desc(func.count())
+        stmt = (
+            select(WildcardRecord.category, func.count())
+            .group_by(WildcardRecord.category)
+            .order_by(desc(func.count()))
         )
         results = session.execute(stmt).all()
 
