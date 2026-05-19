@@ -7,8 +7,11 @@ from common_lib.modules.orchestration.infrastructure.sync.manager import (
 )
 from common_lib.paths import TEMPLATES_DIR, COMMON_LIB_TEMPLATES
 
+from app.core.settings import get_settings
+
 # Establish integration with common_lib's independent database via its own MemoryStore
-common_memory = SQLAlchemyMemoryStore()
+settings = get_settings()
+common_memory = SQLAlchemyMemoryStore(db_url=settings.SQLALCHEMY_DATABASE_URI)
 
 # We also instantiate the sync manager to trigger file system syncs when the API creates/updates entities
 sync_manager = EntitySyncManager(
