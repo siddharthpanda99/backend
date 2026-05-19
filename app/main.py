@@ -53,6 +53,7 @@ from app.modules.workflows.routes.observability import router as observability_r
 from app.modules.workflows.routes.configs import router as workflow_configs_router
 from app.modules.tools.routes.index import router as tools_router
 from app.modules.memories.routes.index import router as memories_router
+from app.modules.memory.routes import router as cognitive_memory_router
 from app.modules.models.routes import router as models_router
 from app.modules.models.external_routes import router as external_models_router
 from app.modules.data_forge.routes import router as data_forge_router
@@ -660,6 +661,17 @@ def create_app() -> FastAPI:
         memories_router,
         prefix=f"{settings.API_V1_STR}/memories",
         tags=["Memory"],
+        dependencies=global_deps,
+    )
+
+    # Cognitive Memory API
+    print(
+        f"Startup: Including Cognitive Memory router with prefix: {settings.API_V1_STR}/memory"
+    )
+    app.include_router(
+        cognitive_memory_router,
+        prefix=f"{settings.API_V1_STR}/memory",
+        tags=["Cognitive Memory"],
         dependencies=global_deps,
     )
 
