@@ -482,3 +482,159 @@ async def memory_health():
             "healthy": False,
             "error": str(e),
         }
+
+
+# =============================================================================
+# Workflow Execution Endpoints
+# =============================================================================
+
+
+class WorkflowExecuteRequest(BaseModel):
+    workflow_id: str
+    inputs: Dict[str, Any] = {}
+
+
+class WorkflowExecuteResponse(BaseModel):
+    workflow_id: str
+    status: str
+    execution_id: str
+    outputs: Dict[str, Any]
+    duration_ms: float
+
+
+class WorkflowListResponse(BaseModel):
+    workflows: List[Dict[str, Any]]
+
+
+@router.get("/workflows", response_model=WorkflowListResponse)
+async def list_memory_workflows(
+    category: str = Query(None, description="Filter by category"),
+):
+    """List all available memory workflows."""
+    try:
+        from common_lib.modules.workflows.standard.registry.workflow_registry import (
+            get_workflow_registry,
+        )
+
+        registry = get_workflow_registry()
+        workflows = []
+        for wf_id, wf_def in registry._workflows.items():
+            if wf_def.get("category") == "memory" or wf_id.startswith("memory_"):
+                if category and wf_def.get("category") != category:
+                    continue
+                workflows.append(
+                    {
+                        "id": wf_id,
+                        "name": wf_def.get("name", ""),
+                        "description": wf_def.get("description", "")[:200],
+                        "category": wf_def.get("category", ""),
+                        "version": wf_def.get("version", ""),
+                    }
+                )
+        return WorkflowListResponse(workflows=workflows)
+    except Exception as e:
+        logger.error(f"Failed to list workflows: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/workflows/execute", response_model=WorkflowExecuteResponse)
+async def execute_memory_workflow(request: WorkflowExecuteRequest):
+    """Execute a memory workflow by ID with provided inputs."""
+    import time
+    import uuid
+    import asyncio
+
+    start_time = time.time()
+
+    try:
+        from common_lib.modules.workflows.standard.registry.workflow_registry import (
+            get_workflow_registry,
+        )
+        from common_lib.modules.workflows.standard.builder import WorkflowBuilder
+        from common_lib.modules.workflows.standard.executor import WorkflowExecutor
+        from common_lib.modules.workflows.standard.execution.executor import (
+            GraphExecutor,
+        )
+        from common_lib.modules.workflows.standard.execution.primitives import (
+            Graph,
+            State,
+            Transition,
+        )
+        from common_lib.modules.workflows.standard.execution.context import (
+            ExecutionContext,
+        )
+        from common_lib.modules.core_infrastructure.registry import RegistryService
+
+        registry = get_workflow_registry()
+        workflow_def = registry._workflows.get(request.workflow_id)
+        if not workflow_def:
+            raise HTTPException(
+                status_code=404, detail=f"Workflow not found: {request.workflow_id}"
+            )
+
+        # Build graph from workflow definition
+        nodes = workflow_def.get("nodes", [])
+        edges = workflow_def.get("edges", [])
+
+        states = []
+        for node_def in nodes:
+            if not node_def.get("enabled", True):
+                continue
+            state = State(
+                id=node_def["id"],
+                tool_id=node_def["tool_id"],
+                metadata={
+                    "config": node_def.get("config", {}),
+                    "condition": node_def.get("condition"),
+                },
+            )
+            states.append(state)
+
+        transitions = []
+        for edge_def in edges:
+            condition = None
+            cond_def = edge_def.get("condition")
+            if cond_def and cond_def.get("type") == "feature_enabled":
+                flag = cond_def.get("params", {}).get("flag")
+                condition = lambda ctx, f=flag: True  # Simplified
+
+            transitions.append(
+                Transition(
+                    from_state_id=edge_def["from_node"],
+                    to_state_id=edge_def["to_node"],
+                    condition=condition,
+                )
+            )
+
+        graph = Graph(
+            id=request.workflow_id,
+            states=states,
+            transitions=transitions,
+        )
+
+        # Execute
+        exec_context = ExecutionContext(
+            trace_id=str(uuid.uuid4()),
+            workflow_id=request.workflow_id,
+            workflow_state=request.inputs.copy(),
+        )
+
+        executor = GraphExecutor(registry=RegistryService())
+        result = await asyncio.to_thread(
+            executor.execute, graph, request.inputs, exec_context
+        )
+
+        duration_ms = (time.time() - start_time) * 1000
+
+        return WorkflowExecuteResponse(
+            workflow_id=request.workflow_id,
+            status="completed",
+            execution_id=exec_context.trace_id,
+            outputs=result if isinstance(result, dict) else {},
+            duration_ms=round(duration_ms, 2),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Workflow execution failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
