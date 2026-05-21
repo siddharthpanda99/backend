@@ -4,7 +4,7 @@ from common_lib.modules.external_platforms.civitai.client import CivitAIClient
 from common_lib.modules.external_platforms.civitai.downloader import CivitAIDownloader
 from common_lib.modules.ai_models.container import AIModelsContainer
 from common_lib.modules.ai_models.domain.entities import ModelEntity
-from common_lib.modules.notification.controller import PlatformEventBus, Channels
+from common_lib.modules.notification.controller import NotificationService, Channels
 from app.modules.common.types.index import APIResponse
 from app.modules.models.routes import get_container
 import logging
@@ -14,7 +14,7 @@ import re
 logger = logging.getLogger(__name__)
 
 # Initialize platform event bus for system notifications
-notification_bus = PlatformEventBus()
+notification_bus = NotificationService()
 
 
 def send_download_notification(

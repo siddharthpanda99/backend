@@ -82,7 +82,7 @@ async def nodes_catalog(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/catalog/{node_id}", response_model=NodeDetailResponse)
+@router.get("/catalog/{node_id:path}", response_model=NodeDetailResponse)
 async def node_detail(node_id: str):
     """
     Return detailed metadata for a specific node.

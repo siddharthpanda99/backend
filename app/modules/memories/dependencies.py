@@ -2,13 +2,11 @@ from common_lib.modules.memory.service import MemoryService
 from common_lib.modules.memory.memory_storage.repositories.memory_repository import (
     MemoryRepository,
 )
-from common_lib.modules.memory.memory_storage.adapters.relational_adapter import (
-    RelationalStorageAdapter,
-)
 from common_lib.modules.memory.memory_storage.adapters.pgvector_adapter import (
     PgVectorAdapter,
 )
 from common_lib.modules.memory.memory_storage.adapters.redis_adapter import RedisAdapter
+from app.core.settings import get_settings
 import os
 import logging
 
@@ -21,18 +19,17 @@ def get_memory_service() -> MemoryService:
     """Get or create the MemoryService singleton with all configured adapters.
 
     Environment variables:
-    - DATABASE_URL: Primary PostgreSQL/SQLite connection string
     - REDIS_HOST, REDIS_PORT, REDIS_DB: Redis connection settings
-    - VECTOR_DB_URL: pgvector connection string (defaults to DATABASE_URL)
     - EMBEDDING_DIM: Vector embedding dimension (default: 384)
     - VECTOR_INDEX_TYPE: Index type - 'ivfflat' or 'hnsw' (default: 'ivfflat')
     """
     global _memory_service
     if _memory_service is None:
-        database_url = os.environ.get("DATABASE_URL", "sqlite:///test.db")
+        settings = get_settings()
+        database_url = settings.SQLALCHEMY_DATABASE_URI
 
-        # Primary relational adapter
-        adapter = RelationalStorageAdapter(database_url)
+        # Primary pgvector adapter
+        adapter = PgVectorAdapter(database_url)
         repository = MemoryRepository(adapter)
 
         # Hot tier (Redis) adapter

@@ -52,7 +52,6 @@ from app.modules.workflows.routes.index import router as workflows_router
 from app.modules.workflows.routes.observability import router as observability_router
 from app.modules.workflows.routes.configs import router as workflow_configs_router
 from app.modules.tools.routes.index import router as tools_router
-from app.modules.memories.routes.index import router as memories_router
 from app.modules.memory.routes import router as cognitive_memory_router
 from app.modules.models.routes import router as models_router
 from app.modules.models.external_routes import router as external_models_router
@@ -337,9 +336,30 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Warning: Could not resume downloads: {e}")
 
+    # Start scheduler cron loops
+    try:
+        from app.modules.scheduler.service import get_scheduler_service
+
+        scheduler = get_scheduler_service()
+        scheduler.load_from_disk()
+        await scheduler.start_all()
+        print("Startup: Scheduler loaded jobs and started active cron loops")
+    except Exception as e:
+        print(f"Warning: Could not start scheduler: {e}")
+
     yield
     # Shutdown
     engine.dispose()
+
+    # Stop scheduler cron loops
+    try:
+        from app.modules.scheduler.service import get_scheduler_service
+
+        scheduler = get_scheduler_service()
+        await scheduler.stop_all()
+        print("Shutdown: Scheduler stopped, all jobs persisted")
+    except Exception as e:
+        print(f"Warning: Could not stop scheduler: {e}")
 
 
 def create_app() -> FastAPI:
@@ -653,25 +673,25 @@ def create_app() -> FastAPI:
         dependencies=global_deps,
     )
 
-    # Memory Module
-    print(
-        f"Startup: Including Memory router with prefix: {settings.API_V1_STR}/memories"
-    )
+    # Unified Memory API (blocks + marketplace + cognitive memory + all operations)
+    print(f"Startup: Including Memory router with prefix: {settings.API_V1_STR}/memory")
     app.include_router(
-        memories_router,
-        prefix=f"{settings.API_V1_STR}/memories",
+        cognitive_memory_router,
+        prefix=f"{settings.API_V1_STR}/memory",
         tags=["Memory"],
         dependencies=global_deps,
     )
 
-    # Cognitive Memory API
+    # Marketplace API (agents, skills, workflows, hardware, blocks)
     print(
-        f"Startup: Including Cognitive Memory router with prefix: {settings.API_V1_STR}/memory"
+        f"Startup: Including Marketplace router with prefix: {settings.API_V1_STR}/marketplace"
     )
+    from app.modules.marketplace.routes import router as marketplace_router
+
     app.include_router(
-        cognitive_memory_router,
-        prefix=f"{settings.API_V1_STR}/memory",
-        tags=["Cognitive Memory"],
+        marketplace_router,
+        prefix=f"{settings.API_V1_STR}/marketplace",
+        tags=["Marketplace"],
         dependencies=global_deps,
     )
 
@@ -725,6 +745,46 @@ def create_app() -> FastAPI:
         notification_router,
         prefix=settings.API_V1_STR,
         tags=["notifications"],
+    )
+
+    # Integration API (cross-module triggers, hooks, rules, observability)
+    from app.modules.integration.routes import router as integration_router
+
+    print(
+        f"Startup: Including Integration router with prefix: {settings.API_V1_STR}/integration"
+    )
+    app.include_router(
+        integration_router,
+        prefix=settings.API_V1_STR,
+        tags=["integration"],
+    )
+
+    # Scheduler API (cron jobs, scheduled workflows)
+    from app.modules.scheduler.routes import router as scheduler_router
+    from app.modules.scheduler.workflows import register_all_workflows
+
+    register_all_workflows()
+    print("Startup: Registered scheduler workflow executors")
+
+    print(
+        f"Startup: Including Scheduler router with prefix: {settings.API_V1_STR}/scheduler"
+    )
+    app.include_router(
+        scheduler_router,
+        prefix=settings.API_V1_STR,
+        tags=["scheduler"],
+    )
+
+    # SD News API (article archive and browsing)
+    from app.modules.scheduler.news_routes import router as sd_news_router
+
+    print(
+        f"Startup: Including SD News router with prefix: {settings.API_V1_STR}/sd-news"
+    )
+    app.include_router(
+        sd_news_router,
+        prefix=settings.API_V1_STR,
+        tags=["sd-news"],
     )
 
     # Dashboard API
