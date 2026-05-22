@@ -694,4 +694,127 @@ async def get_federation_status(service: MemoryService = Depends(get_memory_serv
     return APIResponse(data=status, message="Federation status retrieved")
 
 
+# =============================================================================
+# Phase 1: Memory Pruning API
+# =============================================================================
+
+
+class PruneRequest(BaseModel):
+    strategy: str = "importance"
+    min_importance: float = 0.1
+    max_age_days: int = 90
+    session_id: Optional[str] = None
+    dry_run: bool = False
+
+
+@router.post("/prune", response_model=APIResponse[Dict[str, Any]])
+async def prune_memories(
+    request: PruneRequest,
+    service: MemoryService = Depends(get_memory_service),
+):
+    """Prune low-value memories using configurable strategies.
+
+    Delegates logic to MemoryService.prune_memories() in common_lib.
+    Integrates with the integration module for event routing and error handling.
+    """
+    from common_lib.modules.integration import (
+        get_event_router,
+        get_error_handler,
+        ErrorSeverity,
+    )
+    from common_lib.modules.integration.context_propagation import create_trace_context
+
+    trace_ctx = create_trace_context(source="api", operation="memory.prune")
+    event_router = get_event_router()
+    error_handler = get_error_handler()
+
+    try:
+        result = await service.prune_memories(
+            strategy=request.strategy,
+            min_importance=request.min_importance,
+            max_age_days=request.max_age_days,
+            session_id=request.session_id,
+            dry_run=request.dry_run,
+        )
+
+        await event_router.fire_event(
+            event_type="memory.prune",
+            data={
+                "strategy": request.strategy,
+                "pruned_count": result.get("pruned_count", 0),
+                "dry_run": request.dry_run,
+            },
+            channel="memory",
+            source="api",
+            trace_id=trace_ctx.trace_id,
+        )
+        return APIResponse(
+            data=result, message=f"Pruning completed ({request.strategy})"
+        )
+    except Exception as e:
+        error_handler.handle_error(
+            error=e,
+            module="memory",
+            operation="prune",
+            trace_id=trace_ctx.trace_id,
+            severity=ErrorSeverity.ERROR,
+        )
+        raise HTTPException(status_code=500, detail=f"Pruning failed: {e}")
+
+
+@router.get("/prune/preview", response_model=APIResponse[Dict[str, Any]])
+async def preview_prune(
+    min_importance: float = Query(0.1),
+    max_age_days: int = Query(90),
+    service: MemoryService = Depends(get_memory_service),
+):
+    """Preview memory pruning candidates without executing."""
+    from common_lib.modules.integration.context_propagation import create_trace_context
+
+    trace_ctx = create_trace_context(source="api", operation="memory.prune.preview")
+    result = await service.prune_memories(
+        strategy="importance",
+        min_importance=min_importance,
+        max_age_days=max_age_days,
+        dry_run=True,
+    )
+    return APIResponse(data=result, message="Prune preview generated")
+
+
+# =============================================================================
+# Phase 1: Embedding Cache API
+# =============================================================================
+
+
+@router.get("/cache/embedding/stats", response_model=APIResponse[Dict[str, Any]])
+async def get_embedding_cache_stats(
+    service: MemoryService = Depends(get_memory_service),
+):
+    """Get embedding cache performance statistics (delegates to common_lib)."""
+    stats = await service.get_embedding_cache_stats()
+    return APIResponse(data=stats, message="Embedding cache stats retrieved")
+
+
+@router.post("/cache/embedding/clear", response_model=APIResponse[Dict[str, Any]])
+async def clear_embedding_cache(
+    service: MemoryService = Depends(get_memory_service),
+):
+    """Clear the embedding cache (delegates to common_lib)."""
+    from common_lib.modules.integration import get_event_router
+    from common_lib.modules.integration.context_propagation import create_trace_context
+
+    trace_ctx = create_trace_context(
+        source="api", operation="memory.cache.embedding.clear"
+    )
+    success = await service.clear_embedding_cache()
+    await get_event_router().fire_event(
+        event_type="memory.cache.embedding.clear",
+        data={"success": success},
+        channel="memory",
+        source="api",
+        trace_id=trace_ctx.trace_id,
+    )
+    return APIResponse(data={"success": success}, message="Embedding cache cleared")
+
+
 __all__ = ["router"]

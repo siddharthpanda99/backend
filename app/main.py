@@ -28,7 +28,7 @@ from app.core.logging_config import setup_logging
 
 setup_logging("logs/server.log")
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
@@ -383,6 +383,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Response Caching Middleware (Phase 1 — centralized HTTP response cache)
+    if os.environ.get("RESPONSE_CACHE_ENABLED", "true").lower() == "true":
+        from app.middleware.response_cache import ResponseCacheMiddleware
+
+        app.add_middleware(ResponseCacheMiddleware)
+        print("Startup: Response Cache Middleware enabled")
+
     # Register Custom OpenAPI
     app.openapi = lambda: custom_openapi(app)
 
@@ -510,6 +517,21 @@ def create_app() -> FastAPI:
         workflow_configs_router,
         prefix=f"{settings.API_V1_STR}/workflow-configs",
         tags=["Workflow Configs"],
+        dependencies=global_deps,
+    )
+
+    # Failure Analysis API (Phase 1 — root cause analysis + pattern matching)
+    from app.modules.workflows.routes.failure_analysis import (
+        router as failure_analysis_router,
+    )
+
+    print(
+        f"Startup: Including Failure Analysis router with prefix: {settings.API_V1_STR}/workflows"
+    )
+    app.include_router(
+        failure_analysis_router,
+        prefix=f"{settings.API_V1_STR}/workflows",
+        tags=["Workflow Failure Analysis"],
         dependencies=global_deps,
     )
     print(f"Startup: Including Tools router with prefix: {settings.API_V1_STR}/tools")
@@ -801,6 +823,37 @@ def create_app() -> FastAPI:
     print(f"Startup: Including System router with prefix: {settings.API_V1_STR}/system")
     app.include_router(
         system_router,
+        prefix=f"{settings.API_V1_STR}/system",
+        tags=["System"],
+        dependencies=global_deps,
+    )
+
+    # Response Cache Admin API (Phase 1)
+    from fastapi import APIRouter, Depends
+    from app.modules.common.types.index import APIResponse
+
+    _cache_router = APIRouter()
+
+    @_cache_router.get("/cache/response/stats")
+    async def _get_response_cache_stats():
+        from app.middleware.response_cache import get_cache_stats
+
+        return APIResponse(
+            data=get_cache_stats(), message="Response cache stats retrieved"
+        )
+
+    @_cache_router.post("/cache/response/clear")
+    async def _clear_response_cache():
+        from app.middleware.response_cache import clear_response_cache
+
+        success = clear_response_cache()
+        return APIResponse(data={"success": success}, message="Response cache cleared")
+
+    print(
+        f"Startup: Including Response Cache admin router with prefix: {settings.API_V1_STR}/system"
+    )
+    app.include_router(
+        _cache_router,
         prefix=f"{settings.API_V1_STR}/system",
         tags=["System"],
         dependencies=global_deps,
