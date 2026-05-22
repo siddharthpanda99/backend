@@ -173,6 +173,39 @@ def get_execution_summary(trace_id: str, session: Session = Depends(get_session)
         data=data, message="Retrieved execution summary with intelligence"
     )
 
+@router.get(
+    "/executions/{trace_id}/node-metrics", response_model=APIResponse[List[Dict[str, Any]]]
+)
+def get_trace_node_metrics(trace_id: str, session: Session = Depends(get_session)):
+    """
+    Returns historic execution metrics for all nodes associated with this workflow execution.
+    """
+    execution = session.get(WorkflowExecution, trace_id)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    
+    from common_lib.modules.workflows.standard.history.analytics import ExecutionAnalyticsTracker
+    from common_lib.modules.workflows.standard.history.recorder import get_recorder
+    
+    recorder = get_recorder()
+    analytics = ExecutionAnalyticsTracker.get_instance(recorder=recorder)
+    metrics = analytics.get_node_metrics(workflow_id=execution.workflow_id)
+    
+    data = [
+        {
+            "node_id": m.node_id,
+            "node_name": m.node_name,
+            "execution_count": m.execution_count,
+            "success_count": m.success_count,
+            "failure_count": m.failure_count,
+            "avg_duration_ms": m.avg_duration_ms,
+            "common_errors": m.common_errors,
+            "history": m.history,
+        }
+        for m in metrics
+    ]
+    return APIResponse(data=data, message="Retrieved node performance metrics")
+
 from sqlalchemy import func
 from datetime import datetime, timedelta
 

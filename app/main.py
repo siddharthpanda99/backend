@@ -51,6 +51,7 @@ from app.modules.entities.routes.registry import router as entities_router
 from app.modules.workflows.routes.index import router as workflows_router
 from app.modules.workflows.routes.observability import router as observability_router
 from app.modules.workflows.routes.configs import router as workflow_configs_router
+from app.modules.workflows.routes.collaboration import router as collaboration_router
 from app.modules.tools.routes.index import router as tools_router
 from app.modules.memory.routes import router as cognitive_memory_router
 from app.modules.models.routes import router as models_router
@@ -499,6 +500,15 @@ def create_app() -> FastAPI:
         workflows_router,
         prefix=f"{settings.API_V1_STR}/workflows",
         tags=["Workflows"],
+        dependencies=global_deps,
+    )
+    print(
+        f"Startup: Including Workflow Collaboration router with prefix: {settings.API_V1_STR}/workflows"
+    )
+    app.include_router(
+        collaboration_router,
+        prefix=f"{settings.API_V1_STR}/workflows",
+        tags=["Workflow Collaboration"],
         dependencies=global_deps,
     )
     print(

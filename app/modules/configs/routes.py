@@ -106,6 +106,47 @@ async def create_config(request: VisionPresetCreateRequest):
         session.refresh(record)
         return record_to_schema(record)
 
+class BatchConfigUpdateItem(BaseModel):
+    id: str
+    updates: Dict[str, Any]
+
+class BatchConfigUpdateRequest(BaseModel):
+    items: List[BatchConfigUpdateItem]
+
+class BatchConfigUpdateResponse(BaseModel):
+    status: str
+    updated_count: int
+    updated_ids: List[str]
+
+@router.patch("/batch", response_model=BatchConfigUpdateResponse)
+async def update_configs_batch(request: BatchConfigUpdateRequest):
+    """
+    Update multiple configs (presets) in a single database transaction.
+    """
+    updated_ids = []
+    with next(get_session()) as session:
+        for item in request.items:
+            record = session.get(SdPresetRecord, item.id)
+            if not record:
+                raise HTTPException(status_code=404, detail=f"Config with ID {item.id} not found")
+            
+            update_data = dict(item.updates)
+            if "metadata" in update_data:
+                record.metadata_json = update_data.pop("metadata")
+                
+            for key, value in update_data.items():
+                setattr(record, key, value)
+                
+            session.add(record)
+            updated_ids.append(item.id)
+            
+        session.commit()
+        return BatchConfigUpdateResponse(
+            status="success",
+            updated_count=len(updated_ids),
+            updated_ids=updated_ids
+        )
+
 @router.patch("/{config_id}", response_model=VisionPresetSchema)
 async def update_config(config_id: str, request: VisionPresetUpdateRequest):
     """

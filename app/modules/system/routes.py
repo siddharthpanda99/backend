@@ -89,3 +89,14 @@ async def toggle_service(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/host-stats", response_model=APIResponse[Dict[str, Any]])
+async def get_host_stats(service: SystemService = Depends(get_system_service)):
+    """Retrieve host telemetry (CPU, RAM, GPU VRAM usage)."""
+    try:
+        stats = service.get_host_stats()
+        return APIResponse(data=stats, message="Host stats retrieved successfully")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
