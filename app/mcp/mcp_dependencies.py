@@ -59,7 +59,7 @@ def resolve_vision_controller():
 
 def resolve_audio_service():
     """Helper to get audio service."""
-    from common_lib.modules.audio.service import audio_service
+    from common_lib.modules.audio_processing.service import audio_service
     return audio_service
 
 def resolve_data_forge_engine():

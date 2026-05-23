@@ -21,7 +21,7 @@ def register_audio_tools(mcp: FastMCP):
         """
         service = resolve_audio_service()
         try:
-            from common_lib.modules.audio.schemas import TTSRequest
+            from common_lib.modules.audio_processing.schemas import TTSRequest
             request = TTSRequest(text=text, voice=voice, rate=rate, pitch=pitch)
             response = await service.generate_tts(request)
             return response.model_dump()
@@ -41,7 +41,7 @@ def register_audio_tools(mcp: FastMCP):
         """
         service = resolve_audio_service()
         try:
-            from common_lib.modules.audio.schemas import TranscriptionRequest
+            from common_lib.modules.audio_processing.schemas import TranscriptionRequest
             request = TranscriptionRequest(file_path=file_path, language=language, task=task)
             response = await service.transcribe(request)
             return response.model_dump()
