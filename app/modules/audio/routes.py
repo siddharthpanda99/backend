@@ -1,5 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from typing import List
+import shutil
+import uuid
+import os
 from common_lib.modules.audio_processing.schemas import (
     TTSRequest,
     TTSResponse,
@@ -88,6 +91,28 @@ async def get_history():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/upload")
+async def upload_audio_file(file: UploadFile = File(...)):
+    try:
+        from common_lib.modules.audio_processing.service import audio_service
+
+        ext = os.path.splitext(file.filename)[1] if file.filename else ".wav"
+        filename = f"upload_{uuid.uuid4().hex[:8]}{ext}"
+        output_path = os.path.join(audio_service.output_dir, filename)
+
+        with open(output_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        return {
+            "success": True,
+            "filename": filename,
+            "url": f"/generated/audio/{filename}",
+            "audio_path": output_path,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/voice-cloning", response_model=VoiceCloningResponse)
 async def clone_voice(request: VoiceCloningRequest):
     try:
@@ -156,8 +181,13 @@ async def generate_melody(request: MelodyRequest):
 async def analyze_audio(request: AudioAnalysisRequest):
     try:
         return await audio_service.analyze_audio(request.audio_path)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=f"Audio file not found: {e}")
+    except IOError as e:
+        raise HTTPException(status_code=400, detail=f"Cannot read audio file: {e}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
 
 @router.post("/mastering", response_model=MasteringResponse)
 async def master_audio(request: MasteringRequest):
@@ -190,12 +220,14 @@ async def plan_arrangement(request: ArrangementRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/synth/note", response_model=SynthNoteResponse)
 async def generate_synth_note(request: SynthNoteRequest):
     try:
         return await audio_service.generate_synth_note(request)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/synth/midi", response_model=SynthMidiResponse)
 async def synthesize_midi(request: SynthMidiRequest):
@@ -204,12 +236,14 @@ async def synthesize_midi(request: SynthMidiRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/projects/save", response_model=ProjectResponse)
 async def save_project(request: ProjectSaveRequest):
     try:
         return await audio_service.save_project(request)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/projects/load", response_model=ProjectResponse)
 async def load_project(request: ProjectLoadRequest):
@@ -218,6 +252,7 @@ async def load_project(request: ProjectLoadRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/projects/recover", response_model=ProjectResponse)
 async def recover_project(request: ProjectRecoverRequest):
     try:
@@ -225,11 +260,13 @@ async def recover_project(request: ProjectRecoverRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/orchestra/compose", response_model=OrchestraResponse)
 async def compose_orchestra(request: OrchestraRequest):
     try:
         return await audio_service.compose_orchestra(request)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 __all__ = ["router"]
