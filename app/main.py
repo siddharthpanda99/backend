@@ -52,6 +52,7 @@ from app.modules.workflows.routes.index import router as workflows_router
 from app.modules.workflows.routes.observability import router as observability_router
 from app.modules.workflows.routes.configs import router as workflow_configs_router
 from app.modules.workflows.routes.collaboration import router as collaboration_router
+from app.modules.workflows.routes.combinatorial import router as combinatorial_router
 from app.modules.tools.routes.index import router as tools_router
 from app.modules.memory.routes import router as cognitive_memory_router
 from app.modules.models.routes import router as models_router
@@ -544,6 +545,15 @@ def create_app() -> FastAPI:
         tags=["Workflow Failure Analysis"],
         dependencies=global_deps,
     )
+    print(
+        f"Startup: Including Combinatorial router with prefix: {settings.API_V1_STR}/workflows/combinatorial"
+    )
+    app.include_router(
+        combinatorial_router,
+        prefix=f"{settings.API_V1_STR}/workflows/combinatorial",
+        tags=["Workflow Combinatorial"],
+        dependencies=global_deps,
+    )
     print(f"Startup: Including Tools router with prefix: {settings.API_V1_STR}/tools")
     app.include_router(
         tools_router,
@@ -587,6 +597,19 @@ def create_app() -> FastAPI:
         vision_router,
         prefix=f"{settings.API_V1_STR}/vision",
         tags=["Vision"],
+        dependencies=global_deps,
+    )
+
+    # Filters API (Image filter CRUD, presets, pipeline execution)
+    from app.modules.filters.routes import router as filters_router
+
+    print(
+        f"Startup: Including Filters router with prefix: {settings.API_V1_STR}/filters"
+    )
+    app.include_router(
+        filters_router,
+        prefix=f"{settings.API_V1_STR}/filters",
+        tags=["Filters"],
         dependencies=global_deps,
     )
 
