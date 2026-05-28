@@ -71,6 +71,8 @@ from app.modules.file_browser.macro_routes import router as macro_router
 from app.modules.notification.routes import router as notification_router
 from app.modules.wildcards.routes import router as wildcards_router
 from app.modules.sam3.routes import router as sam3_router
+from app.modules.keys_management import router as keys_router
+from app.modules.proxy_routing import router as proxy_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -105,6 +107,16 @@ async def lifespan(app: FastAPI):
 
             init_db()
             print("Database initialized and models registered.")
+            try:
+                from common_lib.modules.keys_management.service import KeyManagementService
+                seeded_m, seeded_f = KeyManagementService().seed_proxy_catalog()
+                print(f"Proxy catalog seeded: {seeded_m} models, {seeded_f} fallbacks.")
+                
+                seeded_k = KeyManagementService().seed_from_config()
+                if seeded_k:
+                    print(f"Auto-seeded {seeded_k} API keys from config.ini.")
+            except Exception as se:
+                print(f"Warning: Proxy catalog or key seeding failed: {se}")
             break
         except Exception as e:
             if attempt < max_retries - 1:
@@ -882,6 +894,28 @@ def create_app() -> FastAPI:
         system_router,
         prefix=f"{settings.API_V1_STR}/system",
         tags=["System"],
+        dependencies=global_deps,
+    )
+
+    # Keys Management API
+    print(
+        f"Startup: Including Keys Management router with prefix: {settings.API_V1_STR}/keys"
+    )
+    app.include_router(
+        keys_router,
+        prefix=f"{settings.API_V1_STR}/keys",
+        tags=["Keys Management"],
+        dependencies=global_deps,
+    )
+
+    # Proxy Routing API (v1 proxy + fallback chain)
+    print(
+        f"Startup: Including Proxy Routing router with prefix: {settings.API_V1_STR}/proxy"
+    )
+    app.include_router(
+        proxy_router,
+        prefix=f"{settings.API_V1_STR}/proxy",
+        tags=["Proxy Routing"],
         dependencies=global_deps,
     )
 
