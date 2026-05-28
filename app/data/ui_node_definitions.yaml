@@ -1,0 +1,5966 @@
+advanced:
+- type: advanced.group
+  label: Node Group
+  category: Advanced/Layout
+  version: 1.2.0
+  description: A structural container used to encapsulate and visually organize a
+    set of related nodes. Does not affect execution logic but significantly improves
+    workspace clarity for complex graphs.
+  inputs: []
+  outputs: []
+  color: '#94a3b8'
+  defaultProperties:
+    title: My Group
+    description: ''
+    show_border: true
+    padding: 20
+  propertyDefinitions:
+  - name: title
+    label: Group Title
+    type: text
+  - name: description
+    label: Description
+    type: textarea
+  - name: show_border
+    label: Show Border
+    type: boolean
+  - name: padding
+    label: Internal Padding
+    type: number
+  tags:
+  - layout
+  - group
+  - container
+- type: advanced.frame
+  label: Canvas Frame
+  category: Advanced/Layout
+  version: 1.0.0
+  description: Large boundary frame used to isolate regional logic on the canvas.
+    Supports custom labels and border styles for documentation and architectural highlighting.
+  inputs: []
+  outputs: []
+  color: '#64748b'
+  defaultProperties:
+    title: New Section
+    font_size: 18
+    border_style: dashed
+  propertyDefinitions:
+  - name: title
+    label: Frame Title
+    type: text
+  - name: font_size
+    label: Font Size
+    type: number
+  - name: border_style
+    label: Border Style
+    type: select
+    options:
+    - solid
+    - dashed
+    - dotted
+  tags:
+  - layout
+  - frame
+  - visual
+- type: advanced.subflow
+  label: Subflow
+  category: Advanced/Execution
+  version: 2.1.0
+  description: References and executes another workflow as a modular component. Enables
+    hierarchical design and logic reuse across multiple projects. Supports asynchronous
+    completion wait.
+  inputs:
+  - id: input
+    label: Payload
+    type: any
+  outputs:
+  - id: output
+    label: Result
+    type: any
+  color: '#3b82f6'
+  defaultProperties:
+    workflow_id: ''
+    wait_for_completion: true
+  propertyDefinitions:
+  - name: workflow_id
+    label: Target Workflow
+    type: text
+  - name: wait_for_completion
+    label: Wait for Completion
+    type: boolean
+  tags:
+  - execution
+  - subflow
+  - nested
+- type: advanced.macro
+  label: Macro Node
+  category: Advanced/Execution
+  version: 1.0.0
+  description: Injects a predefined subgraph template into the current execution path.
+    Unlike Subflows, Macros are expanded inline and maintain shared state with the
+    parent graph.
+  inputs:
+  - id: in
+    label: In
+    type: any
+  outputs:
+  - id: out
+    label: Out
+    type: any
+  color: '#10b981'
+  tags:
+  - execution
+  - macro
+  - inline
+- type: core.util.annotation
+  label: Annotation
+  category: Advanced/Documentation
+  version: 1.0.0
+  description: Large-format text overlay for high-level technical documentation directly
+    on the canvas. Ideal for section headers and architectural summaries.
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: SECTION TITLE
+    font_size: 24
+    bold: true
+    opacity: 0.8
+  propertyDefinitions:
+  - name: text
+    label: Text
+    type: text
+  - name: font_size
+    label: Font Size
+    type: number
+    min: 8
+    max: 120
+  - name: bold
+    label: Bold
+    type: boolean
+  - name: opacity
+    label: Opacity
+    type: number
+    min: 0
+    max: 1
+    step: 0.1
+  tags:
+  - documentation
+  - label
+  - text
+  color: '#fcd34d'
+- type: core.util.note
+  label: Sticky Note
+  category: Advanced/Documentation
+  version: 1.1.0
+  description: Digital post-it note for developer-level annotations, TODOs, and implementation
+    caveats. Supports multi-line rich text content.
+  inputs: []
+  outputs: []
+  defaultProperties:
+    content: Write your note here...
+  propertyDefinitions:
+  - name: content
+    label: Content
+    type: textarea
+  tags:
+  - comment
+  - documentation
+  color: '#fef08a'
+- type: advanced.media.image_preview
+  label: Image Preview
+  category: Advanced/Media
+  version: 1.5.0
+  description: Interactive visualization node for pixel-based media. Provides real-time
+    rendering of image processing pipelines with support for metadata inspection and
+    zoom control.
+  inputs:
+  - id: image
+    label: IMAGE
+    type: image
+    required: true
+  outputs:
+  - id: image
+    label: IMAGE
+    type: image
+  color: '#06b6d4'
+  defaultProperties:
+    preview: ''
+    zoom: 1
+    show_metadata: true
+  propertyDefinitions:
+  - name: preview
+    label: Preview Viewport
+    type: image_preview
+  - name: zoom
+    label: Preview Zoom
+    type: number
+    min: 0.1
+    max: 2
+    step: 0.1
+  - name: show_metadata
+    label: Show Metadata
+    type: boolean
+  tags:
+  - preview
+  - image
+  - output
+- type: advanced.media.file_upload
+  label: File Upload
+  category: Advanced/Media
+  version: 1.0.0
+  description: Upload and manage file inputs for workflow execution. Supports various
+    file types including images, text, JSON, and binary data with validation and type
+    detection.
+  inputs: []
+  outputs:
+  - id: file
+    label: File Data
+    type: any
+  - id: path
+    label: File Path
+    type: string
+  - id: type
+    label: File Type
+    type: string
+  - id: size
+    label: File Size
+    type: number
+  color: '#8b5cf6'
+  defaultProperties:
+    file_type: any
+    max_size_mb: 50
+    multiple: false
+    allowed_extensions: ''
+  propertyDefinitions:
+  - name: file_type
+    label: File Type
+    type: select
+    options:
+    - any
+    - image
+    - text
+    - json
+    - audio
+    - video
+    - binary
+  - name: max_size_mb
+    label: Max Size (MB)
+    type: number
+    min: 1
+    max: 500
+  - name: multiple
+    label: Allow Multiple
+    type: boolean
+  - name: allowed_extensions
+    label: Allowed Extensions
+    type: text
+    description: Comma-separated list (e.g., png,jpg,jpeg)
+  tags:
+  - upload
+  - file
+  - input
+- type: advanced.transform.map
+  label: Map Transform
+  category: Advanced/Transform
+  version: 1.0.0
+  description: Applies a transformation function to each item in an array or collection.
+    Enables batch processing and data mapping operations.
+  inputs:
+  - id: data
+    label: Input Data
+    type: any
+    required: true
+  outputs:
+  - id: result
+    label: Transformed
+    type: any
+  color: '#ec4899'
+  defaultProperties:
+    transform_expression: item => item
+    output_key: mapped
+  propertyDefinitions:
+  - name: transform_expression
+    label: Transform Expression
+    type: code
+    description: JavaScript expression using "item" variable
+  - name: output_key
+    label: Output Key
+    type: text
+  tags:
+  - transform
+  - map
+  - array
+- type: advanced.transform.filter
+  label: Filter Transform
+  category: Advanced/Transform
+  version: 1.0.0
+  description: Filters input data based on a condition expression. Keeps only elements
+    that match the criteria.
+  inputs:
+  - id: data
+    label: Input Data
+    type: any
+    required: true
+  outputs:
+  - id: result
+    label: Filtered
+    type: any
+  color: '#f97316'
+  defaultProperties:
+    condition: item => true
+    output_key: filtered
+  propertyDefinitions:
+  - name: condition
+    label: Filter Condition
+    type: code
+    description: JavaScript expression returning boolean
+  - name: output_key
+    label: Output Key
+    type: text
+  tags:
+  - transform
+  - filter
+  - condition
+- type: advanced.transform.merge
+  label: Merge Data
+  category: Advanced/Transform
+  version: 1.0.0
+  description: Combines multiple data inputs into a single output object or array.
+    Supports deep merging and concatenation modes.
+  inputs:
+  - id: input1
+    label: Input 1
+    type: any
+  - id: input2
+    label: Input 2
+    type: any
+  outputs:
+  - id: result
+    label: Merged
+    type: any
+  color: '#14b8a6'
+  defaultProperties:
+    merge_mode: object
+    output_key: merged
+  propertyDefinitions:
+  - name: merge_mode
+    label: Merge Mode
+    type: select
+    options:
+    - object
+    - array_concat
+    - array_merge
+    - deep_merge
+  - name: output_key
+    label: Output Key
+    type: text
+  tags:
+  - transform
+  - merge
+  - combine
+- type: advanced.flow.if
+  label: If Condition
+  category: Advanced/Flow
+  version: 1.0.0
+  description: Conditional branching node that evaluates a condition and routes execution
+    to either the true or false output.
+  inputs:
+  - id: condition
+    label: Condition
+    type: any
+    required: true
+  outputs:
+  - id: 'true'
+    label: 'True'
+    type: any
+  - id: 'false'
+    label: 'False'
+    type: any
+  color: '#22c55e'
+  defaultProperties:
+    expression: value === true
+    output_key: branch
+  propertyDefinitions:
+  - name: expression
+    label: Condition Expression
+    type: code
+    description: JavaScript expression evaluated against input
+  - name: output_key
+    label: Output Key
+    type: text
+  tags:
+  - flow
+  - conditional
+  - branch
+- type: advanced.flow.switch
+  label: Switch
+  category: Advanced/Flow
+  version: 1.0.0
+  description: Multi-way branching based on matched case values. Routes input to the
+    first matching case output.
+  inputs:
+  - id: value
+    label: Value
+    type: any
+    required: true
+  outputs:
+  - id: case1
+    label: Case 1
+    type: any
+  - id: case2
+    label: Case 2
+    type: any
+  - id: default
+    label: Default
+    type: any
+  color: '#84cc16'
+  defaultProperties:
+    cases: case1,case2
+    match_mode: equals
+  propertyDefinitions:
+  - name: cases
+    label: Case Values
+    type: text
+    description: Comma-separated case values
+  - name: match_mode
+    label: Match Mode
+    type: select
+    options:
+    - equals
+    - contains
+    - regex
+    - startsWith
+  tags:
+  - flow
+  - switch
+  - branch
+- type: advanced.flow.for_each
+  label: For Each
+  category: Advanced/Flow
+  version: 1.0.0
+  description: Iterates over each item in a collection and executes the connected
+    subgraph. Collects results into an output array.
+  inputs:
+  - id: collection
+    label: Collection
+    type: any
+    required: true
+  outputs:
+  - id: item
+    label: Current Item
+    type: any
+  - id: index
+    label: Index
+    type: number
+  - id: result
+    label: Results
+    type: any
+  color: '#a855f7'
+  defaultProperties:
+    max_iterations: 100
+    parallel: false
+  propertyDefinitions:
+  - name: max_iterations
+    label: Max Iterations
+    type: number
+    min: 1
+    max: 10000
+  - name: parallel
+    label: Parallel Execution
+    type: boolean
+    description: Process items concurrently
+  tags:
+  - flow
+  - loop
+  - iteration
+- type: advanced.flow.while
+  label: While Loop
+  category: Advanced/Flow
+  version: 1.0.0
+  description: Repeatedly executes a subgraph while a condition evaluates to true.
+    Supports early exit via break condition.
+  inputs:
+  - id: initial
+    label: Initial Value
+    type: any
+  outputs:
+  - id: output
+    label: Output
+    type: any
+  - id: iteration
+    label: Iteration Count
+    type: number
+  color: '#d946ef'
+  defaultProperties:
+    condition: value < 10
+    max_iterations: 100
+    break_on: ''
+  propertyDefinitions:
+  - name: condition
+    label: Loop Condition
+    type: code
+    description: JavaScript expression evaluated each iteration
+  - name: max_iterations
+    label: Max Iterations
+    type: number
+    min: 1
+    max: 10000
+  - name: break_on
+    label: Break Condition
+    type: text
+    description: Optional break condition expression
+  tags:
+  - flow
+  - loop
+  - while
+- type: advanced.flow.retry
+  label: Retry Handler
+  category: Advanced/Flow
+  version: 1.0.0
+  description: Wraps execution with automatic retry logic. Retries on failure up to
+    the specified count with optional delay.
+  inputs:
+  - id: input
+    label: Input
+    type: any
+    required: true
+  outputs:
+  - id: output
+    label: Output
+    type: any
+  - id: error
+    label: Error
+    type: any
+  color: '#ef4444'
+  defaultProperties:
+    max_attempts: 3
+    delay_ms: 1000
+    backoff_multiplier: 2
+    retry_on_errors: Error,Exception
+  propertyDefinitions:
+  - name: max_attempts
+    label: Max Attempts
+    type: number
+    min: 1
+    max: 10
+  - name: delay_ms
+    label: Initial Delay (ms)
+    type: number
+    min: 0
+    max: 60000
+  - name: backoff_multiplier
+    label: Backoff Multiplier
+    type: number
+    min: 1
+    max: 5
+  - name: retry_on_errors
+    label: Retry On Errors
+    type: text
+    description: Comma-separated error types to retry
+  tags:
+  - flow
+  - retry
+  - error
+- type: advanced.flow.fallback
+  label: Fallback
+  category: Advanced/Flow
+  version: 1.0.0
+  description: Provides a fallback value if the primary input fails or is empty. Enables
+    graceful degradation.
+  inputs:
+  - id: primary
+    label: Primary
+    type: any
+  - id: fallback
+    label: Fallback
+    type: any
+  outputs:
+  - id: result
+    label: Result
+    type: any
+  color: '#64748b'
+  defaultProperties:
+    check_empty: true
+    empty_values: null,undefined,""
+  propertyDefinitions:
+  - name: check_empty
+    label: Check for Empty
+    type: boolean
+  - name: empty_values
+    label: Empty Values
+    type: text
+    description: Comma-separated values considered empty
+  tags:
+  - flow
+  - fallback
+  - default
+- type: advanced.flow.circuit_breaker
+  label: Circuit Breaker
+  category: Advanced/Flow
+  version: 1.0.0
+  description: Prevents cascading failures by temporarily blocking execution after
+    repeated errors. Resets after recovery timeout.
+  inputs:
+  - id: input
+    label: Input
+    type: any
+    required: true
+  outputs:
+  - id: output
+    label: Output
+    type: any
+  - id: state
+    label: State
+    type: string
+  color: '#f59e0b'
+  defaultProperties:
+    failure_threshold: 5
+    recovery_timeout_ms: 30000
+    half_open_max_calls: 1
+  propertyDefinitions:
+  - name: failure_threshold
+    label: Failure Threshold
+    type: number
+    min: 1
+    max: 100
+    description: Failures before opening circuit
+  - name: recovery_timeout_ms
+    label: Recovery Timeout (ms)
+    type: number
+    min: 1000
+    max: 300000
+  - name: half_open_max_calls
+    label: Half-Open Max Calls
+    type: number
+    min: 1
+    max: 10
+  tags:
+  - flow
+  - circuit_breaker
+  - resilience
+- type: advanced.compensation.compensate
+  label: Compensate
+  category: Advanced/Compensation
+  version: 1.0.0
+  description: Executes compensation logic to undo or rollback changes when a failure
+    occurs in a saga pattern. Supports nested compensation chains.
+  inputs:
+  - id: context
+    label: Context
+    type: any
+  outputs:
+  - id: result
+    label: Result
+    type: any
+  - id: compensated
+    label: Compensated
+    type: boolean
+  color: '#dc2626'
+  defaultProperties:
+    compensation_strategy: rollback
+    timeout_ms: 30000
+  propertyDefinitions:
+  - name: compensation_strategy
+    label: Strategy
+    type: select
+    options:
+    - rollback
+    - inverse
+    - custom
+    - noop
+  - name: timeout_ms
+    label: Timeout (ms)
+    type: number
+    min: 1000
+    max: 120000
+  tags:
+  - compensation
+  - saga
+  - rollback
+- type: advanced.compensation.saga
+  label: Saga Orchestrator
+  category: Advanced/Compensation
+  version: 1.0.0
+  description: Orchestrates a sequence of transactions with automatic compensation
+    on failure. Implements the saga pattern for distributed workflows.
+  inputs:
+  - id: input
+    label: Input
+    type: any
+  outputs:
+  - id: output
+    label: Output
+    type: any
+  - id: error
+    label: Error
+    type: any
+  color: '#b91c1c'
+  defaultProperties:
+    steps: ''
+    stop_on_failure: true
+  propertyDefinitions:
+  - name: steps
+    label: Steps
+    type: textarea
+    description: JSON array of saga steps
+  - name: stop_on_failure
+    label: Stop on Failure
+    type: boolean
+  tags:
+  - compensation
+  - saga
+  - orchestrator
+- type: advanced.test.mock_input
+  label: Mock Input
+  category: Advanced/Testing
+  version: 1.0.0
+  description: Provides mock data for workflow testing. Supports static values, random
+    data, and parameterized inputs.
+  inputs: []
+  outputs:
+  - id: output
+    label: Mock Data
+    type: any
+  color: '#0ea5e9'
+  defaultProperties:
+    mock_data: '{}'
+    random_seed: 12345
+    mock_mode: static
+  propertyDefinitions:
+  - name: mock_data
+    label: Mock Data
+    type: textarea
+    description: JSON or template for mock data
+  - name: random_seed
+    label: Random Seed
+    type: number
+  - name: mock_mode
+    label: Mode
+    type: select
+    options:
+    - static
+    - random
+    - sequence
+    - faker
+  tags:
+  - testing
+  - mock
+  - simulation
+- type: advanced.test.assert
+  label: Assert
+  category: Advanced/Testing
+  version: 1.0.0
+  description: Validates workflow outputs against expected conditions. Fails the workflow
+    if assertions do not pass.
+  inputs:
+  - id: actual
+    label: Actual
+    type: any
+    required: true
+  outputs:
+  - id: passed
+    label: Passed
+    type: boolean
+  - id: message
+    label: Message
+    type: string
+  color: '#22d3ee'
+  defaultProperties:
+    expected: ''
+    assertion_type: equals
+  propertyDefinitions:
+  - name: expected
+    label: Expected
+    type: textarea
+    description: Expected value or expression
+  - name: assertion_type
+    label: Assertion Type
+    type: select
+    options:
+    - equals
+    - contains
+    - greaterThan
+    - lessThan
+    - matches
+    - truthy
+    - falsy
+  tags:
+  - testing
+  - assert
+  - validation
+- type: advanced.test.breakpoint
+  label: Breakpoint
+  category: Advanced/Testing
+  version: 1.0.0
+  description: Pauses workflow execution at this point for debugging. Allows inspection
+    of intermediate state.
+  inputs:
+  - id: input
+    label: Input
+    type: any
+  outputs:
+  - id: output
+    label: Output
+    type: any
+  color: '#f472b6'
+  defaultProperties:
+    stop_condition: ''
+    log_state: true
+  propertyDefinitions:
+  - name: stop_condition
+    label: Stop Condition
+    type: text
+    description: Optional condition to stop
+  - name: log_state
+    label: Log State
+    type: boolean
+  tags:
+  - testing
+  - breakpoint
+  - debug
+- type: advanced.test.tap
+  label: Tap (Debug)
+  category: Advanced/Testing
+  version: 1.0.0
+  description: Intercepts data flow without modifying it. Useful for logging and debugging.
+  inputs:
+  - id: input
+    label: Input
+    type: any
+    required: true
+  outputs:
+  - id: output
+    label: Output
+    type: any
+  color: '#c084fc'
+  defaultProperties:
+    log_to_console: true
+    label: tap
+  propertyDefinitions:
+  - name: log_to_console
+    label: Log to Console
+    type: boolean
+  - name: label
+    label: Label
+    type: text
+  tags:
+  - testing
+  - tap
+  - debug
+- type: advanced.history.checkpoint
+  label: Checkpoint
+  category: Advanced/History
+  version: 1.0.0
+  description: Saves a recoverable checkpoint of the workflow state. Enables rollback
+    to this point.
+  inputs:
+  - id: state
+    label: State
+    type: any
+  outputs:
+  - id: checkpoint_id
+    label: Checkpoint ID
+    type: string
+  color: '#818cf8'
+  defaultProperties:
+    checkpoint_name: ''
+    auto_named: true
+  propertyDefinitions:
+  - name: checkpoint_name
+    label: Name
+    type: text
+  - name: auto_named
+    label: Auto-named
+    type: boolean
+  tags:
+  - history
+  - checkpoint
+  - save
+- type: advanced.history.restore
+  label: Restore
+  category: Advanced/History
+  version: 1.0.0
+  description: Restores workflow state from a previously saved checkpoint.
+  inputs:
+  - id: checkpoint_id
+    label: Checkpoint ID
+    type: string
+  outputs:
+  - id: state
+    label: State
+    type: any
+  color: '#6366f1'
+  defaultProperties: {}
+  propertyDefinitions: []
+  tags:
+  - history
+  - restore
+  - rollback
+- type: advanced.history.undo_group
+  label: Undo Group
+  category: Advanced/History
+  version: 1.0.0
+  description: Groups multiple node changes into a single undoable action. Batches
+    changes together.
+  inputs:
+  - id: input
+    label: Input
+    type: any
+  outputs:
+  - id: output
+    label: Output
+    type: any
+  color: '#4f46e5'
+  defaultProperties:
+    group_name: ''
+  propertyDefinitions:
+  - name: group_name
+    label: Group Name
+    type: text
+  tags:
+  - history
+  - undo
+  - batch
+- type: advanced.backend.save_workflow
+  label: Save Workflow
+  category: Advanced/Backend
+  version: 1.0.0
+  description: Saves the current workflow to the backend storage. Creates or updates
+    a workflow definition.
+  inputs:
+  - id: workflow
+    label: Workflow
+    type: any
+  outputs:
+  - id: workflow_id
+    label: Workflow ID
+    type: string
+  color: '#059669'
+  defaultProperties:
+    workflow_name: ''
+    version: 1.0.0
+    is_public: false
+  propertyDefinitions:
+  - name: workflow_name
+    label: Name
+    type: text
+  - name: version
+    label: Version
+    type: text
+  - name: is_public
+    label: Public
+    type: boolean
+  tags:
+  - backend
+  - save
+  - storage
+- type: advanced.backend.load_workflow
+  label: Load Workflow
+  category: Advanced/Backend
+  version: 1.0.0
+  description: Loads a workflow definition from the backend storage.
+  inputs:
+  - id: workflow_id
+    label: Workflow ID
+    type: string
+  outputs:
+  - id: workflow
+    label: Workflow
+    type: any
+  color: '#047857'
+  defaultProperties: {}
+  propertyDefinitions: []
+  tags:
+  - backend
+  - load
+  - storage
+- type: advanced.backend.run_workflow
+  label: Run Workflow
+  category: Advanced/Backend
+  version: 1.0.0
+  description: Executes a named workflow from the backend and returns the result.
+  inputs:
+  - id: workflow_id
+    label: Workflow ID
+    type: string
+  - id: inputs
+    label: Inputs
+    type: any
+  outputs:
+  - id: result
+    label: Result
+    type: any
+  - id: execution_id
+    label: Execution ID
+    type: string
+  color: '#065f46'
+  defaultProperties:
+    wait_for_completion: true
+    timeout_ms: 60000
+  propertyDefinitions:
+  - name: wait_for_completion
+    label: Wait
+    type: boolean
+  - name: timeout_ms
+    label: Timeout (ms)
+    type: number
+    min: 1000
+    max: 300000
+  tags:
+  - backend
+  - execute
+  - run
+- type: advanced.backend.webhook
+  label: Webhook
+  category: Advanced/Backend
+  version: 1.0.0
+  description: Triggers an external webhook URL with workflow data.
+  inputs:
+  - id: payload
+    label: Payload
+    type: any
+  outputs:
+  - id: response
+    label: Response
+    type: any
+  - id: status
+    label: Status
+    type: number
+  color: '#064e3b'
+  defaultProperties:
+    url: ''
+    method: POST
+    headers: '{}'
+  propertyDefinitions:
+  - name: url
+    label: Webhook URL
+    type: text
+  - name: method
+    label: Method
+    type: select
+    options:
+    - GET
+    - POST
+    - PUT
+    - PATCH
+  - name: headers
+    label: Headers
+    type: textarea
+  tags:
+  - backend
+  - webhook
+  - http
+- type: advanced.collab.lock
+  label: Lock Node
+  category: Advanced/Collaboration
+  version: 1.0.0
+  description: Locks a node for exclusive editing by the current user. Prevents concurrent
+    modifications.
+  inputs:
+  - id: node_id
+    label: Node ID
+    type: string
+  outputs:
+  - id: locked
+    label: Locked
+    type: boolean
+  color: '#f59e0b'
+  defaultProperties:
+    lock_timeout_ms: 300000
+  propertyDefinitions:
+  - name: lock_timeout_ms
+    label: Lock Timeout (ms)
+    type: number
+    min: 60000
+    max: 3600000
+  tags:
+  - collab
+  - lock
+  - concurrent
+- type: advanced.collab.comment
+  label: Comment
+  category: Advanced/Collaboration
+  version: 1.0.0
+  description: Adds a comment thread to a node or canvas area for team discussion.
+  inputs: []
+  outputs: []
+  color: '#d97706'
+  defaultProperties:
+    text: ''
+    resolved: false
+  propertyDefinitions:
+  - name: text
+    label: Comment
+    type: textarea
+  - name: resolved
+    label: Resolved
+    type: boolean
+  tags:
+  - collab
+  - comment
+  - discussion
+- type: advanced.collab.review
+  label: Review Request
+  category: Advanced/Collaboration
+  version: 1.0.0
+  description: Requests review from specified team members. Sets workflow into review
+    mode.
+  inputs:
+  - id: workflow
+    label: Workflow
+    type: any
+  outputs:
+  - id: review_id
+    label: Review ID
+    type: string
+  color: '#b45309'
+  defaultProperties:
+    reviewers: ''
+    message: ''
+  propertyDefinitions:
+  - name: reviewers
+    label: Reviewers
+    type: text
+    description: Comma-separated user IDs
+  - name: message
+    label: Message
+    type: textarea
+  tags:
+  - collab
+  - review
+  - approval
+- type: advanced.ai.suggest
+  label: AI Suggest
+  category: Advanced/AI
+  version: 1.0.0
+  description: Uses AI to suggest node connections based on workflow intent.
+  inputs:
+  - id: context
+    label: Context
+    type: any
+  outputs:
+  - id: suggestions
+    label: Suggestions
+    type: any
+  color: '#a855f7'
+  defaultProperties:
+    suggestion_type: connections
+    max_suggestions: 5
+  propertyDefinitions:
+  - name: suggestion_type
+    label: Type
+    type: select
+    options:
+    - connections
+    - nodes
+    - transforms
+    - optimization
+  - name: max_suggestions
+    label: Max Suggestions
+    type: number
+    min: 1
+    max: 20
+  tags:
+  - ai
+  - suggest
+  - auto
+- type: advanced.ai.validate
+  label: AI Validate
+  category: Advanced/AI
+  version: 1.0.0
+  description: Uses AI to validate workflow correctness and suggest improvements.
+  inputs:
+  - id: workflow
+    label: Workflow
+    type: any
+  outputs:
+  - id: issues
+    label: Issues
+    type: any
+  - id: suggestions
+    label: Suggestions
+    type: any
+  color: '#9333ea'
+  defaultProperties:
+    strict_mode: false
+  propertyDefinitions:
+  - name: strict_mode
+    label: Strict Mode
+    type: boolean
+  tags:
+  - ai
+  - validate
+  - lint
+- type: advanced.ai.generate
+  label: AI Generate
+  category: Advanced/AI
+  version: 1.0.0
+  description: Generates workflow nodes from natural language description.
+  inputs:
+  - id: description
+    label: Description
+    type: string
+  outputs:
+  - id: nodes
+    label: Nodes
+    type: any
+  - id: edges
+    label: Edges
+    type: any
+  color: '#7c3aed'
+  defaultProperties:
+    context: ''
+    include_reasoning: false
+  propertyDefinitions:
+  - name: context
+    label: Context
+    type: textarea
+  - name: include_reasoning
+    label: Include Reasoning
+    type: boolean
+  tags:
+  - ai
+  - generate
+  - nl
+- type: advanced.ai.optimize
+  label: AI Optimize
+  category: Advanced/AI
+  version: 1.0.0
+  description: Uses AI to optimize workflow structure for performance and clarity.
+  inputs:
+  - id: workflow
+    label: Workflow
+    type: any
+  outputs:
+  - id: optimized
+    label: Optimized
+    type: any
+  color: '#6d28d9'
+  defaultProperties:
+    optimization_goals: performance
+    preserve_semantics: true
+  propertyDefinitions:
+  - name: optimization_goals
+    label: Goals
+    type: select
+    options:
+    - performance
+    - clarity
+    - memory
+    - balanced
+  - name: preserve_semantics
+    label: Preserve Semantics
+    type: boolean
+  tags:
+  - ai
+  - optimize
+  - performance
+- type: advanced.collab.sync
+  label: Sync Session
+  category: Advanced/Collaboration
+  version: 1.0.0
+  description: Creates or joins a real-time collaborative editing session. Enables
+    simultaneous multi-user editing.
+  inputs: []
+  outputs:
+  - id: session_id
+    label: Session ID
+    type: string
+  - id: participants
+    label: Participants
+    type: any
+  color: '#eab308'
+  defaultProperties:
+    session_name: ''
+    max_participants: 10
+    allow_guests: false
+  propertyDefinitions:
+  - name: session_name
+    label: Session Name
+    type: text
+  - name: max_participants
+    label: Max Participants
+    type: number
+    min: 2
+    max: 50
+  - name: allow_guests
+    label: Allow Guests
+    type: boolean
+  tags:
+  - collab
+  - sync
+  - multiuser
+- type: advanced.collab.cursor
+  label: Cursor Broadcast
+  category: Advanced/Collaboration
+  version: 1.0.0
+  description: Broadcasts cursor position and selection to other participants.
+  inputs:
+  - id: position
+    label: Position
+    type: any
+  outputs:
+  - id: broadcast
+    label: Broadcast
+    type: any
+  color: '#ca8a04'
+  defaultProperties:
+    cursor_color: '#3b82f6'
+    show_label: true
+  propertyDefinitions:
+  - name: cursor_color
+    label: Cursor Color
+    type: text
+  - name: show_label
+    label: Show Label
+    type: boolean
+  tags:
+  - collab
+  - cursor
+  - presence
+- type: advanced.collab.presence
+  label: Presence
+  category: Advanced/Collaboration
+  version: 1.0.0
+  description: Tracks and displays user presence in the session. Shows online status
+    and activity.
+  inputs: []
+  outputs:
+  - id: users
+    label: Users
+    type: any
+  color: '#a16207'
+  defaultProperties:
+    show_online: true
+    show_away: true
+    heartbeat_ms: 5000
+  propertyDefinitions:
+  - name: show_online
+    label: Show Online
+    type: boolean
+  - name: show_away
+    label: Show Away
+    type: boolean
+  - name: heartbeat_ms
+    label: Heartbeat (ms)
+    type: number
+    min: 1000
+    max: 30000
+  tags:
+  - collab
+  - presence
+  - users
+- type: advanced.dev.plugin
+  label: Plugin
+  category: Advanced/Developer
+  version: 1.0.0
+  description: Defines a plugin that extends platform capabilities. Includes hook
+    points and lifecycle methods.
+  inputs: []
+  outputs:
+  - id: plugin_id
+    label: Plugin ID
+    type: string
+  color: '#06b6d4'
+  defaultProperties:
+    name: ''
+    version: 1.0.0
+    hooks: ''
+  propertyDefinitions:
+  - name: name
+    label: Plugin Name
+    type: text
+  - name: version
+    label: Version
+    type: text
+  - name: hooks
+    label: Hooks
+    type: textarea
+    description: Comma-separated hook names
+  tags:
+  - dev
+  - plugin
+  - extension
+- type: advanced.dev.hook
+  label: Hook Register
+  category: Advanced/Developer
+  version: 1.0.0
+  description: Registers a callback for a platform hook event.
+  inputs:
+  - id: handler
+    label: Handler
+    type: any
+  outputs:
+  - id: registered
+    label: Registered
+    type: boolean
+  color: '#0891b2'
+  defaultProperties:
+    hook_name: ''
+    priority: 100
+  propertyDefinitions:
+  - name: hook_name
+    label: Hook Name
+    type: select
+    options:
+    - onNodeAdd
+    - onNodeDelete
+    - onConnect
+    - onExecute
+    - onSave
+    - onLoad
+  - name: priority
+    label: Priority
+    type: number
+    min: 1
+    max: 1000
+  tags:
+  - dev
+  - hook
+  - event
+- type: advanced.dev.custom_node
+  label: Custom Node
+  category: Advanced/Developer
+  version: 1.0.0
+  description: Creates a custom node with user-defined rendering and logic.
+  inputs: []
+  outputs: []
+  color: '#0d9488'
+  defaultProperties:
+    name: CustomNode
+    code: ''
+    inputs: '[]'
+    outputs: '[]'
+  propertyDefinitions:
+  - name: name
+    label: Node Name
+    type: text
+  - name: code
+    label: ' Implementation'
+    type: code
+  - name: inputs
+    label: Inputs
+    type: textarea
+  - name: outputs
+    label: Outputs
+    type: textarea
+  tags:
+  - dev
+  - custom
+  - node
+- type: advanced.dev.connector
+  label: Connector
+  category: Advanced/Developer
+  version: 1.0.0
+  description: Defines a connector to external services or APIs.
+  inputs: []
+  outputs:
+  - id: connector_id
+    label: Connector ID
+    type: string
+  color: '#14b8a6'
+  defaultProperties:
+    name: ''
+    type: http
+    config: '{}'
+  propertyDefinitions:
+  - name: name
+    label: Connector Name
+    type: text
+  - name: type
+    label: Type
+    type: select
+    options:
+    - http
+    - websocket
+    - grpc
+    - graphql
+    - database
+  - name: config
+    label: Config
+    type: textarea
+  tags:
+  - dev
+  - connector
+  - integration
+- type: advanced.dev.endpoint
+  label: API Endpoint
+  category: Advanced/Developer
+  version: 1.0.0
+  description: Exposes a workflow as an API endpoint.
+  inputs:
+  - id: request
+    label: Request
+    type: any
+  outputs:
+  - id: response
+    label: Response
+    type: any
+  color: '#0f766e'
+  defaultProperties:
+    path: /api/v1/endpoint
+    method: POST
+    auth_required: true
+  propertyDefinitions:
+  - name: path
+    label: Path
+    type: text
+  - name: method
+    label: Method
+    type: select
+    options:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+  - name: auth_required
+    label: Auth Required
+    type: boolean
+  tags:
+  - dev
+  - endpoint
+  - api
+- type: advanced.dev.export
+  label: Export
+  category: Advanced/Developer
+  version: 1.0.0
+  description: Exports workflow in various formats for developer use.
+  inputs:
+  - id: workflow
+    label: Workflow
+    type: any
+  outputs:
+  - id: output
+    label: Output
+    type: any
+  color: '#115e59'
+  defaultProperties:
+    format: yaml
+    include_metadata: true
+  propertyDefinitions:
+  - name: format
+    label: Format
+    type: select
+    options:
+    - yaml
+    - json
+    - javascript
+    - python
+  - name: include_metadata
+    label: Include Metadata
+    type: boolean
+  tags:
+  - dev
+  - export
+  - code
+data_pipeline:
+- type: data_pipeline.ingestion.file_upload
+  label: File Upload
+  category: Data Pipeline / Ingestion
+  color: '#10b981'
+  description: Ingest a single file from local filesystem, URL, or cloud storage.
+  inputs: []
+  outputs:
+  - id: ingestion_result
+    label: Result
+    type: json
+  defaultProperties:
+    source: ''
+    source_type: local
+    encoding: utf-8
+  propertyDefinitions:
+  - name: source
+    label: Source Path/URL
+    type: text
+    required: true
+  - name: source_type
+    label: Source Type
+    type: select
+    options:
+    - local
+    - url
+    - s3
+    defaultValue: local
+  - name: encoding
+    label: Encoding
+    type: text
+    defaultValue: utf-8
+  tags:
+  - data_pipeline
+  - ingestion
+  - file
+- type: data_pipeline.ingestion.folder_scan
+  label: Folder Scan
+  category: Data Pipeline / Ingestion
+  color: '#10b981'
+  description: Recursively scan a directory and ingest all matching files.
+  inputs: []
+  outputs:
+  - id: batch_result
+    label: Batch Result
+    type: json
+  defaultProperties:
+    directory: ''
+    patterns: '*.pdf,*.txt,*.docx'
+    recursive: true
+    max_files: 1000
+  propertyDefinitions:
+  - name: directory
+    label: Directory
+    type: text
+    required: true
+  - name: patterns
+    label: File Patterns
+    type: text
+    defaultValue: '*.pdf,*.txt,*.docx'
+  - name: recursive
+    label: Recursive
+    type: boolean
+    defaultValue: true
+  - name: max_files
+    label: Max Files
+    type: number
+    defaultValue: 1000
+  tags:
+  - data_pipeline
+  - ingestion
+  - batch
+- type: data_pipeline.ingestion.batch_upload
+  label: Batch Upload
+  category: Data Pipeline / Ingestion
+  color: '#10b981'
+  description: Ingest multiple files from a list of paths or URLs.
+  inputs: []
+  outputs:
+  - id: batch_result
+    label: Batch Result
+    type: json
+  defaultProperties:
+    sources: '[]'
+    source_type: local
+    max_concurrent: 5
+  propertyDefinitions:
+  - name: sources
+    label: Sources (JSON array)
+    type: textarea
+    required: true
+  - name: source_type
+    label: Source Type
+    type: select
+    options:
+    - local
+    - url
+    - mixed
+    defaultValue: local
+  - name: max_concurrent
+    label: Max Concurrent
+    type: number
+    defaultValue: 5
+  tags:
+  - data_pipeline
+  - ingestion
+  - batch
+- type: data_pipeline.extraction.pdf_extractor
+  label: PDF Extractor
+  category: Data Pipeline / Extraction
+  color: '#10b981'
+  description: Extract text and metadata from PDF documents.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: extraction_result
+    label: Result
+    type: json
+  defaultProperties:
+    extract_images: false
+    enable_ocr: false
+    ocr_language: eng
+  propertyDefinitions:
+  - name: extract_images
+    label: Extract Images
+    type: boolean
+    defaultValue: false
+  - name: enable_ocr
+    label: Enable OCR
+    type: boolean
+    defaultValue: false
+  - name: ocr_language
+    label: OCR Language
+    type: text
+    defaultValue: eng
+  tags:
+  - data_pipeline
+  - extraction
+  - pdf
+- type: data_pipeline.extraction.office_extractor
+  label: Office Extractor
+  category: Data Pipeline / Extraction
+  color: '#10b981'
+  description: Extract text from Microsoft Office documents.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: extraction_result
+    label: Result
+    type: json
+  defaultProperties:
+    extract_tables: true
+    extract_slides: true
+  propertyDefinitions:
+  - name: extract_tables
+    label: Extract Tables
+    type: boolean
+    defaultValue: true
+  - name: extract_slides
+    label: Extract Slides
+    type: boolean
+    defaultValue: true
+  tags:
+  - data_pipeline
+  - extraction
+  - office
+- type: data_pipeline.extraction.text_chunker
+  label: Text Chunker
+  category: Data Pipeline / Extraction
+  color: '#10b981'
+  description: Split text into chunks for embedding and indexing.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: chunking_result
+    label: Chunks
+    type: json
+  defaultProperties:
+    strategy: recursive
+    chunk_size: 1000
+    chunk_overlap: 200
+  propertyDefinitions:
+  - name: strategy
+    label: Strategy
+    type: select
+    options:
+    - character
+    - token
+    - semantic
+    - recursive
+    defaultValue: recursive
+  - name: chunk_size
+    label: Chunk Size
+    type: number
+    defaultValue: 1000
+  - name: chunk_overlap
+    label: Chunk Overlap
+    type: number
+    defaultValue: 200
+  tags:
+  - data_pipeline
+  - extraction
+  - chunking
+- type: data_pipeline.extraction.code_parser
+  label: Code Parser
+  category: Data Pipeline / Extraction
+  color: '#10b981'
+  description: Parse source code files to extract functions, classes, and documentation.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: code_result
+    label: Code Result
+    type: json
+  defaultProperties:
+    language: auto
+    extract_docstrings: true
+    extract_imports: true
+  propertyDefinitions:
+  - name: language
+    label: Language
+    type: text
+    defaultValue: auto
+  - name: extract_docstrings
+    label: Extract Docstrings
+    type: boolean
+    defaultValue: true
+  - name: extract_imports
+    label: Extract Imports
+    type: boolean
+    defaultValue: true
+  tags:
+  - data_pipeline
+  - extraction
+  - code
+- type: data_pipeline.normalization.text_cleaner
+  label: Text Cleaner
+  category: Data Pipeline / Normalization
+  color: '#10b981'
+  description: Clean and normalize text content.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: cleaning_result
+    label: Result
+    type: json
+  defaultProperties:
+    strip_html: true
+    normalize_whitespace: true
+    remove_special_chars: false
+    lowercase: false
+  propertyDefinitions:
+  - name: strip_html
+    label: Strip HTML
+    type: boolean
+    defaultValue: true
+  - name: normalize_whitespace
+    label: Normalize Whitespace
+    type: boolean
+    defaultValue: true
+  - name: remove_special_chars
+    label: Remove Special Chars
+    type: boolean
+    defaultValue: false
+  - name: lowercase
+    label: Lowercase
+    type: boolean
+    defaultValue: false
+  tags:
+  - data_pipeline
+  - normalization
+  - text
+- type: data_pipeline.normalization.entity_resolver
+  label: Entity Resolver
+  category: Data Pipeline / Normalization
+  color: '#10b981'
+  description: Resolve and normalize named entities in text.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: entity_result
+    label: Entities
+    type: json
+  defaultProperties:
+    entity_types: PERSON,ORG,LOC,DATE
+    enable_linking: true
+  propertyDefinitions:
+  - name: entity_types
+    label: Entity Types
+    type: text
+    defaultValue: PERSON,ORG,LOC,DATE
+  - name: enable_linking
+    label: Enable Linking
+    type: boolean
+    defaultValue: true
+  tags:
+  - data_pipeline
+  - normalization
+  - entities
+- type: data_pipeline.normalization.quality_scorer
+  label: Quality Scorer
+  category: Data Pipeline / Normalization
+  color: '#10b981'
+  description: Score text quality based on readability, completeness, and relevance.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: quality_result
+    label: Score
+    type: json
+  defaultProperties:
+    min_length: 50
+    check_readability: true
+    check_completeness: true
+  propertyDefinitions:
+  - name: min_length
+    label: Min Length
+    type: number
+    defaultValue: 50
+  - name: check_readability
+    label: Check Readability
+    type: boolean
+    defaultValue: true
+  - name: check_completeness
+    label: Check Completeness
+    type: boolean
+    defaultValue: true
+  tags:
+  - data_pipeline
+  - normalization
+  - quality
+- type: data_pipeline.embedding.text_embedder
+  label: Text Embedder
+  category: Data Pipeline / Embedding
+  color: '#10b981'
+  description: Generate vector embeddings for text content.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: embedding_result
+    label: Embeddings
+    type: json
+  defaultProperties:
+    model: text-embedding-3-small
+    provider: openai
+    normalize: true
+    batch_size: 32
+  propertyDefinitions:
+  - name: model
+    label: Model
+    type: text
+    defaultValue: text-embedding-3-small
+  - name: provider
+    label: Provider
+    type: select
+    options:
+    - openai
+    - local
+    - custom
+    defaultValue: openai
+  - name: normalize
+    label: Normalize
+    type: boolean
+    defaultValue: true
+  - name: batch_size
+    label: Batch Size
+    type: number
+    defaultValue: 32
+  tags:
+  - data_pipeline
+  - embedding
+  - vector
+- type: data_pipeline.security.pii_scan
+  label: PII Scan
+  category: Data Pipeline / Security
+  color: '#ef4444'
+  description: Scan text content for personally identifiable information.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: scan_result
+    label: Scan Result
+    type: json
+  defaultProperties:
+    entities: PERSON,EMAIL,PHONE_NUMBER,CREDIT_CARD,US_SSN
+    score_threshold: 0.5
+    language: en
+  propertyDefinitions:
+  - name: entities
+    label: Entity Types
+    type: text
+    defaultValue: PERSON,EMAIL,PHONE_NUMBER,CREDIT_CARD,US_SSN
+  - name: score_threshold
+    label: Score Threshold
+    type: number
+    defaultValue: 0.5
+  - name: language
+    label: Language
+    type: text
+    defaultValue: en
+  tags:
+  - data_pipeline
+  - security
+  - pii
+- type: data_pipeline.security.pii_anonymize
+  label: PII Anonymize
+  category: Data Pipeline / Security
+  color: '#ef4444'
+  description: Anonymize or redact PII from text content.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: anonymize_result
+    label: Result
+    type: json
+  defaultProperties:
+    strategy: redact
+    entities: all
+    mask_char: '*'
+  propertyDefinitions:
+  - name: strategy
+    label: Strategy
+    type: select
+    options:
+    - redact
+    - mask
+    - pseudonymize
+    - generalize
+    defaultValue: redact
+  - name: entities
+    label: Entities
+    type: text
+    defaultValue: all
+  - name: mask_char
+    label: Mask Character
+    type: text
+    defaultValue: '*'
+  tags:
+  - data_pipeline
+  - security
+  - pii
+  - anonymize
+- type: data_pipeline.security.data_encrypt
+  label: Data Encrypt
+  category: Data Pipeline / Security
+  color: '#ef4444'
+  description: Encrypt sensitive data using AES-256.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: encryption_result
+    label: Encrypted
+    type: json
+  defaultProperties:
+    key_source: env
+    algorithm: aes-256-gcm
+    key_id: ''
+  propertyDefinitions:
+  - name: key_source
+    label: Key Source
+    type: select
+    options:
+    - env
+    - vault
+    - passphrase
+    defaultValue: env
+  - name: algorithm
+    label: Algorithm
+    type: select
+    options:
+    - aes-256-cbc
+    - aes-256-gcm
+    defaultValue: aes-256-gcm
+  - name: key_id
+    label: Key ID
+    type: text
+    defaultValue: ''
+  tags:
+  - data_pipeline
+  - security
+  - encryption
+- type: data_pipeline.security.data_decrypt
+  label: Data Decrypt
+  category: Data Pipeline / Security
+  color: '#ef4444'
+  description: Decrypt AES-256 encrypted data.
+  inputs:
+  - id: encrypted_data
+    label: Encrypted Data
+    type: string
+    required: true
+  outputs:
+  - id: decryption_result
+    label: Decrypted
+    type: json
+  defaultProperties:
+    key_source: env
+    algorithm: aes-256-gcm
+    key_id: ''
+  propertyDefinitions:
+  - name: key_source
+    label: Key Source
+    type: select
+    options:
+    - env
+    - vault
+    - passphrase
+    defaultValue: env
+  - name: algorithm
+    label: Algorithm
+    type: select
+    options:
+    - aes-256-cbc
+    - aes-256-gcm
+    defaultValue: aes-256-gcm
+  - name: key_id
+    label: Key ID
+    type: text
+    defaultValue: ''
+  tags:
+  - data_pipeline
+  - security
+  - decryption
+- type: data_pipeline.security.gdpr_compliance
+  label: GDPR Compliance
+  category: Data Pipeline / Security
+  color: '#ef4444'
+  description: Check data processing compliance with GDPR requirements.
+  inputs: []
+  outputs:
+  - id: compliance_result
+    label: Compliance
+    type: json
+  defaultProperties:
+    data_types: ''
+    processing_purpose: ''
+    lawful_basis: consent
+    retention_days: 365
+  propertyDefinitions:
+  - name: data_types
+    label: Data Types
+    type: text
+    required: true
+  - name: processing_purpose
+    label: Processing Purpose
+    type: textarea
+    required: true
+  - name: lawful_basis
+    label: Lawful Basis
+    type: select
+    options:
+    - consent
+    - contract
+    - legitimate_interest
+    - legal_obligation
+    defaultValue: consent
+  - name: retention_days
+    label: Retention Days
+    type: number
+    defaultValue: 365
+  tags:
+  - data_pipeline
+  - security
+  - gdpr
+  - compliance
+- type: data_pipeline.memory.store
+  label: Store Memory
+  category: Data Pipeline / Memory
+  color: '#3b82f6'
+  description: Store data in the memory system with metadata and indexing.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: store_result
+    label: Result
+    type: json
+  defaultProperties:
+    memory_type: fact
+    metadata: '{}'
+    enable_pii_scan: true
+    ttl_seconds: 0
+  propertyDefinitions:
+  - name: memory_type
+    label: Memory Type
+    type: select
+    options:
+    - conversation
+    - fact
+    - preference
+    - knowledge
+    - context
+    defaultValue: fact
+  - name: metadata
+    label: Metadata (JSON)
+    type: textarea
+    defaultValue: '{}'
+  - name: enable_pii_scan
+    label: Enable PII Scan
+    type: boolean
+    defaultValue: true
+  - name: ttl_seconds
+    label: TTL (seconds)
+    type: number
+    defaultValue: 0
+  tags:
+  - data_pipeline
+  - memory
+  - store
+- type: data_pipeline.memory.retrieve
+  label: Retrieve Memory
+  category: Data Pipeline / Memory
+  color: '#3b82f6'
+  description: Retrieve stored memory entries by ID or criteria.
+  inputs: []
+  outputs:
+  - id: retrieve_result
+    label: Memories
+    type: json
+  defaultProperties:
+    memory_id: ''
+    memory_type: all
+    max_results: 10
+    include_metadata: true
+  propertyDefinitions:
+  - name: memory_id
+    label: Memory ID
+    type: text
+    defaultValue: ''
+  - name: memory_type
+    label: Memory Type
+    type: select
+    options:
+    - conversation
+    - fact
+    - preference
+    - knowledge
+    - context
+    - all
+    defaultValue: all
+  - name: max_results
+    label: Max Results
+    type: number
+    defaultValue: 10
+  - name: include_metadata
+    label: Include Metadata
+    type: boolean
+    defaultValue: true
+  tags:
+  - data_pipeline
+  - memory
+  - retrieve
+- type: data_pipeline.memory.update
+  label: Update Memory
+  category: Data Pipeline / Memory
+  color: '#3b82f6'
+  description: Update existing memory entries.
+  inputs:
+  - id: memory_id
+    label: Memory ID
+    type: string
+    required: true
+  outputs:
+  - id: update_result
+    label: Result
+    type: json
+  defaultProperties:
+    content: ''
+    metadata: '{}'
+    strategy: merge
+  propertyDefinitions:
+  - name: content
+    label: New Content
+    type: textarea
+    defaultValue: ''
+  - name: metadata
+    label: New Metadata (JSON)
+    type: textarea
+    defaultValue: '{}'
+  - name: strategy
+    label: Strategy
+    type: select
+    options:
+    - merge
+    - replace
+    defaultValue: merge
+  tags:
+  - data_pipeline
+  - memory
+  - update
+- type: data_pipeline.memory.delete
+  label: Delete Memory
+  category: Data Pipeline / Memory
+  color: '#3b82f6'
+  description: Delete memory entries by ID or criteria.
+  inputs: []
+  outputs:
+  - id: delete_result
+    label: Result
+    type: json
+  defaultProperties:
+    memory_id: ''
+    memory_type: ''
+    soft_delete: true
+    cascade: true
+  propertyDefinitions:
+  - name: memory_id
+    label: Memory ID
+    type: text
+    defaultValue: ''
+  - name: memory_type
+    label: Memory Type
+    type: select
+    options:
+    - conversation
+    - fact
+    - preference
+    - knowledge
+    - context
+    - all
+    - ''
+    defaultValue: ''
+  - name: soft_delete
+    label: Soft Delete
+    type: boolean
+    defaultValue: true
+  - name: cascade
+    label: Cascade
+    type: boolean
+    defaultValue: true
+  tags:
+  - data_pipeline
+  - memory
+  - delete
+- type: data_pipeline.memory.search
+  label: Memory Search
+  category: Data Pipeline / Memory
+  color: '#3b82f6'
+  description: Search memory entries using semantic or keyword-based queries.
+  inputs:
+  - id: query
+    label: Query
+    type: string
+    required: true
+  outputs:
+  - id: search_result
+    label: Results
+    type: json
+  defaultProperties:
+    search_type: hybrid
+    memory_type: all
+    max_results: 10
+    min_score: 0
+  propertyDefinitions:
+  - name: search_type
+    label: Search Type
+    type: select
+    options:
+    - keyword
+    - semantic
+    - hybrid
+    defaultValue: hybrid
+  - name: memory_type
+    label: Memory Type
+    type: select
+    options:
+    - conversation
+    - fact
+    - preference
+    - knowledge
+    - context
+    - all
+    defaultValue: all
+  - name: max_results
+    label: Max Results
+    type: number
+    defaultValue: 10
+  - name: min_score
+    label: Min Score
+    type: number
+    defaultValue: 0
+  tags:
+  - data_pipeline
+  - memory
+  - search
+- type: data_pipeline.docai.document_ocr
+  label: Document OCR
+  category: Data Pipeline / DocAI
+  color: '#f59e0b'
+  description: Extract text from images and scanned documents using OCR.
+  inputs:
+  - id: image_data
+    label: Image
+    type: string
+    required: true
+  outputs:
+  - id: ocr_result
+    label: OCR Result
+    type: json
+  defaultProperties:
+    language: eng
+    confidence_threshold: 0.5
+  propertyDefinitions:
+  - name: language
+    label: Language
+    type: text
+    defaultValue: eng
+  - name: confidence_threshold
+    label: Confidence Threshold
+    type: number
+    defaultValue: 0.5
+  tags:
+  - data_pipeline
+  - docai
+  - ocr
+- type: data_pipeline.docai.document_classify
+  label: Document Classify
+  category: Data Pipeline / DocAI
+  color: '#f59e0b'
+  description: Classify documents by type using content analysis.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: classification_result
+    label: Classification
+    type: json
+  defaultProperties:
+    categories: invoice,contract,report,letter,receipt,form
+  propertyDefinitions:
+  - name: categories
+    label: Categories
+    type: text
+    defaultValue: invoice,contract,report,letter,receipt,form
+  tags:
+  - data_pipeline
+  - docai
+  - classification
+- type: data_pipeline.docai.form_parser
+  label: Form Parser
+  category: Data Pipeline / DocAI
+  color: '#f59e0b'
+  description: Extract structured data from forms and structured documents.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: form_result
+    label: Form Data
+    type: json
+  defaultProperties:
+    form_type: auto
+    field_schema: '{}'
+  propertyDefinitions:
+  - name: form_type
+    label: Form Type
+    type: text
+    defaultValue: auto
+  - name: field_schema
+    label: Field Schema (JSON)
+    type: textarea
+    defaultValue: '{}'
+  tags:
+  - data_pipeline
+  - docai
+  - form
+- type: data_pipeline.docai.table_extractor
+  label: Table Extractor
+  category: Data Pipeline / DocAI
+  color: '#f59e0b'
+  description: Extract tables from documents as structured data.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: table_result
+    label: Tables
+    type: json
+  defaultProperties:
+    output_format: json
+  propertyDefinitions:
+  - name: output_format
+    label: Output Format
+    type: select
+    options:
+    - json
+    - csv
+    - markdown
+    defaultValue: json
+  tags:
+  - data_pipeline
+  - docai
+  - table
+- type: data_pipeline.docai.document_summarizer
+  label: Document Summarizer
+  category: Data Pipeline / DocAI
+  color: '#f59e0b'
+  description: Generate concise summaries of document content.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: summary_result
+    label: Summary
+    type: json
+  defaultProperties:
+    summary_type: abstractive
+    max_length: 200
+  propertyDefinitions:
+  - name: summary_type
+    label: Summary Type
+    type: select
+    options:
+    - abstractive
+    - extractive
+    defaultValue: abstractive
+  - name: max_length
+    label: Max Length
+    type: number
+    defaultValue: 200
+  tags:
+  - data_pipeline
+  - docai
+  - summarization
+- type: data_pipeline.agent.invoke
+  label: Agent Invoke
+  category: Data Pipeline / Agent
+  color: '#8b5cf6'
+  description: Invoke an AI agent with a prompt and configuration.
+  inputs:
+  - id: prompt
+    label: Prompt
+    type: string
+    required: true
+  outputs:
+  - id: agent_result
+    label: Response
+    type: json
+  defaultProperties:
+    agent_id: default
+    model: gpt-4
+    temperature: 0.7
+    max_tokens: 1000
+  propertyDefinitions:
+  - name: agent_id
+    label: Agent ID
+    type: text
+    defaultValue: default
+  - name: model
+    label: Model
+    type: text
+    defaultValue: gpt-4
+  - name: temperature
+    label: Temperature
+    type: number
+    defaultValue: 0.7
+  - name: max_tokens
+    label: Max Tokens
+    type: number
+    defaultValue: 1000
+  tags:
+  - data_pipeline
+  - agent
+  - llm
+- type: data_pipeline.agent.chain
+  label: Agent Chain
+  category: Data Pipeline / Agent
+  color: '#8b5cf6'
+  description: Chain multiple agents in sequence with output passing.
+  inputs:
+  - id: initial_input
+    label: Input
+    type: string
+    required: true
+  - id: chain_config
+    label: Chain Config
+    type: json
+    required: true
+  outputs:
+  - id: chain_result
+    label: Result
+    type: json
+  defaultProperties:
+    chain_config: '[]'
+  propertyDefinitions:
+  - name: chain_config
+    label: Chain Config (JSON)
+    type: textarea
+    required: true
+  tags:
+  - data_pipeline
+  - agent
+  - chain
+- type: data_pipeline.agent.router
+  label: Agent Router
+  category: Data Pipeline / Agent
+  color: '#8b5cf6'
+  description: Route input to different agents based on classification.
+  inputs:
+  - id: input
+    label: Input
+    type: string
+    required: true
+  - id: routes
+    label: Routes
+    type: json
+    required: true
+  outputs:
+  - id: route_result
+    label: Result
+    type: json
+  defaultProperties:
+    routes: '{}'
+    default_agent: fallback
+  propertyDefinitions:
+  - name: routes
+    label: Routes (JSON)
+    type: textarea
+    required: true
+  - name: default_agent
+    label: Default Agent
+    type: text
+    defaultValue: fallback
+  tags:
+  - data_pipeline
+  - agent
+  - routing
+- type: data_pipeline.agent.memory
+  label: Agent Memory
+  category: Data Pipeline / Agent
+  color: '#8b5cf6'
+  description: Integrate agent with memory system for context-aware responses.
+  inputs:
+  - id: prompt
+    label: Prompt
+    type: string
+    required: true
+  outputs:
+  - id: agent_memory_result
+    label: Response
+    type: json
+  defaultProperties:
+    session_id: ''
+    memory_types: conversation,fact
+    max_context_items: 5
+  propertyDefinitions:
+  - name: session_id
+    label: Session ID
+    type: text
+    defaultValue: ''
+  - name: memory_types
+    label: Memory Types
+    type: text
+    defaultValue: conversation,fact
+  - name: max_context_items
+    label: Max Context Items
+    type: number
+    defaultValue: 5
+  tags:
+  - data_pipeline
+  - agent
+  - memory
+- type: data_pipeline.agent.tool_call
+  label: Agent Tool Call
+  category: Data Pipeline / Agent
+  color: '#8b5cf6'
+  description: Execute external tools from within an agent workflow.
+  inputs:
+  - id: tool_name
+    label: Tool Name
+    type: string
+    required: true
+  outputs:
+  - id: tool_result
+    label: Result
+    type: json
+  defaultProperties:
+    tool_args: '{}'
+    timeout: 30
+  propertyDefinitions:
+  - name: tool_args
+    label: Tool Args (JSON)
+    type: textarea
+    defaultValue: '{}'
+  - name: timeout
+    label: Timeout (seconds)
+    type: number
+    defaultValue: 30
+  tags:
+  - data_pipeline
+  - agent
+  - tool
+- type: data_pipeline.crud.create
+  label: Create Record
+  category: Data Pipeline / CRUD
+  color: '#06b6d4'
+  description: Create a new record in a data store.
+  inputs:
+  - id: table
+    label: Table
+    type: string
+    required: true
+  - id: data
+    label: Data
+    type: json
+    required: true
+  outputs:
+  - id: create_result
+    label: Result
+    type: json
+  defaultProperties:
+    table: ''
+    data: '{}'
+  propertyDefinitions:
+  - name: table
+    label: Table Name
+    type: text
+    required: true
+  - name: data
+    label: Record Data (JSON)
+    type: textarea
+    required: true
+  tags:
+  - data_pipeline
+  - crud
+  - create
+- type: data_pipeline.crud.read
+  label: Read Record
+  category: Data Pipeline / CRUD
+  color: '#06b6d4'
+  description: Read records from a data store by ID or query.
+  inputs:
+  - id: table
+    label: Table
+    type: string
+    required: true
+  outputs:
+  - id: read_result
+    label: Records
+    type: json
+  defaultProperties:
+    record_id: ''
+    query: '{}'
+    limit: 10
+  propertyDefinitions:
+  - name: table
+    label: Table Name
+    type: text
+    required: true
+  - name: record_id
+    label: Record ID
+    type: text
+    defaultValue: ''
+  - name: query
+    label: Query (JSON)
+    type: textarea
+    defaultValue: '{}'
+  - name: limit
+    label: Limit
+    type: number
+    defaultValue: 10
+  tags:
+  - data_pipeline
+  - crud
+  - read
+- type: data_pipeline.crud.update
+  label: Update Record
+  category: Data Pipeline / CRUD
+  color: '#06b6d4'
+  description: Update existing records in a data store.
+  inputs:
+  - id: table
+    label: Table
+    type: string
+    required: true
+  - id: record_id
+    label: Record ID
+    type: string
+    required: true
+  - id: data
+    label: Data
+    type: json
+    required: true
+  outputs:
+  - id: update_result
+    label: Result
+    type: json
+  defaultProperties:
+    table: ''
+    record_id: ''
+    data: '{}'
+  propertyDefinitions:
+  - name: table
+    label: Table Name
+    type: text
+    required: true
+  - name: record_id
+    label: Record ID
+    type: text
+    required: true
+  - name: data
+    label: Update Data (JSON)
+    type: textarea
+    required: true
+  tags:
+  - data_pipeline
+  - crud
+  - update
+- type: data_pipeline.crud.delete
+  label: Delete Record
+  category: Data Pipeline / CRUD
+  color: '#06b6d4'
+  description: Delete records from a data store by ID or query.
+  inputs:
+  - id: table
+    label: Table
+    type: string
+    required: true
+  outputs:
+  - id: delete_result
+    label: Result
+    type: json
+  defaultProperties:
+    table: ''
+    record_id: ''
+    query: '{}'
+  propertyDefinitions:
+  - name: table
+    label: Table Name
+    type: text
+    required: true
+  - name: record_id
+    label: Record ID
+    type: text
+    defaultValue: ''
+  - name: query
+    label: Query (JSON)
+    type: textarea
+    defaultValue: '{}'
+  tags:
+  - data_pipeline
+  - crud
+  - delete
+- type: data_pipeline.crud.batch
+  label: Batch CRUD
+  category: Data Pipeline / CRUD
+  color: '#06b6d4'
+  description: Execute multiple CRUD operations in a single transaction.
+  inputs:
+  - id: operations
+    label: Operations
+    type: json
+    required: true
+  outputs:
+  - id: batch_result
+    label: Result
+    type: json
+  defaultProperties:
+    operations: '[]'
+    transaction: true
+  propertyDefinitions:
+  - name: operations
+    label: Operations (JSON)
+    type: textarea
+    required: true
+  - name: transaction
+    label: Use Transaction
+    type: boolean
+    defaultValue: true
+  tags:
+  - data_pipeline
+  - crud
+  - batch
+- type: data_pipeline.export.csv
+  label: CSV Export
+  category: Data Pipeline / Export
+  color: '#06b6d4'
+  description: Export data to CSV format.
+  inputs:
+  - id: data
+    label: Data
+    type: json
+    required: true
+  outputs:
+  - id: csv_result
+    label: CSV
+    type: json
+  defaultProperties:
+    delimiter: ','
+    encoding: utf-8
+    include_headers: true
+  propertyDefinitions:
+  - name: delimiter
+    label: Delimiter
+    type: text
+    defaultValue: ','
+  - name: encoding
+    label: Encoding
+    type: text
+    defaultValue: utf-8
+  - name: include_headers
+    label: Include Headers
+    type: boolean
+    defaultValue: true
+  tags:
+  - data_pipeline
+  - export
+  - csv
+- type: data_pipeline.export.json
+  label: JSON Export
+  category: Data Pipeline / Export
+  color: '#06b6d4'
+  description: Export data to JSON format.
+  inputs:
+  - id: data
+    label: Data
+    type: json
+    required: true
+  outputs:
+  - id: json_result
+    label: JSON
+    type: json
+  defaultProperties:
+    pretty: false
+    indent: 2
+  propertyDefinitions:
+  - name: pretty
+    label: Pretty Print
+    type: boolean
+    defaultValue: false
+  - name: indent
+    label: Indent
+    type: number
+    defaultValue: 2
+  tags:
+  - data_pipeline
+  - export
+  - json
+- type: data_pipeline.export.pdf
+  label: PDF Export
+  category: Data Pipeline / Export
+  color: '#06b6d4'
+  description: Export data to PDF format.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: pdf_result
+    label: PDF
+    type: json
+  defaultProperties:
+    template: default
+    page_size: A4
+  propertyDefinitions:
+  - name: template
+    label: Template
+    type: text
+    defaultValue: default
+  - name: page_size
+    label: Page Size
+    type: select
+    options:
+    - A4
+    - Letter
+    - Legal
+    defaultValue: A4
+  tags:
+  - data_pipeline
+  - export
+  - pdf
+- type: data_pipeline.export.excel
+  label: Excel Export
+  category: Data Pipeline / Export
+  color: '#06b6d4'
+  description: Export data to Excel format with multiple sheets.
+  inputs:
+  - id: data
+    label: Data
+    type: json
+    required: true
+  outputs:
+  - id: excel_result
+    label: Excel
+    type: json
+  defaultProperties:
+    include_headers: true
+    auto_width: true
+  propertyDefinitions:
+  - name: include_headers
+    label: Include Headers
+    type: boolean
+    defaultValue: true
+  - name: auto_width
+    label: Auto Width
+    type: boolean
+    defaultValue: true
+  tags:
+  - data_pipeline
+  - export
+  - excel
+- type: data_pipeline.backup.create
+  label: Create Backup
+  category: Data Pipeline / Backup
+  color: '#6366f1'
+  description: Create a backup of data stores or pipeline state.
+  inputs:
+  - id: source
+    label: Source
+    type: string
+    required: true
+  outputs:
+  - id: backup_result
+    label: Backup
+    type: json
+  defaultProperties:
+    backup_name: ''
+    compression: true
+  propertyDefinitions:
+  - name: source
+    label: Source
+    type: text
+    required: true
+  - name: backup_name
+    label: Backup Name
+    type: text
+    defaultValue: ''
+  - name: compression
+    label: Compression
+    type: boolean
+    defaultValue: true
+  tags:
+  - data_pipeline
+  - backup
+  - create
+- type: data_pipeline.backup.restore
+  label: Restore Backup
+  category: Data Pipeline / Backup
+  color: '#6366f1'
+  description: Restore data from a previous backup.
+  inputs:
+  - id: backup_id
+    label: Backup ID
+    type: string
+    required: true
+  outputs:
+  - id: restore_result
+    label: Result
+    type: json
+  defaultProperties:
+    target: ''
+    overwrite: false
+  propertyDefinitions:
+  - name: backup_id
+    label: Backup ID
+    type: text
+    required: true
+  - name: target
+    label: Target
+    type: text
+    defaultValue: ''
+  - name: overwrite
+    label: Overwrite
+    type: boolean
+    defaultValue: false
+  tags:
+  - data_pipeline
+  - backup
+  - restore
+- type: data_pipeline.backup.schedule
+  label: Backup Schedule
+  category: Data Pipeline / Backup
+  color: '#6366f1'
+  description: Configure automated backup schedules.
+  inputs:
+  - id: source
+    label: Source
+    type: string
+    required: true
+  - id: schedule
+    label: Schedule
+    type: string
+    required: true
+  outputs:
+  - id: schedule_result
+    label: Schedule
+    type: json
+  defaultProperties:
+    source: ''
+    schedule: daily
+    retention_count: 7
+  propertyDefinitions:
+  - name: source
+    label: Source
+    type: text
+    required: true
+  - name: schedule
+    label: Schedule
+    type: text
+    required: true
+  - name: retention_count
+    label: Retention Count
+    type: number
+    defaultValue: 7
+  tags:
+  - data_pipeline
+  - backup
+  - schedule
+- type: data_pipeline.backup.verify
+  label: Backup Verify
+  category: Data Pipeline / Backup
+  color: '#6366f1'
+  description: Verify backup integrity and restorability.
+  inputs:
+  - id: backup_id
+    label: Backup ID
+    type: string
+    required: true
+  outputs:
+  - id: verify_result
+    label: Result
+    type: json
+  defaultProperties:
+    check_type: full
+  propertyDefinitions:
+  - name: backup_id
+    label: Backup ID
+    type: text
+    required: true
+  - name: check_type
+    label: Check Type
+    type: select
+    options:
+    - quick
+    - full
+    - restore_test
+    defaultValue: full
+  tags:
+  - data_pipeline
+  - backup
+  - verify
+- type: data_pipeline.versioning.create
+  label: Create Version
+  category: Data Pipeline / Versioning
+  color: '#6366f1'
+  description: Create a new version of data or configuration.
+  inputs:
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: version_result
+    label: Version
+    type: json
+  defaultProperties:
+    version_label: ''
+    metadata: '{}'
+  propertyDefinitions:
+  - name: content
+    label: Content
+    type: textarea
+    required: true
+  - name: version_label
+    label: Version Label
+    type: text
+    defaultValue: ''
+  - name: metadata
+    label: Metadata (JSON)
+    type: textarea
+    defaultValue: '{}'
+  tags:
+  - data_pipeline
+  - versioning
+  - create
+- type: data_pipeline.versioning.compare
+  label: Version Compare
+  category: Data Pipeline / Versioning
+  color: '#6366f1'
+  description: Compare two versions and identify differences.
+  inputs:
+  - id: version_a
+    label: Version A
+    type: string
+    required: true
+  - id: version_b
+    label: Version B
+    type: string
+    required: true
+  outputs:
+  - id: compare_result
+    label: Diff
+    type: json
+  defaultProperties:
+    compare_mode: diff
+  propertyDefinitions:
+  - name: version_a
+    label: Version A
+    type: text
+    required: true
+  - name: version_b
+    label: Version B
+    type: text
+    required: true
+  - name: compare_mode
+    label: Compare Mode
+    type: select
+    options:
+    - diff
+    - summary
+    - stats
+    defaultValue: diff
+  tags:
+  - data_pipeline
+  - versioning
+  - compare
+- type: data_pipeline.versioning.rollback
+  label: Version Rollback
+  category: Data Pipeline / Versioning
+  color: '#6366f1'
+  description: Roll back to a previous version.
+  inputs:
+  - id: target_version
+    label: Target Version
+    type: string
+    required: true
+  outputs:
+  - id: rollback_result
+    label: Result
+    type: json
+  defaultProperties:
+    create_snapshot: true
+  propertyDefinitions:
+  - name: target_version
+    label: Target Version
+    type: text
+    required: true
+  - name: create_snapshot
+    label: Create Snapshot
+    type: boolean
+    defaultValue: true
+  tags:
+  - data_pipeline
+  - versioning
+  - rollback
+- type: data_pipeline.versioning.history
+  label: Version History
+  category: Data Pipeline / Versioning
+  color: '#6366f1'
+  description: Retrieve version history with filtering and pagination.
+  inputs:
+  - id: item_id
+    label: Item ID
+    type: string
+    required: true
+  outputs:
+  - id: history_result
+    label: History
+    type: json
+  defaultProperties:
+    limit: 10
+    include_content: false
+  propertyDefinitions:
+  - name: item_id
+    label: Item ID
+    type: text
+    required: true
+  - name: limit
+    label: Limit
+    type: number
+    defaultValue: 10
+  - name: include_content
+    label: Include Content
+    type: boolean
+    defaultValue: false
+  tags:
+  - data_pipeline
+  - versioning
+  - history
+- type: data_pipeline.curation.quality_check
+  label: Data Quality Check
+  category: Data Pipeline / Curation
+  color: '#14b8a6'
+  description: Evaluate data quality across multiple dimensions.
+  inputs:
+  - id: data
+    label: Data
+    type: json
+    required: true
+  outputs:
+  - id: quality_result
+    label: Quality
+    type: json
+  defaultProperties:
+    rules: '{}'
+    threshold: 0.8
+  propertyDefinitions:
+  - name: data
+    label: Data (JSON)
+    type: textarea
+    required: true
+  - name: rules
+    label: Rules (JSON)
+    type: textarea
+    defaultValue: '{}'
+  - name: threshold
+    label: Threshold
+    type: number
+    defaultValue: 0.8
+  tags:
+  - data_pipeline
+  - curation
+  - quality
+- type: data_pipeline.curation.deduplication
+  label: Data Deduplication
+  category: Data Pipeline / Curation
+  color: '#14b8a6'
+  description: Identify and remove duplicate records.
+  inputs:
+  - id: data
+    label: Data
+    type: json
+    required: true
+  outputs:
+  - id: dedup_result
+    label: Result
+    type: json
+  defaultProperties:
+    match_fields: ''
+    strategy: exact
+    threshold: 0.9
+  propertyDefinitions:
+  - name: data
+    label: Data (JSON)
+    type: textarea
+    required: true
+  - name: match_fields
+    label: Match Fields
+    type: text
+    defaultValue: ''
+  - name: strategy
+    label: Strategy
+    type: select
+    options:
+    - exact
+    - fuzzy
+    - semantic
+    defaultValue: exact
+  - name: threshold
+    label: Threshold
+    type: number
+    defaultValue: 0.9
+  tags:
+  - data_pipeline
+  - curation
+  - deduplication
+- type: data_pipeline.curation.validation
+  label: Data Validation
+  category: Data Pipeline / Curation
+  color: '#14b8a6'
+  description: Validate data against JSON Schema or custom rules.
+  inputs:
+  - id: data
+    label: Data
+    type: json
+    required: true
+  - id: schema
+    label: Schema
+    type: json
+    required: true
+  outputs:
+  - id: validation_result
+    label: Result
+    type: json
+  defaultProperties:
+    strict: false
+  propertyDefinitions:
+  - name: data
+    label: Data (JSON)
+    type: textarea
+    required: true
+  - name: schema
+    label: Schema (JSON)
+    type: textarea
+    required: true
+  - name: strict
+    label: Strict Mode
+    type: boolean
+    defaultValue: false
+  tags:
+  - data_pipeline
+  - curation
+  - validation
+- type: data_pipeline.curation.enrichment
+  label: Data Enrichment
+  category: Data Pipeline / Curation
+  color: '#14b8a6'
+  description: Enrich records with additional data from external sources.
+  inputs:
+  - id: data
+    label: Data
+    type: json
+    required: true
+  - id: enrichment_sources
+    label: Sources
+    type: json
+    required: true
+  outputs:
+  - id: enrichment_result
+    label: Result
+    type: json
+  defaultProperties:
+    match_key: id
+  propertyDefinitions:
+  - name: data
+    label: Data (JSON)
+    type: textarea
+    required: true
+  - name: enrichment_sources
+    label: Sources (JSON)
+    type: textarea
+    required: true
+  - name: match_key
+    label: Match Key
+    type: text
+    defaultValue: id
+  tags:
+  - data_pipeline
+  - curation
+  - enrichment
+- type: data_pipeline.analytics.metrics
+  label: Metrics Collector
+  category: Data Pipeline / Analytics
+  color: '#f97316'
+  description: Collect and aggregate metrics from pipeline operations.
+  inputs:
+  - id: metric_name
+    label: Metric Name
+    type: string
+    required: true
+  - id: value
+    label: Value
+    type: number
+    required: true
+  outputs:
+  - id: metrics_result
+    label: Result
+    type: json
+  defaultProperties:
+    tags: '{}'
+    metric_type: gauge
+  propertyDefinitions:
+  - name: metric_name
+    label: Metric Name
+    type: text
+    required: true
+  - name: value
+    label: Value
+    type: number
+    required: true
+  - name: tags
+    label: Tags (JSON)
+    type: textarea
+    defaultValue: '{}'
+  - name: metric_type
+    label: Metric Type
+    type: select
+    options:
+    - gauge
+    - counter
+    - histogram
+    defaultValue: gauge
+  tags:
+  - data_pipeline
+  - analytics
+  - metrics
+- type: data_pipeline.analytics.dashboard
+  label: Dashboard Generator
+  category: Data Pipeline / Analytics
+  color: '#f97316'
+  description: Generate data visualization dashboards from metrics.
+  inputs:
+  - id: metrics
+    label: Metrics
+    type: json
+    required: true
+  outputs:
+  - id: dashboard_result
+    label: Dashboard
+    type: json
+  defaultProperties:
+    layout: grid
+    time_range: 24h
+  propertyDefinitions:
+  - name: metrics
+    label: Metrics (JSON)
+    type: textarea
+    required: true
+  - name: layout
+    label: Layout
+    type: select
+    options:
+    - grid
+    - list
+    - custom
+    defaultValue: grid
+  - name: time_range
+    label: Time Range
+    type: text
+    defaultValue: 24h
+  tags:
+  - data_pipeline
+  - analytics
+  - dashboard
+- type: data_pipeline.analytics.trend
+  label: Trend Analyzer
+  category: Data Pipeline / Analytics
+  color: '#f97316'
+  description: Analyze trends in time-series data with forecasting.
+  inputs:
+  - id: data
+    label: Data
+    type: json
+    required: true
+  outputs:
+  - id: trend_result
+    label: Trend
+    type: json
+  defaultProperties:
+    trend_type: linear
+    forecast_periods: 7
+  propertyDefinitions:
+  - name: data
+    label: Data (JSON)
+    type: textarea
+    required: true
+  - name: trend_type
+    label: Trend Type
+    type: select
+    options:
+    - linear
+    - exponential
+    - seasonal
+    defaultValue: linear
+  - name: forecast_periods
+    label: Forecast Periods
+    type: number
+    defaultValue: 7
+  tags:
+  - data_pipeline
+  - analytics
+  - trend
+- type: data_pipeline.analytics.anomaly
+  label: Anomaly Detector
+  category: Data Pipeline / Analytics
+  color: '#f97316'
+  description: Detect anomalies and outliers in data.
+  inputs:
+  - id: data
+    label: Data
+    type: json
+    required: true
+  outputs:
+  - id: anomaly_result
+    label: Anomalies
+    type: json
+  defaultProperties:
+    method: zscore
+    sensitivity: 2
+  propertyDefinitions:
+  - name: data
+    label: Data (JSON)
+    type: textarea
+    required: true
+  - name: method
+    label: Method
+    type: select
+    options:
+    - zscore
+    - iqr
+    - isolation_forest
+    defaultValue: zscore
+  - name: sensitivity
+    label: Sensitivity
+    type: number
+    defaultValue: 2
+  tags:
+  - data_pipeline
+  - analytics
+  - anomaly
+- type: data_pipeline.wiki.create
+  label: Wiki Create
+  category: Data Pipeline / Wiki
+  color: '#ec4899'
+  description: Create a new wiki page with content and metadata.
+  inputs:
+  - id: title
+    label: Title
+    type: string
+    required: true
+  - id: content
+    label: Content
+    type: string
+    required: true
+  outputs:
+  - id: wiki_result
+    label: Result
+    type: json
+  defaultProperties:
+    category: general
+    tags: '[]'
+  propertyDefinitions:
+  - name: title
+    label: Title
+    type: text
+    required: true
+  - name: content
+    label: Content (Markdown)
+    type: textarea
+    required: true
+  - name: category
+    label: Category
+    type: text
+    defaultValue: general
+  - name: tags
+    label: Tags (JSON)
+    type: textarea
+    defaultValue: '[]'
+  tags:
+  - data_pipeline
+  - wiki
+  - create
+- type: data_pipeline.wiki.update
+  label: Wiki Update
+  category: Data Pipeline / Wiki
+  color: '#ec4899'
+  description: Update existing wiki page content.
+  inputs:
+  - id: page_id
+    label: Page ID
+    type: string
+    required: true
+  outputs:
+  - id: update_result
+    label: Result
+    type: json
+  defaultProperties:
+    content: ''
+    title: ''
+    append: false
+  propertyDefinitions:
+  - name: page_id
+    label: Page ID
+    type: text
+    required: true
+  - name: content
+    label: New Content
+    type: textarea
+    defaultValue: ''
+  - name: title
+    label: New Title
+    type: text
+    defaultValue: ''
+  - name: append
+    label: Append Mode
+    type: boolean
+    defaultValue: false
+  tags:
+  - data_pipeline
+  - wiki
+  - update
+- type: data_pipeline.wiki.search
+  label: Wiki Search
+  category: Data Pipeline / Wiki
+  color: '#ec4899'
+  description: Search wiki pages by title, content, tags, or category.
+  inputs: []
+  outputs:
+  - id: search_result
+    label: Results
+    type: json
+  defaultProperties:
+    query: ''
+    category: ''
+    tags: '[]'
+    max_results: 10
+  propertyDefinitions:
+  - name: query
+    label: Query
+    type: text
+    defaultValue: ''
+  - name: category
+    label: Category
+    type: text
+    defaultValue: ''
+  - name: tags
+    label: Tags (JSON)
+    type: textarea
+    defaultValue: '[]'
+  - name: max_results
+    label: Max Results
+    type: number
+    defaultValue: 10
+  tags:
+  - data_pipeline
+  - wiki
+  - search
+- type: data_pipeline.wiki.link
+  label: Wiki Link
+  category: Data Pipeline / Wiki
+  color: '#ec4899'
+  description: Create and manage links between wiki pages.
+  inputs:
+  - id: source_id
+    label: Source ID
+    type: string
+    required: true
+  - id: target_id
+    label: Target ID
+    type: string
+    required: true
+  outputs:
+  - id: link_result
+    label: Link
+    type: json
+  defaultProperties:
+    link_type: related
+  propertyDefinitions:
+  - name: source_id
+    label: Source ID
+    type: text
+    required: true
+  - name: target_id
+    label: Target ID
+    type: text
+    required: true
+  - name: link_type
+    label: Link Type
+    type: select
+    options:
+    - related
+    - prerequisite
+    - see_also
+    - parent
+    - child
+    defaultValue: related
+  tags:
+  - data_pipeline
+  - wiki
+  - link
+- type: data_pipeline.wiki.export
+  label: Wiki Export
+  category: Data Pipeline / Wiki
+  color: '#ec4899'
+  description: Export wiki pages to various formats.
+  inputs:
+  - id: page_ids
+    label: Page IDs
+    type: json
+    required: true
+  outputs:
+  - id: export_result
+    label: Export
+    type: json
+  defaultProperties:
+    format: markdown
+    include_links: true
+  propertyDefinitions:
+  - name: page_ids
+    label: Page IDs (JSON)
+    type: textarea
+    required: true
+  - name: format
+    label: Format
+    type: select
+    options:
+    - markdown
+    - html
+    - pdf
+    - docx
+    defaultValue: markdown
+  - name: include_links
+    label: Include Links
+    type: boolean
+    defaultValue: true
+  tags:
+  - data_pipeline
+  - wiki
+  - export
+- type: data_pipeline.packager.build
+  label: Package Builder
+  category: Data Pipeline / Packager
+  color: '#64748b'
+  description: Build a package from pipeline outputs.
+  inputs:
+  - id: name
+    label: Name
+    type: string
+    required: true
+  - id: version
+    label: Version
+    type: string
+    required: true
+  - id: contents
+    label: Contents
+    type: json
+    required: true
+  outputs:
+  - id: package_result
+    label: Package
+    type: json
+  defaultProperties:
+    dependencies: '[]'
+  propertyDefinitions:
+  - name: name
+    label: Package Name
+    type: text
+    required: true
+  - name: version
+    label: Version
+    type: text
+    required: true
+  - name: contents
+    label: Contents (JSON)
+    type: textarea
+    required: true
+  - name: dependencies
+    label: Dependencies (JSON)
+    type: textarea
+    defaultValue: '[]'
+  tags:
+  - data_pipeline
+  - packager
+  - build
+- type: data_pipeline.packager.validate
+  label: Package Validator
+  category: Data Pipeline / Packager
+  color: '#64748b'
+  description: Validate package integrity and dependencies.
+  inputs:
+  - id: package_path
+    label: Package Path
+    type: string
+    required: true
+  outputs:
+  - id: validation_result
+    label: Validation
+    type: json
+  defaultProperties:
+    expected_checksum: ''
+    check_dependencies: true
+  propertyDefinitions:
+  - name: package_path
+    label: Package Path
+    type: text
+    required: true
+  - name: expected_checksum
+    label: Expected Checksum
+    type: text
+    defaultValue: ''
+  - name: check_dependencies
+    label: Check Dependencies
+    type: boolean
+    defaultValue: true
+  tags:
+  - data_pipeline
+  - packager
+  - validate
+- type: data_pipeline.packager.publish
+  label: Package Publisher
+  category: Data Pipeline / Packager
+  color: '#64748b'
+  description: Publish packages to a registry.
+  inputs:
+  - id: package_path
+    label: Package Path
+    type: string
+    required: true
+  outputs:
+  - id: publish_result
+    label: Result
+    type: json
+  defaultProperties:
+    registry: default
+    overwrite: false
+  propertyDefinitions:
+  - name: package_path
+    label: Package Path
+    type: text
+    required: true
+  - name: registry
+    label: Registry
+    type: text
+    defaultValue: default
+  - name: overwrite
+    label: Overwrite
+    type: boolean
+    defaultValue: false
+  tags:
+  - data_pipeline
+  - packager
+  - publish
+- type: data_pipeline.packager.install
+  label: Package Installer
+  category: Data Pipeline / Packager
+  color: '#64748b'
+  description: Install packages from a registry.
+  inputs:
+  - id: package_name
+    label: Package Name
+    type: string
+    required: true
+  outputs:
+  - id: install_result
+    label: Result
+    type: json
+  defaultProperties:
+    version: latest
+    registry: default
+    install_path: ''
+  propertyDefinitions:
+  - name: package_name
+    label: Package Name
+    type: text
+    required: true
+  - name: version
+    label: Version
+    type: text
+    defaultValue: latest
+  - name: registry
+    label: Registry
+    type: text
+    defaultValue: default
+  - name: install_path
+    label: Install Path
+    type: text
+    defaultValue: ''
+  tags:
+  - data_pipeline
+  - packager
+  - install
+- type: data_pipeline.finops.cost
+  label: Cost Calculator
+  category: Data Pipeline / FinOps
+  color: '#84cc16'
+  description: Calculate costs for pipeline operations.
+  inputs:
+  - id: resources
+    label: Resources
+    type: json
+    required: true
+  outputs:
+  - id: cost_result
+    label: Cost
+    type: json
+  defaultProperties:
+    pricing_model: standard
+    currency: USD
+  propertyDefinitions:
+  - name: resources
+    label: Resources (JSON)
+    type: textarea
+    required: true
+  - name: pricing_model
+    label: Pricing Model
+    type: select
+    options:
+    - standard
+    - enterprise
+    - spot
+    defaultValue: standard
+  - name: currency
+    label: Currency
+    type: text
+    defaultValue: USD
+  tags:
+  - data_pipeline
+  - finops
+  - cost
+- type: data_pipeline.finops.budget
+  label: Budget Alert
+  category: Data Pipeline / FinOps
+  color: '#84cc16'
+  description: Set up and check budget alerts for pipeline spending.
+  inputs:
+  - id: budget_amount
+    label: Budget
+    type: number
+    required: true
+  - id: current_spend
+    label: Current Spend
+    type: number
+    required: true
+  outputs:
+  - id: alert_result
+    label: Alert
+    type: json
+  defaultProperties:
+    alert_thresholds: '[50, 75, 90, 100]'
+    currency: USD
+  propertyDefinitions:
+  - name: budget_amount
+    label: Budget Amount
+    type: number
+    required: true
+  - name: current_spend
+    label: Current Spend
+    type: number
+    required: true
+  - name: alert_thresholds
+    label: Thresholds (JSON)
+    type: textarea
+    defaultValue: '[50, 75, 90, 100]'
+  - name: currency
+    label: Currency
+    type: text
+    defaultValue: USD
+  tags:
+  - data_pipeline
+  - finops
+  - budget
+- type: data_pipeline.finops.usage
+  label: Usage Tracker
+  category: Data Pipeline / FinOps
+  color: '#84cc16'
+  description: Track and aggregate resource usage across pipelines.
+  inputs:
+  - id: pipeline_id
+    label: Pipeline ID
+    type: string
+    required: true
+  - id: resource_type
+    label: Resource Type
+    type: string
+    required: true
+  - id: quantity
+    label: Quantity
+    type: number
+    required: true
+  outputs:
+  - id: usage_result
+    label: Usage
+    type: json
+  defaultProperties:
+    unit: units
+  propertyDefinitions:
+  - name: pipeline_id
+    label: Pipeline ID
+    type: text
+    required: true
+  - name: resource_type
+    label: Resource Type
+    type: text
+    required: true
+  - name: quantity
+    label: Quantity
+    type: number
+    required: true
+  - name: unit
+    label: Unit
+    type: text
+    defaultValue: units
+  tags:
+  - data_pipeline
+  - finops
+  - usage
+- type: data_pipeline.finops.roi
+  label: ROI Analyzer
+  category: Data Pipeline / FinOps
+  color: '#84cc16'
+  description: Analyze return on investment for pipeline operations.
+  inputs:
+  - id: investment_cost
+    label: Cost
+    type: number
+    required: true
+  - id: returns
+    label: Returns
+    type: json
+    required: true
+  outputs:
+  - id: roi_result
+    label: ROI
+    type: json
+  defaultProperties:
+    time_period: monthly
+  propertyDefinitions:
+  - name: investment_cost
+    label: Investment Cost
+    type: number
+    required: true
+  - name: returns
+    label: Returns (JSON)
+    type: textarea
+    required: true
+  - name: time_period
+    label: Time Period
+    type: select
+    options:
+    - daily
+    - weekly
+    - monthly
+    - quarterly
+    - annual
+    defaultValue: monthly
+  tags:
+  - data_pipeline
+  - finops
+  - roi
+- type: data_pipeline.tenant.isolation
+  label: Tenant Isolation
+  category: Data Pipeline / Tenant
+  color: '#a855f7'
+  description: Enforce data and resource isolation between tenants.
+  inputs:
+  - id: tenant_id
+    label: Tenant ID
+    type: string
+    required: true
+  - id: resource_type
+    label: Resource Type
+    type: string
+    required: true
+  outputs:
+  - id: isolation_result
+    label: Result
+    type: json
+  defaultProperties:
+    isolation_level: logical
+  propertyDefinitions:
+  - name: tenant_id
+    label: Tenant ID
+    type: text
+    required: true
+  - name: resource_type
+    label: Resource Type
+    type: text
+    required: true
+  - name: isolation_level
+    label: Isolation Level
+    type: select
+    options:
+    - logical
+    - physical
+    - namespace
+    defaultValue: logical
+  tags:
+  - data_pipeline
+  - tenant
+  - isolation
+- type: data_pipeline.tenant.config
+  label: Tenant Config
+  category: Data Pipeline / Tenant
+  color: '#a855f7'
+  description: Manage tenant-specific configuration and feature flags.
+  inputs:
+  - id: tenant_id
+    label: Tenant ID
+    type: string
+    required: true
+  - id: config
+    label: Config
+    type: json
+    required: true
+  outputs:
+  - id: config_result
+    label: Config
+    type: json
+  defaultProperties:
+    operation: merge
+  propertyDefinitions:
+  - name: tenant_id
+    label: Tenant ID
+    type: text
+    required: true
+  - name: config
+    label: Config (JSON)
+    type: textarea
+    required: true
+  - name: operation
+    label: Operation
+    type: select
+    options:
+    - merge
+    - replace
+    - get
+    defaultValue: merge
+  tags:
+  - data_pipeline
+  - tenant
+  - config
+- type: data_pipeline.tenant.billing
+  label: Tenant Billing
+  category: Data Pipeline / Tenant
+  color: '#a855f7'
+  description: Generate and manage tenant billing records.
+  inputs:
+  - id: tenant_id
+    label: Tenant ID
+    type: string
+    required: true
+  - id: billing_period
+    label: Period
+    type: string
+    required: true
+  - id: usage_data
+    label: Usage
+    type: json
+    required: true
+  outputs:
+  - id: billing_result
+    label: Billing
+    type: json
+  defaultProperties: {}
+  propertyDefinitions:
+  - name: tenant_id
+    label: Tenant ID
+    type: text
+    required: true
+  - name: billing_period
+    label: Billing Period (YYYY-MM)
+    type: text
+    required: true
+  - name: usage_data
+    label: Usage Data (JSON)
+    type: textarea
+    required: true
+  tags:
+  - data_pipeline
+  - tenant
+  - billing
+- type: data_pipeline.tenant.analytics
+  label: Tenant Analytics
+  category: Data Pipeline / Tenant
+  color: '#a855f7'
+  description: Generate analytics and insights per tenant.
+  inputs:
+  - id: tenant_id
+    label: Tenant ID
+    type: string
+    required: true
+  - id: metrics
+    label: Metrics
+    type: json
+    required: true
+  outputs:
+  - id: analytics_result
+    label: Analytics
+    type: json
+  defaultProperties:
+    time_range: 30d
+  propertyDefinitions:
+  - name: tenant_id
+    label: Tenant ID
+    type: text
+    required: true
+  - name: metrics
+    label: Metrics (JSON)
+    type: textarea
+    required: true
+  - name: time_range
+    label: Time Range
+    type: text
+    defaultValue: 30d
+  tags:
+  - data_pipeline
+  - tenant
+  - analytics
+- type: data_pipeline.storage.redis_cache
+  label: Redis Cache
+  category: Data Pipeline / Storage
+  color: '#10b981'
+  description: Store and retrieve data in Redis cache with TTL support.
+  inputs:
+  - id: key
+    label: Key
+    type: string
+    required: true
+  outputs:
+  - id: cache_result
+    label: Result
+    type: json
+  defaultProperties:
+    value: ''
+    operation: set
+    ttl: 3600
+  propertyDefinitions:
+  - name: key
+    label: Key
+    type: text
+    required: true
+  - name: value
+    label: Value
+    type: text
+    defaultValue: ''
+  - name: operation
+    label: Operation
+    type: select
+    options:
+    - get
+    - set
+    - delete
+    defaultValue: set
+  - name: ttl
+    label: TTL (seconds)
+    type: number
+    defaultValue: 3600
+  tags:
+  - data_pipeline
+  - storage
+  - redis
+- type: data_pipeline.storage.search_index
+  label: Search Index
+  category: Data Pipeline / Storage
+  color: '#10b981'
+  description: Manage full-text search index (Elasticsearch/OpenSearch).
+  inputs:
+  - id: index
+    label: Index
+    type: string
+    required: true
+  outputs:
+  - id: index_result
+    label: Result
+    type: json
+  defaultProperties:
+    documents: '[]'
+    query: ''
+    operation: index
+  propertyDefinitions:
+  - name: index
+    label: Index Name
+    type: text
+    required: true
+  - name: documents
+    label: Documents (JSON)
+    type: textarea
+    defaultValue: '[]'
+  - name: query
+    label: Query
+    type: text
+    defaultValue: ''
+  - name: operation
+    label: Operation
+    type: select
+    options:
+    - index
+    - search
+    - delete
+    defaultValue: index
+  tags:
+  - data_pipeline
+  - storage
+  - search
+- type: data_pipeline.storage.object_store
+  label: Object Store
+  category: Data Pipeline / Storage
+  color: '#10b981'
+  description: Store and retrieve files in S3-compatible object storage.
+  inputs:
+  - id: bucket
+    label: Bucket
+    type: string
+    required: true
+  - id: key
+    label: Key
+    type: string
+    required: true
+  outputs:
+  - id: store_result
+    label: Result
+    type: json
+  defaultProperties:
+    content: ''
+    operation: upload
+  propertyDefinitions:
+  - name: bucket
+    label: Bucket
+    type: text
+    required: true
+  - name: key
+    label: Key
+    type: text
+    required: true
+  - name: content
+    label: Content
+    type: textarea
+    defaultValue: ''
+  - name: operation
+    label: Operation
+    type: select
+    options:
+    - upload
+    - download
+    - delete
+    defaultValue: upload
+  tags:
+  - data_pipeline
+  - storage
+  - s3
+- type: data_pipeline.advanced.custom_transform
+  label: Custom Transform
+  category: Data Pipeline / Advanced
+  color: '#10b981'
+  description: Apply a custom Python transformation function to data.
+  inputs:
+  - id: data
+    label: Data
+    type: string
+    required: true
+  - id: code
+    label: Code
+    type: string
+    required: true
+  outputs:
+  - id: transform_result
+    label: Result
+    type: json
+  defaultProperties:
+    timeout: 30
+  propertyDefinitions:
+  - name: data
+    label: Data (JSON)
+    type: textarea
+    required: true
+  - name: code
+    label: Python Code
+    type: textarea
+    required: true
+  - name: timeout
+    label: Timeout (seconds)
+    type: number
+    defaultValue: 30
+  tags:
+  - data_pipeline
+  - advanced
+  - transform
+diagram:
+- type: diagram-rectangle
+  shape: rectangle
+  label: Rectangle
+  category: Diagram/Basic Shapes
+  description: A rectangular diagram shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-rounded-rectangle
+  shape: rounded-rectangle
+  label: Rounded Rectangle
+  category: Diagram/Basic Shapes
+  description: A rounded rectangle diagram shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-circle
+  shape: circle
+  label: Circle
+  category: Diagram/Basic Shapes
+  description: A circular diagram shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-diamond
+  shape: diamond
+  label: Diamond
+  category: Diagram/Basic Shapes
+  description: A diamond shape, typically for decisions
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-text-only
+  shape: text-only
+  label: Text Box
+  category: Diagram/Basic Shapes
+  description: A plain text element
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-triangle
+  shape: triangle
+  label: Triangle
+  category: Diagram/Basic Shapes
+  description: Triangle shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-trapezoid
+  shape: trapezoid
+  label: Trapezoid
+  category: Diagram/Basic Shapes
+  description: Trapezoid shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-parallelogram
+  shape: parallelogram
+  label: Parallelogram
+  category: Diagram/Basic Shapes
+  description: Parallelogram shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-rhombus
+  shape: rhombus
+  label: Rhombus
+  category: Diagram/Basic Shapes
+  description: Rhombus shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-pentagon
+  shape: pentagon
+  label: Pentagon
+  category: Diagram/Basic Shapes
+  description: Pentagon shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-hexagon
+  shape: hexagon
+  label: Hexagon
+  category: Diagram/Basic Shapes
+  description: Hexagon shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-heptagon
+  shape: heptagon
+  label: Heptagon
+  category: Diagram/Basic Shapes
+  description: Heptagon shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-octagon
+  shape: octagon
+  label: Octagon
+  category: Diagram/Basic Shapes
+  description: Octagon shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-nonagon
+  shape: nonagon
+  label: Nonagon
+  category: Diagram/Basic Shapes
+  description: Nonagon shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-decagon
+  shape: decagon
+  label: Decagon
+  category: Diagram/Basic Shapes
+  description: Decagon shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-bevel
+  shape: bevel
+  label: Bevel
+  category: Diagram/Basic Shapes
+  description: Bevel shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-rabbet
+  shape: rabbet
+  label: Rabbet
+  category: Diagram/Basic Shapes
+  description: Rabbet shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-left-point
+  shape: left-point
+  label: Left Point
+  category: Diagram/Basic Shapes
+  description: Left Point shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-right-point
+  shape: right-point
+  label: Right Point
+  category: Diagram/Basic Shapes
+  description: Right Point shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-left-chevron
+  shape: left-chevron
+  label: Left Chevron
+  category: Diagram/Basic Shapes
+  description: Left Chevron shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-right-chevron
+  shape: right-chevron
+  label: Right Chevron
+  category: Diagram/Basic Shapes
+  description: Right Chevron shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-cross
+  shape: cross
+  label: Cross
+  category: Diagram/Block Shapes
+  description: Cross shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-message
+  shape: message
+  label: Message
+  category: Diagram/Block Shapes
+  description: Message shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-close
+  shape: close
+  label: Close
+  category: Diagram/Block Shapes
+  description: Close shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-frame
+  shape: frame
+  label: Frame
+  category: Diagram/Block Shapes
+  description: Frame shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-step
+  shape: step
+  label: Step
+  category: Diagram/Block Shapes
+  description: Step shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-cylinder
+  shape: cylinder
+  label: Cylinder
+  category: Diagram/Block Shapes
+  description: Cylinder shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-cube
+  shape: cube
+  label: Cube
+  category: Diagram/Block Shapes
+  description: Cube shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-donut
+  shape: donut
+  label: Donut
+  category: Diagram/Block Shapes
+  description: Donut shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-pyramid
+  shape: pyramid
+  label: Pyramid
+  category: Diagram/Block Shapes
+  description: Pyramid shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-shield
+  shape: shield
+  label: Shield
+  category: Diagram/Block Shapes
+  description: Shield shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-document
+  shape: document
+  label: Document
+  category: Diagram/Block Shapes
+  description: Document shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-folder
+  shape: folder
+  label: Folder
+  category: Diagram/Block Shapes
+  description: Folder shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-ticket
+  shape: ticket
+  label: Ticket
+  category: Diagram/Block Shapes
+  description: Ticket shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-ribbon
+  shape: ribbon
+  label: Ribbon
+  category: Diagram/Block Shapes
+  description: Ribbon shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-bookmark
+  shape: bookmark
+  label: Bookmark
+  category: Diagram/Block Shapes
+  description: Bookmark shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-star-3
+  shape: star-3
+  label: Three Point Star
+  category: Diagram/Stars and Balloons
+  description: Three Point Star shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-star-4
+  shape: star-4
+  label: Four Point Star
+  category: Diagram/Stars and Balloons
+  description: Four Point Star shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-star-5
+  shape: star-5
+  label: Five Point Star
+  category: Diagram/Stars and Balloons
+  description: Five Point Star shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-star-6
+  shape: star-6
+  label: Six Point Star
+  category: Diagram/Stars and Balloons
+  description: Six Point Star shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-star-7
+  shape: star-7
+  label: Seven Point Star
+  category: Diagram/Stars and Balloons
+  description: Seven Point Star shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-star-8
+  shape: star-8
+  label: Eight Point Star
+  category: Diagram/Stars and Balloons
+  description: Eight Point Star shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-star-10
+  shape: star-10
+  label: Ten Point Star
+  category: Diagram/Stars and Balloons
+  description: Ten Point Star shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-star-12
+  shape: star-12
+  label: Twelve Point Star
+  category: Diagram/Stars and Balloons
+  description: Twelve Point Star shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-star-16
+  shape: star-16
+  label: Sixteen Point Star
+  category: Diagram/Stars and Balloons
+  description: Sixteen Point Star shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-star-24
+  shape: star-24
+  label: Twenty-Four Point Star
+  category: Diagram/Stars and Balloons
+  description: Twenty-Four Point Star shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-star-32
+  shape: star-32
+  label: Thirty-Two Point Star
+  category: Diagram/Stars and Balloons
+  description: Thirty-Two Point Star shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-burst-8
+  shape: burst-8
+  label: Explosion 8
+  category: Diagram/Stars and Balloons
+  description: Explosion 8 shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-burst-14
+  shape: burst-14
+  label: Explosion 14
+  category: Diagram/Stars and Balloons
+  description: Explosion 14 shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-speech-oval
+  shape: speech-oval
+  label: Speech Oval
+  category: Diagram/Stars and Balloons
+  description: Speech Oval shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-thought-cloud
+  shape: thought-cloud
+  label: Thought Cloud
+  category: Diagram/Stars and Balloons
+  description: Thought Cloud shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fcd34d'
+- type: diagram-left-arrow
+  shape: left-arrow
+  label: Left Arrow
+  category: Diagram/Arrows
+  description: Left Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-right-arrow
+  shape: right-arrow
+  label: Right Arrow
+  category: Diagram/Arrows
+  description: Right Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-up-arrow
+  shape: up-arrow
+  label: Up Arrow
+  category: Diagram/Arrows
+  description: Up Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-down-arrow
+  shape: down-arrow
+  label: Down Arrow
+  category: Diagram/Arrows
+  description: Down Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-left-right-arrow
+  shape: left-right-arrow
+  label: Left Right Arrow
+  category: Diagram/Arrows
+  description: Left Right Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-up-down-arrow
+  shape: up-down-arrow
+  label: Up Down Arrow
+  category: Diagram/Arrows
+  description: Up Down Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-quad-arrow
+  shape: quad-arrow
+  label: Quad Arrow
+  category: Diagram/Arrows
+  description: Quad Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-curved-left-arrow
+  shape: curved-left-arrow
+  label: Curved Left Arrow
+  category: Diagram/Arrows
+  description: Curved Left Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-curved-right-arrow
+  shape: curved-right-arrow
+  label: Curved Right Arrow
+  category: Diagram/Arrows
+  description: Curved Right Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-curved-up-arrow
+  shape: curved-up-arrow
+  label: Curved Up Arrow
+  category: Diagram/Arrows
+  description: Curved Up Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-curved-down-arrow
+  shape: curved-down-arrow
+  label: Curved Down Arrow
+  category: Diagram/Arrows
+  description: Curved Down Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-split-arrow
+  shape: split-arrow
+  label: Split Arrow
+  category: Diagram/Arrows
+  description: Split Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-u-turn-arrow
+  shape: u-turn-arrow
+  label: U Turn Arrow
+  category: Diagram/Arrows
+  description: U Turn Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-striped-right-arrow
+  shape: striped-right-arrow
+  label: Striped Right Arrow
+  category: Diagram/Arrows
+  description: Striped Right Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-notched-right-arrow
+  shape: notched-right-arrow
+  label: Notched Right Arrow
+  category: Diagram/Arrows
+  description: Notched Right Arrow shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#94a3b8'
+- type: diagram-process
+  shape: process
+  label: Process
+  category: Diagram/Flowchart
+  description: Process shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-alternate-process
+  shape: alternate-process
+  label: Alternate Process
+  category: Diagram/Flowchart
+  description: Alternate Process shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-decision
+  shape: decision
+  label: Decision
+  category: Diagram/Flowchart
+  description: Decision shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-data
+  shape: data
+  label: Data
+  category: Diagram/Flowchart
+  description: Data shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-predefined-process
+  shape: predefined-process
+  label: Predefined Process
+  category: Diagram/Flowchart
+  description: Predefined Process shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-internal-storage
+  shape: internal-storage
+  label: Internal Storage
+  category: Diagram/Flowchart
+  description: Internal Storage shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-document-flow
+  shape: document-flow
+  label: Document
+  category: Diagram/Flowchart
+  description: Document shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-multi-document
+  shape: multi-document
+  label: Multi Document
+  category: Diagram/Flowchart
+  description: Multi Document shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-terminator
+  shape: terminator
+  label: Terminator
+  category: Diagram/Flowchart
+  description: Terminator shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-preparation
+  shape: preparation
+  label: Preparation
+  category: Diagram/Flowchart
+  description: Preparation shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-manual-input
+  shape: manual-input
+  label: Manual Input
+  category: Diagram/Flowchart
+  description: Manual Input shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-manual-operation
+  shape: manual-operation
+  label: Manual Operation
+  category: Diagram/Flowchart
+  description: Manual Operation shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-connector
+  shape: connector
+  label: Connector
+  category: Diagram/Flowchart
+  description: Connector shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-off-page-connector
+  shape: off-page-connector
+  label: Off-Page Connector
+  category: Diagram/Flowchart
+  description: Off-Page Connector shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-card
+  shape: card
+  label: Card
+  category: Diagram/Flowchart
+  description: Card shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-sticky-yellow
+  shape: sticky-yellow
+  label: Yellow Sticky
+  category: Diagram/Sticky Packs
+  description: Yellow Sticky shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fef08a'
+- type: diagram-sticky-blue
+  shape: sticky-blue
+  label: Blue Sticky
+  category: Diagram/Sticky Packs
+  description: Blue Sticky shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#bfdbfe'
+- type: diagram-sticky-green
+  shape: sticky-green
+  label: Green Sticky
+  category: Diagram/Sticky Packs
+  description: Green Sticky shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#bbf7d0'
+- type: diagram-sticky-pink
+  shape: sticky-pink
+  label: Pink Sticky
+  category: Diagram/Sticky Packs
+  description: Pink Sticky shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fbcfe8'
+- type: diagram-sticky-orange
+  shape: sticky-orange
+  label: Orange Sticky
+  category: Diagram/Sticky Packs
+  description: Orange Sticky shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#fed7aa'
+- type: diagram-sticky-purple
+  shape: sticky-purple
+  label: Purple Sticky
+  category: Diagram/Sticky Packs
+  description: Purple Sticky shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#e9d5ff'
+- type: diagram-sticky-long
+  shape: sticky-long
+  label: Long Note
+  category: Diagram/Sticky Packs
+  description: Long Note shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-sticky-group
+  shape: sticky-group
+  label: Note Group
+  category: Diagram/Sticky Packs
+  description: Note Group shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-concept-node
+  shape: concept-node
+  label: Main Concept
+  category: Diagram/Concept Map
+  description: Main Concept shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#0284c7'
+- type: diagram-concept-sub
+  shape: concept-sub
+  label: Sub Concept
+  category: Diagram/Concept Map
+  description: Sub Concept shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#0284c7'
+- type: diagram-concept-attribute
+  shape: concept-attribute
+  label: Attribute
+  category: Diagram/Concept Map
+  description: Attribute shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#0284c7'
+- type: diagram-concept-relation
+  shape: concept-relation
+  label: Relation
+  category: Diagram/Concept Map
+  description: Relation shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#0284c7'
+- type: diagram-concept-group
+  shape: concept-group
+  label: Concept Group
+  category: Diagram/Concept Map
+  description: Concept Group shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#0284c7'
+- type: diagram-concept-cloud
+  shape: concept-cloud
+  label: Concept Cloud
+  category: Diagram/Concept Map
+  description: Concept Cloud shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#0284c7'
+- type: diagram-server
+  shape: server
+  label: Server
+  category: Diagram/Architecture
+  description: Server shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#8b5cf6'
+- type: diagram-database
+  shape: database
+  label: Database
+  category: Diagram/Architecture
+  description: Database shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#8b5cf6'
+- type: diagram-cloud
+  shape: cloud
+  label: Cloud Provider
+  category: Diagram/Architecture
+  description: Cloud Provider shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#8b5cf6'
+- type: diagram-firewall
+  shape: firewall
+  label: Firewall
+  category: Diagram/Architecture
+  description: Firewall shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#8b5cf6'
+- type: diagram-users
+  shape: users
+  label: Users
+  category: Diagram/Architecture
+  description: Users shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#8b5cf6'
+- type: diagram-tablet
+  shape: tablet
+  label: Tablet
+  category: Diagram/Architecture
+  description: Tablet shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#8b5cf6'
+- type: diagram-mobile
+  shape: mobile
+  label: Mobile
+  category: Diagram/Architecture
+  description: Mobile shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#8b5cf6'
+- type: diagram-window
+  shape: window
+  label: Browser Window
+  category: Diagram/UI Elements
+  description: Browser Window shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Browser Window
+    width: 400
+    height: 300
+  color: '#475569'
+- type: diagram-ui-header
+  shape: ui-header
+  label: Header Bar
+  category: Diagram/UI Elements
+  description: Header Bar shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Dashboard Header
+    width: 400
+    height: 80
+  color: '#475569'
+- type: diagram-ui-sidebar
+  shape: ui-sidebar
+  label: Sidebar
+  category: Diagram/UI Elements
+  description: Sidebar shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Sidebar
+    width: 180
+    height: 400
+  color: '#475569'
+- type: diagram-ui-button
+  shape: ui-button
+  label: Button
+  category: Diagram/UI Elements
+  description: Button shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Confirm
+    width: 140
+    height: 50
+  color: '#475569'
+- type: diagram-ui-checkbox
+  shape: ui-checkbox
+  label: Checkbox
+  category: Diagram/UI Elements
+  description: Checkbox shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Checkbox
+    width: 120
+    height: 40
+  color: '#475569'
+- type: diagram-ui-input
+  shape: ui-input
+  label: Input Field
+  category: Diagram/UI Elements
+  description: Input Field shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Input Field
+    width: 220
+    height: 50
+  color: '#475569'
+- type: diagram-list-container
+  shape: list-container
+  label: List Container
+  category: Diagram/UI Elements
+  description: List Container shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: User List
+    width: 260
+    height: 340
+  color: '#475569'
+- type: diagram-table-grid
+  shape: table-grid
+  label: Table / Grid
+  category: Diagram/UI Elements
+  description: Table / Grid shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Data Table
+    width: 420
+    height: 300
+  color: '#475569'
+- type: diagram-ui-search
+  shape: ui-search
+  label: Search Bar
+  category: Diagram/UI Elements
+  description: Search Bar shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Search...
+    width: 220
+    height: 50
+  color: '#475569'
+- type: diagram-ui-card
+  shape: ui-card
+  label: Card / Panel
+  category: Diagram/UI Elements
+  description: Card / Panel shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Analytics Card
+    width: 340
+    height: 200
+  color: '#475569'
+- type: diagram-stickman
+  shape: stickman
+  label: Person
+  category: Diagram/Symbols
+  description: Person shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#334155'
+- type: diagram-moon
+  shape: moon
+  label: Moon
+  category: Diagram/Basic Shapes
+  description: Moon shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-semicircle
+  shape: semicircle
+  label: Semicircle
+  category: Diagram/Basic Shapes
+  description: Semicircle shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-heart
+  shape: heart
+  label: Heart
+  category: Diagram/Basic Shapes
+  description: Heart shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-lightning
+  shape: lightning
+  label: Lightning
+  category: Diagram/Basic Shapes
+  description: Lightning shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-gear
+  shape: gear
+  label: Gear
+  category: Diagram/Basic Shapes
+  description: Gear shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-brace-left
+  shape: brace-left
+  label: Left Brace
+  category: Diagram/Symbols
+  description: Left Brace shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#334155'
+- type: diagram-brace-right
+  shape: brace-right
+  label: Right Brace
+  category: Diagram/Symbols
+  description: Right Brace shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#334155'
+- type: diagram-heading
+  shape: heading
+  label: Heading
+  category: Diagram/Basic Shapes
+  description: Heading shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-paragraph
+  shape: paragraph
+  label: Paragraph
+  category: Diagram/Basic Shapes
+  description: Paragraph shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-credit-card
+  shape: credit-card
+  label: Credit Card
+  category: Diagram/UI Elements
+  description: High-fidelity Credit Card Widget
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Account Balance
+    width: 340
+    height: 210
+  color: '#475569'
+- type: diagram-analytics-chart
+  shape: analytics-chart
+  label: Analytics Chart
+  category: Diagram/UI Elements
+  description: Data Analytics Chart
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Performance Chart
+    width: 400
+    height: 240
+  color: '#475569'
+- type: diagram-progress-donut
+  shape: progress-donut
+  label: Progress Donut
+  category: Diagram/UI Elements
+  description: Circular Progress Chart
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Tasks Completed
+    width: 240
+    height: 240
+  color: '#475569'
+- type: diagram-meeting-card
+  shape: meeting-card
+  label: Meeting Card
+  category: Diagram/UI Elements
+  description: Scheduled Meeting details
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Daily Standup
+    width: 280
+    height: 240
+  color: '#475569'
+- type: diagram-team-members
+  shape: team-members
+  label: Team Members
+  category: Diagram/UI Elements
+  description: Team list with avatars
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: Project Team
+    width: 260
+    height: 340
+  color: '#475569'
+- type: diagram-annual-profit
+  shape: annual-profit
+  label: Annual Profit
+  category: Diagram/UI Elements
+  description: Annual profit circular chart
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+    width: 240
+    height: 240
+  color: '#475569'
+- type: diagram-note
+  shape: sticky-default
+  label: Sticky Note
+  category: Diagram/Basic
+  description: A lightweight canvas note for annotations and reminders
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+    color: '#fef3c7'
+  color: '#fbbf24'
+- type: diagram-user
+  shape: stickman
+  label: User
+  category: Diagram/People
+  description: A user or person diagram shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#10b981'
+- type: diagram-table
+  shape: table-grid
+  label: Data Table
+  category: Diagram/Data
+  description: A data table or grid diagram shape
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#6366f1'
+- type: diagram-text
+  shape: text-only
+  label: Text Label
+  category: Diagram/Basic
+  description: A plain text label for canvas annotations
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#64748b'
+- type: diagram-sticky
+  shape: sticky-yellow
+  label: Post-it
+  category: Diagram/Basic
+  description: A classic yellow sticky note for informal annotations
+  inputs: []
+  outputs: []
+  defaultProperties:
+    text: ''
+  color: '#f59e0b'
+filters:
+- type: svg.feGaussianBlur
+  label: Gaussian Blur
+  category: Filter/Blur
+  description: Blurs the input image
+  inputs:
+  - id: in
+    label: Source
+    type: image
+  outputs:
+  - id: result
+    label: Output
+    type: image
+  propertyDefinitions:
+  - name: stdDeviation
+    label: Std Deviation
+    type: number
+    defaultValue: 5
+    min: 0
+    max: 100
+  color: '#3b82f6'
+- type: svg.feOffset
+  label: Offset
+  category: Filter/Shadow
+  description: Offsets the input image
+  inputs:
+  - id: in
+    label: Source
+    type: image
+  outputs:
+  - id: result
+    label: Output
+    type: image
+  propertyDefinitions:
+  - name: dx
+    label: DX
+    type: number
+    defaultValue: 5
+  - name: dy
+    label: DY
+    type: number
+    defaultValue: 5
+  color: '#6366f1'
+- type: svg.feColorMatrix
+  label: Color Matrix
+  category: Filter/Color
+  description: Modifies colors via matrix
+  inputs:
+  - id: in
+    label: Source
+    type: image
+  outputs:
+  - id: result
+    label: Output
+    type: image
+  propertyDefinitions:
+  - name: type
+    label: Type
+    type: select
+    options:
+    - matrix
+    - saturate
+    - hueRotate
+    - luminanceToAlpha
+    defaultValue: matrix
+  - name: values
+    label: Values
+    type: text
+    defaultValue: 1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0
+  color: '#ec4899'
+- type: svg.feComposite
+  label: Composite
+  category: Filter/Combine
+  description: Composites two inputs
+  inputs:
+  - id: in
+    label: Source 1
+    type: image
+  - id: in2
+    label: Source 2
+    type: image
+  outputs:
+  - id: result
+    label: Output
+    type: image
+  propertyDefinitions:
+  - name: operator
+    label: Operator
+    type: select
+    options:
+    - over
+    - in
+    - out
+    - atop
+    - xor
+    - arithmetic
+    defaultValue: over
+  color: '#10b981'
+- type: svg.feTurbulence
+  label: Turbulence
+  category: Filter/Texture
+  description: Generates noise texture
+  inputs: []
+  outputs:
+  - id: result
+    label: Output
+    type: image
+  propertyDefinitions:
+  - name: baseFrequency
+    label: Frequency
+    type: number
+    defaultValue: 0.05
+    step: 0.01
+  - name: numOctaves
+    label: Octaves
+    type: number
+    defaultValue: 1
+    min: 1
+    max: 10
+  - name: type
+    label: Type
+    type: select
+    options:
+    - fractalNoise
+    - turbulence
+    defaultValue: turbulence
+  color: '#f59e0b'
+- type: svg.feDisplacementMap
+  label: Displacement Map
+  category: Filter/Distort
+  description: Distorts input based on map
+  inputs:
+  - id: in
+    label: Source
+    type: image
+  - id: in2
+    label: Map
+    type: image
+  outputs:
+  - id: result
+    label: Output
+    type: image
+  propertyDefinitions:
+  - name: scale
+    label: Scale
+    type: number
+    defaultValue: 10
+  - name: xChannelSelector
+    label: X Channel
+    type: select
+    options:
+    - R
+    - G
+    - B
+    - A
+    defaultValue: R
+  - name: yChannelSelector
+    label: Y Channel
+    type: select
+    options:
+    - R
+    - G
+    - B
+    - A
+    defaultValue: G
+  color: '#8b5cf6'

@@ -391,6 +391,8 @@ async def get_entity(entity_type: str, entity_id: str):
             data = common_memory.get_workflow_definition(entity_id)
         elif entity_type == "prompt":
             data = common_memory.get_prompt_definition(entity_id)
+        elif entity_type == "node_definition":
+            data = common_memory.get_node_definition(entity_id)
 
         if not data:
             raise HTTPException(
@@ -879,7 +881,7 @@ async def list_entities(
 @router.get("/definitions", response_model=APIResponse[List[Dict[str, Any]]])
 async def get_node_definitions():
     """
-    Returns a flat list of all registerable nodes (tools, agents, skills)
+    Returns a flat list of all registerable nodes (tools, agents, skills, UI-only)
     formatted for the Workflow Canvas NodeRegistry.
     """
     try:
@@ -903,17 +905,16 @@ async def get_node_definitions():
                         "defaultProperties": tool.get("default_properties", {}),
                         "propertyDefinitions": tool.get("property_definitions", []),
                         "version": tool.get("version", "1.0.0"),
-                        "color": "#10b981",  # Default tool color
+                        "color": "#10b981",
                     }
 
-        # 2. Sync with Node Definitions from DB (Rich Metadata & UI)
+        # 2. Node Definitions from DB (includes synced UI-only nodes)
         db_nodes = common_memory.list_node_definitions()
         for node in db_nodes:
             n_id = node.get("id")
             ui = node.get("ui") or {}
             props = node.get("properties") or {}
 
-            # Convert properties dict to propertyDefinitions array if needed
             property_definitions = []
             if isinstance(props, dict):
                 for p_id, p_val in props.items():
@@ -933,16 +934,14 @@ async def get_node_definitions():
                 "outputs": node.get("outputs", []),
                 "propertyDefinitions": property_definitions,
                 "version": node.get("version", "1.0.0"),
-                # Rich UI fields
                 "color": ui.get("color") or "#10b981",
                 "icon": ui.get("icon"),
                 "size": ui.get("size"),
+                "shape": ui.get("shape"),
                 "tags": node.get("tags", []),
             }
 
-            # Merge or append
             if n_id in tool_map:
-                # Override with rich DB metadata
                 tool_map[n_id].update(
                     {k: v for k, v in node_data.items() if v is not None}
                 )
@@ -951,7 +950,15 @@ async def get_node_definitions():
 
         definitions.extend(list(tool_map.values()))
 
-        # 3. Agents
+        # 3. UI-only nodes not yet in DB (diagrams, data pipeline, advanced UI, filters)
+        from common_lib.templates.node_definitions.loader import get_ui_node_definitions
+
+        db_types = {n.get("id") for n in db_nodes}
+        for ui_node in get_ui_node_definitions():
+            if ui_node.get("type") not in db_types:
+                definitions.append(ui_node)
+
+        # 4. Agents
         db_agents = common_memory.list_agent_definitions()
         for agent in db_agents:
             definitions.append(
@@ -967,11 +974,11 @@ async def get_node_definitions():
                         {"id": "output", "label": "Response", "type": "string"}
                     ],
                     "version": agent.get("version", "1.0.0"),
-                    "color": "#3b82f6",  # Default agent color
+                    "color": "#3b82f6",
                 }
             )
 
-        # 4. Skills
+        # 5. Skills
         db_skills = common_memory.list_skill_definitions()
         for skill in db_skills:
             definitions.append(
@@ -983,7 +990,7 @@ async def get_node_definitions():
                     "inputs": skill.get("inputs", []),
                     "outputs": skill.get("outputs", []),
                     "version": skill.get("version", "1.0.0"),
-                    "color": "#f59e0b",  # Default skill color
+                    "color": "#f59e0b",
                 }
             )
 
@@ -993,6 +1000,51 @@ async def get_node_definitions():
     except Exception as e:
         logger.error(f"Failed to fetch node definitions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/node_definition", response_model=APIResponse[Dict[str, Any]])
+async def create_node_definition(definition: Dict[str, Any]):
+    """
+    Create a new node definition.
+    Accepts JSON body directly (no Form params).
+    """
+    try:
+        entity_id = definition.get("id")
+        if not entity_id:
+            raise HTTPException(
+                status_code=400, detail="Node definition ID is required"
+            )
+
+        category = definition.get("category")
+        tags = definition.get("tags")
+        metadata = definition.get("metadata") or definition.get("metadata_json") or {}
+        description = definition.get("description")
+
+        result = common_memory.save_node_definition(
+            entity_id=entity_id,
+            definition=definition,
+            name=definition.get("name", entity_id),
+            category=category,
+            tags=tags,
+            description=description,
+            metadata_json=metadata,
+            ui=definition.get("ui"),
+            properties=definition.get("properties"),
+        )
+        if result:
+            return APIResponse(
+                data=result,
+                message=f"Node definition '{entity_id}' created successfully",
+            )
+        else:
+            raise HTTPException(
+                status_code=400, detail="Failed to create node definition"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create node definition: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/port-types")
@@ -1450,6 +1502,20 @@ async def create_entity(
                 documentation_md=definition.get("documentation_md", ""),
                 is_global=definition.get("is_global", True),
             )
+        elif entity_type == "node_definition":
+            result = common_memory.save_node_definition(
+                entity_id=e_id,
+                definition=definition,
+                name=definition.get("name", e_id),
+                category=category,
+                tags=tags,
+                description=description,
+                metadata_json=metadata,
+            )
+            if not result:
+                raise HTTPException(
+                    status_code=400, detail="Failed to create node definition"
+                )
         else:
             raise HTTPException(
                 status_code=400, detail=f"Unsupported entity type: {entity_type}"
@@ -1550,6 +1616,20 @@ async def update_entity(entity_type: str, entity_id: str, definition: Dict[str, 
                 tags=tags,
                 metadata=metadata,
             )
+        elif entity_type == "node_definition":
+            result = common_memory.save_node_definition(
+                entity_id=entity_id,
+                definition=definition,
+                name=definition.get("name", entity_id),
+                category=category,
+                tags=tags,
+                description=description,
+                metadata_json=metadata,
+            )
+            if not result:
+                raise HTTPException(
+                    status_code=400, detail="Failed to update node definition"
+                )
         else:
             raise HTTPException(
                 status_code=400, detail=f"Unsupported entity type: {entity_type}"
@@ -1593,6 +1673,13 @@ async def delete_entity(entity_type: str, entity_id: str):
                     res = session.execute(stmt)
                     session.commit()
                     result = res.rowcount > 0
+        elif entity_type == "node_definition":
+            result = common_memory.delete_node_definition(entity_id)
+            if not result:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Node definition '{entity_id}' not found",
+                )
         else:
             raise HTTPException(
                 status_code=400, detail=f"Unsupported entity type: {entity_type}"
@@ -1601,6 +1688,8 @@ async def delete_entity(entity_type: str, entity_id: str):
         return APIResponse(
             data=result, message=f"{entity_type.title()} deleted successfully"
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to delete {entity_type} {entity_id}: {e}")
         raise HTTPException(status_code=400, detail=str(e))

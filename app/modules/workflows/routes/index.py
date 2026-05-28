@@ -1,12 +1,15 @@
 import asyncio
 import json
 import logging
+import os
 import traceback
 import sys
 import uuid
-from fastapi import APIRouter
+from pathlib import Path
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel
 
 # Configure console logging
 handler = logging.StreamHandler(sys.stdout)
@@ -177,16 +180,26 @@ class QueueEventBackend:
             # Extract specifics to display in logs (e.g. tool name, state ID)
             state_id = data.get("state_id") if isinstance(data, dict) else ""
             tool_id = data.get("tool_id") if isinstance(data, dict) else ""
-            metadata = data.get("metadata") if (isinstance(data, dict) and isinstance(data.get("metadata"), dict)) else {}
-            tool_name = tool_id or metadata.get("tool_name") or metadata.get("tool_id") or ""
+            metadata = (
+                data.get("metadata")
+                if (isinstance(data, dict) and isinstance(data.get("metadata"), dict))
+                else {}
+            )
+            tool_name = (
+                tool_id or metadata.get("tool_name") or metadata.get("tool_id") or ""
+            )
 
             # Enhanced Tracing: Log failures with full data
             if event_name == "tool.execution.failed":
-                logger.error(f"[QueueEventBackend] TOOL FAILURE (State: {state_id}, Tool: {tool_name}): {data}")
+                logger.error(
+                    f"[QueueEventBackend] TOOL FAILURE (State: {state_id}, Tool: {tool_name}): {data}"
+                )
             elif event_name == "workflow.failed":
                 logger.error(f"[QueueEventBackend] WORKFLOW FAILURE: {data}")
             elif event_name in ["tool.execution.started", "tool.execution.completed"]:
-                print(f"[QueueEventBackend] Emitting: {event_name} (State: {state_id}, Tool: {tool_name})")
+                print(
+                    f"[QueueEventBackend] Emitting: {event_name} (State: {state_id}, Tool: {tool_name})"
+                )
             elif event_name in ["state.entered", "state.exited"]:
                 print(f"[QueueEventBackend] Emitting: {event_name} (State: {state_id})")
             elif event_name == "state.progress":
@@ -194,9 +207,13 @@ class QueueEventBackend:
                 desc = data.get("state_description", "")
                 try:
                     progress_val = float(progress)
-                    print(f"[QueueEventBackend] Emitting: {event_name} (State: {state_id}, Progress: {progress_val:.1%}, {desc})")
+                    print(
+                        f"[QueueEventBackend] Emitting: {event_name} (State: {state_id}, Progress: {progress_val:.1%}, {desc})"
+                    )
                 except Exception:
-                    print(f"[QueueEventBackend] Emitting: {event_name} (State: {state_id}, Progress: {progress}, {desc})")
+                    print(
+                        f"[QueueEventBackend] Emitting: {event_name} (State: {state_id}, Progress: {progress}, {desc})"
+                    )
             else:
                 print(f"[QueueEventBackend] Emitting: {event_name}")
 
@@ -214,9 +231,189 @@ class QueueEventBackend:
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 
+# ---------------------------------------------------------------------------
+# In-memory CRUD store
+# ---------------------------------------------------------------------------
+from common_lib.modules.workflows.standard.registry.workflow_registry import (
+    get_workflow_registry,
+)
+
+_workflow_crud_store: Dict[str, Dict[str, Any]] = {}
+
+
+class WorkflowCreateRequest(BaseModel):
+    name: str
+    description: str = ""
+    category: str = "Vision"
+    engine: str = "vision"
+    tags: List[str] = []
+    author: str = "User"
+    status: str = "DRAFT"
+    parameters: Dict[str, Any] = {}
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+
+
+class WorkflowUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    engine: Optional[str] = None
+    tags: Optional[List[str]] = None
+    author: Optional[str] = None
+    status: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+    nodes: Optional[List[Dict[str, Any]]] = None
+    edges: Optional[List[Dict[str, Any]]] = None
+
+
 @router.get("/")
-def list_workflows():
-    return {"data": [], "message": "No workflows"}
+def list_workflows(
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    limit: int = 200,
+    offset: int = 0,
+):
+    try:
+        registry = get_workflow_registry()
+        registry_workflows = registry.list_workflows()
+    except Exception:
+        registry_workflows = []
+
+    seen_ids = {wf["id"] for wf in registry_workflows}
+    for wf in _workflow_crud_store.values():
+        if wf["id"] not in seen_ids:
+            registry_workflows.append(
+                {
+                    "id": wf["id"],
+                    "name": wf["name"],
+                    "description": wf.get("description", ""),
+                    "category": wf.get("category", "workflow"),
+                    "node_count": len(wf.get("nodes", [])),
+                    "executable": True,
+                    "author": wf.get("author", "User"),
+                    "status": wf.get("status", "DRAFT"),
+                }
+            )
+            seen_ids.add(wf["id"])
+
+    if search:
+        s = search.lower()
+        registry_workflows = [
+            wf
+            for wf in registry_workflows
+            if s in wf["name"].lower() or s in wf.get("description", "").lower()
+        ]
+    if category:
+        registry_workflows = [
+            wf
+            for wf in registry_workflows
+            if wf.get("category", "").lower() == category.lower()
+        ]
+
+    return {
+        "data": registry_workflows[offset : offset + limit],
+        "total": len(registry_workflows),
+    }
+
+
+@router.post("/", status_code=201)
+def create_workflow(req: WorkflowCreateRequest):
+    wf_id = (
+        req.name.lower().replace(" ", "_").replace("-", "_")
+        + "_"
+        + str(uuid.uuid4())[:8]
+    )
+    workflow = {
+        "id": wf_id,
+        "name": req.name,
+        "description": req.description,
+        "category": req.category,
+        "engine": req.engine,
+        "tags": req.tags,
+        "author": req.author,
+        "status": req.status,
+        "parameters": req.parameters,
+        "nodes": req.nodes,
+        "edges": req.edges,
+    }
+    _workflow_crud_store[wf_id] = workflow
+    return {"data": workflow, "message": "Workflow created"}
+
+
+@router.get("/{workflow_id}")
+def get_workflow(workflow_id: str):
+    crud = _workflow_crud_store.get(workflow_id)
+    if crud:
+        return {"data": crud}
+
+    try:
+        registry = get_workflow_registry()
+        wf = registry.get_workflow(workflow_id)
+        if wf:
+            return {"data": wf}
+    except Exception:
+        pass
+
+    raise HTTPException(status_code=404, detail=f"Workflow not found: {workflow_id}")
+
+
+@router.put("/{workflow_id}")
+def update_workflow(workflow_id: str, req: WorkflowUpdateRequest):
+    stored = _workflow_crud_store.get(workflow_id)
+    if not stored:
+        raise HTTPException(
+            status_code=404, detail=f"Workflow not found: {workflow_id}"
+        )
+
+    for field in (
+        "name",
+        "description",
+        "category",
+        "engine",
+        "tags",
+        "author",
+        "status",
+        "parameters",
+        "nodes",
+        "edges",
+    ):
+        val = getattr(req, field, None)
+        if val is not None:
+            stored[field] = val
+
+    return {"data": stored, "message": "Workflow updated"}
+
+
+@router.delete("/{workflow_id}", status_code=204)
+def delete_workflow(workflow_id: str):
+    if workflow_id in _workflow_crud_store:
+        del _workflow_crud_store[workflow_id]
+        return
+    raise HTTPException(status_code=404, detail=f"Workflow not found: {workflow_id}")
+
+
+@router.post("/{workflow_id}/run")
+async def run_workflow(workflow_id: str, inputs: Dict[str, Any] = {}):
+    workflow = _workflow_crud_store.get(workflow_id)
+    if not workflow:
+        try:
+            registry = get_workflow_registry()
+            workflow = registry.get_workflow(workflow_id)
+        except Exception:
+            workflow = None
+
+    if not workflow:
+        raise HTTPException(
+            status_code=404, detail=f"Workflow not found: {workflow_id}"
+        )
+
+    nodes = workflow.get("nodes", [])
+    edges = workflow.get("edges", [])
+    if not nodes:
+        raise HTTPException(status_code=400, detail="Workflow has no nodes")
+
+    return await run_workflow_stream(nodes=nodes, edges=edges, inputs=inputs)
 
 
 class TemplateGenerationRequest(BaseModel):
@@ -230,16 +427,17 @@ class TemplateGenerationRequest(BaseModel):
 async def generate_template(request: TemplateGenerationRequest):
     """Generate workflow template from natural language using backend AI service."""
     import time
+
     start_time = time.time()
-    
+
     prompt = request.prompt
     category = request.category
-    
+
     # Process natural language request and build nodes/edges
     keywords = prompt.lower()
     nodes = []
     edges = []
-    
+
     # Dynamic template generation matching user prompts
     if "load" in keywords or "image" in keywords or "vision" in keywords:
         nodes = [
@@ -247,9 +445,7 @@ async def generate_template(request: TemplateGenerationRequest):
                 "id": "loader-1",
                 "type": "vision.load_checkpoint",
                 "toolId": "vision.load_checkpoint",
-                "properties": {
-                    "ckpt_name": "v1-5-pruned-emaonly.safetensors"
-                },
+                "properties": {"ckpt_name": "v1-5-pruned-emaonly.safetensors"},
                 "initialX": 100,
                 "initialY": 200,
             },
@@ -280,36 +476,34 @@ async def generate_template(request: TemplateGenerationRequest):
                 "id": "save-1",
                 "type": "vision.save_image",
                 "toolId": "vision.save_image",
-                "properties": {
-                    "filename_prefix": "AI_Generated"
-                },
+                "properties": {"filename_prefix": "AI_Generated"},
                 "initialX": 1000,
                 "initialY": 200,
-            }
+            },
         ]
-        
+
         edges = [
             {
                 "id": "edge-1",
                 "from": "loader-1",
                 "fromPort": "model",
                 "to": "sampler-1",
-                "toPort": "model"
+                "toPort": "model",
             },
             {
                 "id": "edge-2",
                 "from": "sampler-1",
                 "fromPort": "latent",
                 "to": "decoder-1",
-                "toPort": "latent"
+                "toPort": "latent",
             },
             {
                 "id": "edge-3",
                 "from": "decoder-1",
                 "fromPort": "image",
                 "to": "save-1",
-                "toPort": "image"
-            }
+                "toPort": "image",
+            },
         ]
     elif "api" in keywords or "webhook" in keywords or "fetch" in keywords:
         nodes = [
@@ -317,10 +511,7 @@ async def generate_template(request: TemplateGenerationRequest):
                 "id": "trigger-1",
                 "type": "trigger.webhook",
                 "toolId": "trigger.webhook",
-                "properties": {
-                    "path": "/api/v1/orders",
-                    "method": "POST"
-                },
+                "properties": {"path": "/api/v1/orders", "method": "POST"},
                 "initialX": 100,
                 "initialY": 200,
             },
@@ -331,7 +522,7 @@ async def generate_template(request: TemplateGenerationRequest):
                 "properties": {
                     "url": "https://api.external.service/process",
                     "method": "POST",
-                    "body": "{{nodes.trigger-1.body}}"
+                    "body": "{{nodes.trigger-1.body}}",
                 },
                 "initialX": 400,
                 "initialY": 200,
@@ -345,24 +536,24 @@ async def generate_template(request: TemplateGenerationRequest):
                 },
                 "initialX": 700,
                 "initialY": 200,
-            }
+            },
         ]
-        
+
         edges = [
             {
                 "id": "edge-1",
                 "from": "trigger-1",
                 "fromPort": "output",
                 "to": "http-1",
-                "toPort": "input"
+                "toPort": "input",
             },
             {
                 "id": "edge-2",
                 "from": "http-1",
                 "fromPort": "output",
                 "to": "log-1",
-                "toPort": "input"
-            }
+                "toPort": "input",
+            },
         ]
     else:
         nodes = [
@@ -381,12 +572,10 @@ async def generate_template(request: TemplateGenerationRequest):
                 "id": "summary-1",
                 "type": "agent.summarize",
                 "toolId": "agent.summarize",
-                "properties": {
-                    "max_length": 150
-                },
+                "properties": {"max_length": 150},
                 "initialX": 400,
                 "initialY": 200,
-            }
+            },
         ]
         edges = [
             {
@@ -394,12 +583,12 @@ async def generate_template(request: TemplateGenerationRequest):
                 "from": "agent-1",
                 "fromPort": "output",
                 "to": "summary-1",
-                "toPort": "input"
+                "toPort": "input",
             }
         ]
-        
+
     processing_time = time.time() - start_time
-    
+
     template = {
         "id": f"gen-{int(start_time * 1000)}",
         "name": f"AI: {prompt[:30]}",
@@ -417,19 +606,18 @@ async def generate_template(request: TemplateGenerationRequest):
             "aiGenerated": True,
             "prompt": prompt,
             "confidence": 0.92,
-        }
+        },
     }
-    
+
     return {
         "success": True,
         "template": template,
         "suggestions": [
             "Add a validation node to check incoming schema",
-            "Setup notification alerts on error states"
+            "Setup notification alerts on error states",
         ],
-        "processingTime": round(processing_time, 2)
+        "processingTime": round(processing_time, 2),
     }
-
 
 
 @router.post("/run-stream")
@@ -728,7 +916,9 @@ async def run_workflow_stream(
                     data = await asyncio.wait_for(queue.get(), timeout=30.0)
                     yield f"data: {json.dumps(data)}\n\n"
 
-                    event_type = data.get("event_type") if isinstance(data, dict) else None
+                    event_type = (
+                        data.get("event_type") if isinstance(data, dict) else None
+                    )
                     if event_type in ["workflow.completed", "workflow.failed"]:
                         logger.info(
                             f"[Workflow] Stream closing on terminal event: {event_type}"

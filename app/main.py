@@ -169,6 +169,17 @@ async def lifespan(app: FastAPI):
     else:
         print("Startup: Skipping registry sync (SKIP_REGISTRY_SYNC=True)")
 
+    # --- SEED: UI-only node definitions into DB ---
+    if not settings.SKIP_REGISTRY_SYNC:
+        try:
+            from common_lib.templates.node_definitions.loader import seed_ui_nodes_to_db
+
+            seeded = seed_ui_nodes_to_db(common_memory)
+            if seeded:
+                print(f"Startup: Seeded {seeded} UI node definitions to database")
+        except Exception as e:
+            print(f"Warning: UI node seed failed: {e}")
+
     # --- RESUME: Pending model downloads ---
     try:
         import json
@@ -632,6 +643,19 @@ def create_app() -> FastAPI:
         wildcards_router,
         prefix=f"{settings.API_V1_STR}/vision",
         tags=["Wildcards"],
+        dependencies=global_deps,
+    )
+
+    # Prompts Import API (PromptHero scraping + saving)
+    from app.modules.prompts.routes import router as prompts_router
+
+    print(
+        f"Startup: Including Prompts router with prefix: {settings.API_V1_STR}/prompts"
+    )
+    app.include_router(
+        prompts_router,
+        prefix=f"{settings.API_V1_STR}/prompts",
+        tags=["Prompts"],
         dependencies=global_deps,
     )
 

@@ -37,6 +37,7 @@ EXCLUDED_PREFIXES: Set[str] = {
     "/docs",
     "/redoc",
     "/openapi.json",
+    "/api/v1/entities/registry",
 }
 CACHEABLE_METHODS: Set[str] = {"GET", "HEAD"}
 RESPONSE_CACHE_ENABLED: bool = True
