@@ -73,6 +73,7 @@ from app.modules.wildcards.routes import router as wildcards_router
 from app.modules.sam3.routes import router as sam3_router
 from app.modules.keys_management import router as keys_router
 from app.modules.proxy_routing import router as proxy_router
+from app.modules.collage.routes import router as collage_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -620,6 +621,15 @@ def create_app() -> FastAPI:
         vision_router,
         prefix=f"{settings.API_V1_STR}/vision",
         tags=["Vision"],
+        dependencies=global_deps,
+    )
+
+    # New Collage & Sticker API
+    print(f"Startup: Including Collage router with prefix: {settings.API_V1_STR}/collage")
+    app.include_router(
+        collage_router,
+        prefix=f"{settings.API_V1_STR}/collage",
+        tags=["Collage & Sticker"],
         dependencies=global_deps,
     )
 

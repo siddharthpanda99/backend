@@ -9,7 +9,7 @@ import logging
 import os
 import yaml
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 
 from common_lib.paths import get_repo_root
 
@@ -20,20 +20,19 @@ logger = logging.getLogger(__name__)
 
 def _scan_templates(entity_type: str) -> List[Dict[str, Any]]:
     """Scan templates directory for marketplace entities."""
-    repo_root = get_repo_root()
-    templates_dir = os.path.join(
-        repo_root, "Python Libs", "common_lib", "templates", "marketplace", entity_type
-    )
+    from common_lib.paths import TEMPLATES_ROOT
+    templates_dir = os.path.join(TEMPLATES_ROOT, "marketplace", entity_type)
     items = []
 
     if not os.path.exists(templates_dir):
+        logger.warning(f"Marketplace directory does not exist: {templates_dir}")
         return items
 
     for filename in os.listdir(templates_dir):
         if filename.endswith(".yaml") or filename.endswith(".yml"):
             filepath = os.path.join(templates_dir, filename)
             try:
-                with open(filepath, "r") as f:
+                with open(filepath, "r", encoding="utf-8") as f:
                     data = yaml.safe_load(f)
                     if data:
                         items.append(data)
@@ -41,6 +40,7 @@ def _scan_templates(entity_type: str) -> List[Dict[str, Any]]:
                 logger.error(f"Failed to load {filepath}: {e}")
 
     return items
+
 
 
 # =============================================================================
@@ -429,6 +429,181 @@ async def list_workflows():
         return {"status": "error", "items": [], "count": 0}
 
 
+@router.post("/upload")
+async def upload_template(file: UploadFile = File(...)):
+    """Upload a new marketplace entity YAML template."""
+    if not (file.filename.endswith(".yaml") or file.filename.endswith(".yml")):
+        raise HTTPException(
+            status_code=400, detail="Invalid file type. Only .yaml or .yml files are accepted."
+        )
+
+    try:
+        content = await file.read()
+        try:
+            data = yaml.safe_load(content.decode("utf-8"))
+        except yaml.YAMLError as ye:
+            raise HTTPException(
+                status_code=400, detail=f"Malformed YAML content: {ye}"
+            )
+
+        if not data or not isinstance(data, dict):
+            raise HTTPException(
+                status_code=400, detail="YAML content must represent a key-value object."
+            )
+
+        # Validate mandatory keys
+        required_keys = ["id", "name", "type"]
+        missing = [k for k in required_keys if k not in data]
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing mandatory fields: {', '.join(missing)}"
+            )
+
+        entity_type = data["type"].lower()
+        if entity_type in ["skill", "skills"]:
+            normalized_type = "skills"
+        elif entity_type in ["agent", "agents"]:
+            normalized_type = "agents"
+        elif entity_type in ["workflow", "workflows"]:
+            normalized_type = "workflows"
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid entity type. Must be 'skill', 'agent', or 'workflow'."
+            )
+
+        from common_lib.paths import TEMPLATES_ROOT
+        target_dir = os.path.join(TEMPLATES_ROOT, "marketplace", normalized_type)
+        os.makedirs(target_dir, exist_ok=True)
+
+        clean_id = "".join(c for c in data["id"] if c.isalnum() or c in ("_", "-")).lower()
+        if not clean_id:
+            raise HTTPException(
+                status_code=400, detail="Invalid entity ID."
+            )
+
+        filename = f"{clean_id}.yaml"
+        target_path = os.path.join(target_dir, filename)
+
+        # Normalize type inside the saved data
+        data["type"] = entity_type[:-1] if entity_type.endswith("s") else entity_type
+
+        # Ensure sensible defaults for marketplace list rendering
+        if "rating" not in data:
+            data["rating"] = 5.0
+        if "downloads" not in data:
+            data["downloads"] = 0
+        if "category" not in data:
+            data["category"] = "utility"
+        if "tags" not in data:
+            data["tags"] = []
+
+        with open(target_path, "w", encoding="utf-8") as f:
+            yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+
+        logger.info(f"Successfully uploaded marketplace {normalized_type[:-1]}: {clean_id}")
+        return {
+            "status": "ok",
+            "message": f"Successfully uploaded and registered {data['name']}",
+            "item": data
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to upload template: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to upload template: {str(e)}"
+        )
+
+
+@router.post("/install")
+async def install_marketplace_item(request: dict):
+    """Install a marketplace item by copying it to the active templates and running a DB sync."""
+    item_id = request.get("id")
+    item_type = request.get("type")
+
+    if not item_id or not item_type:
+        raise HTTPException(
+            status_code=400, detail="Missing mandatory fields: 'id' and 'type'."
+        )
+
+    entity_type = item_type.lower()
+    if entity_type in ["skill", "skills"]:
+        normalized_type = "skills"
+    elif entity_type in ["agent", "agents"]:
+        normalized_type = "agents"
+    elif entity_type in ["workflow", "workflows"]:
+        normalized_type = "workflows"
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid entity type. Must be 'skill', 'agent', or 'workflow'."
+        )
+
+    from common_lib.paths import TEMPLATES_ROOT
+    # The ID of the template is typically the clean YAML filename (excluding standard prefixes if mapped, but matching clean_id in scan)
+    clean_id = "".join(c for c in item_id if c.isalnum() or c in ("_", "-")).lower()
+    source_path = os.path.join(TEMPLATES_ROOT, "marketplace", normalized_type, f"{clean_id}.yaml")
+    if not os.path.exists(source_path):
+        # Fallback to direct ID match if prefix was already included
+        source_path = os.path.join(TEMPLATES_ROOT, "marketplace", normalized_type, f"{clean_id.replace('skill_', '').replace('agent_', '').replace('workflow_', '')}.yaml")
+        if not os.path.exists(source_path):
+            raise HTTPException(
+                status_code=404, detail=f"Marketplace item template file not found: {clean_id}.yaml"
+            )
+
+    target_dir = os.path.join(TEMPLATES_ROOT, normalized_type)
+    os.makedirs(target_dir, exist_ok=True)
+
+    # Enforce platform extension: *.skill.yaml, *.agent.yaml, *.workflow.yaml
+    singular_type = normalized_type[:-1]
+    target_filename = f"{clean_id}.{singular_type}.yaml"
+    target_path = os.path.join(target_dir, target_filename)
+
+    try:
+        # Load blueprint and translate to platform entity schema signature
+        with open(source_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+
+        if not data:
+            data = {}
+
+        # Set mandatory platform signature fields
+        data["entity_type"] = singular_type
+        # In importer, skill_id or agent_id is preferred
+        data[f"{singular_type}_id"] = clean_id
+        data["id"] = clean_id
+
+        # Map default implementation blocks for runtime engines
+        if singular_type in ("skill", "agent") and "implementation" not in data:
+            class_name = "".join(word.title() for word in clean_id.replace("_", "-").split("-"))
+            data["implementation"] = {
+                "class": f"{class_name}{singular_type.title()}",
+                "type": "python"
+            }
+
+        # Write translated file to live templates registry
+        with open(target_path, "w", encoding="utf-8") as f:
+            yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+
+        # 2. Run the database sync using the existing sync_manager
+        from app.core.common_lib_integration import sync_manager
+        sync_manager.sync_all_from_files(force=True)
+
+        logger.info(f"Successfully installed and synced marketplace item {item_id} of type {normalized_type}")
+        return {
+            "status": "ok",
+            "message": f"Successfully installed and registered '{item_id}' into active database."
+        }
+    except Exception as e:
+        logger.error(f"Failed to install marketplace item {item_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Installation failed: {str(e)}"
+        )
+
+
 # =============================================================================
 # Helpers
 # =============================================================================
@@ -459,9 +634,12 @@ def _profile_to_dict(profile) -> dict:
         "name": profile.name,
         "description": profile.description,
         "blocks": profile.blocks,
-        "agent_type": profile.agent_type,
-        "use_cases": profile.use_cases,
-        "recommended": profile.recommended,
+        "block_ids": profile.blocks,
+        "agent_type": getattr(profile, "agent_type", "general"),
+        "use_cases": getattr(profile, "use_cases", []),
+        "recommended": getattr(profile, "recommended", False),
+        "created_at": "2026-05-01T00:00:00Z",
+        "updated_at": "2026-05-29T15:30:00Z",
     }
 
 

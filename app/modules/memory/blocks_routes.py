@@ -261,6 +261,144 @@ async def compose_profile(request: dict):
 
 
 # =============================================================================
+# Compositions Endpoints
+# (User-created compositions backed by YAML profile templates as defaults)
+# =============================================================================
+
+import json
+from datetime import datetime, timezone
+
+# In-process store for user-created/edited compositions.
+# Keys are composition IDs.  On first request, the YAML profiles are injected
+# as the initial seed so the UI always starts with real backend data.
+_COMPOSITIONS: dict = {}
+_COMPOSITIONS_SEEDED: bool = False
+
+
+def _seed_compositions_from_profiles() -> None:
+    """Populate _COMPOSITIONS from the YAML memory profile templates once."""
+    global _COMPOSITIONS, _COMPOSITIONS_SEEDED
+    if _COMPOSITIONS_SEEDED:
+        return
+    try:
+        from common_lib.modules.memory.memory_driver import MEMORY_PROFILES
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for profile in MEMORY_PROFILES:
+            _COMPOSITIONS[profile.id] = {
+                "id": profile.id,
+                "name": profile.name,
+                "description": profile.description,
+                "block_ids": list(profile.blocks),
+                "created_at": now_iso,
+                "updated_at": now_iso,
+                "source": "template",
+            }
+    except Exception as e:
+        logger.error(f"Failed to seed compositions from profiles: {e}", exc_info=True)
+    _COMPOSITIONS_SEEDED = True
+
+
+@router.get("/compositions")
+async def list_compositions():
+    """List all memory compositions (seeded from YAML templates + user-created)."""
+    try:
+        _seed_compositions_from_profiles()
+        return {
+            "status": "ok",
+            "compositions": list(_COMPOSITIONS.values()),
+            "count": len(_COMPOSITIONS),
+        }
+    except Exception as e:
+        logger.error(f"Failed to list compositions: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/compositions/{composition_id}")
+async def get_composition(composition_id: str):
+    """Get a specific composition by ID."""
+    try:
+        _seed_compositions_from_profiles()
+        comp = _COMPOSITIONS.get(composition_id)
+        if not comp:
+            raise HTTPException(status_code=404, detail=f"Composition not found: {composition_id}")
+        return {"status": "ok", "composition": comp}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get composition: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CompositionRequest(BaseModel):
+    name: str
+    description: str = ""
+    block_ids: list
+
+
+@router.post("/compositions")
+async def create_composition(request: CompositionRequest):
+    """Create a new user composition."""
+    try:
+        _seed_compositions_from_profiles()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        comp_id = f"comp_{int(datetime.now(timezone.utc).timestamp() * 1000)}"
+        comp = {
+            "id": comp_id,
+            "name": request.name,
+            "description": request.description,
+            "block_ids": request.block_ids,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "source": "user",
+        }
+        _COMPOSITIONS[comp_id] = comp
+        return {"status": "ok", "composition": comp}
+    except Exception as e:
+        logger.error(f"Failed to create composition: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/compositions/{composition_id}")
+async def update_composition(composition_id: str, request: CompositionRequest):
+    """Update an existing composition."""
+    try:
+        _seed_compositions_from_profiles()
+        existing = _COMPOSITIONS.get(composition_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail=f"Composition not found: {composition_id}")
+        existing.update({
+            "name": request.name,
+            "description": request.description,
+            "block_ids": request.block_ids,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+        _COMPOSITIONS[composition_id] = existing
+        return {"status": "ok", "composition": existing}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update composition: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/compositions/{composition_id}")
+async def delete_composition(composition_id: str):
+    """Delete a composition."""
+    try:
+        _seed_compositions_from_profiles()
+        if composition_id not in _COMPOSITIONS:
+            raise HTTPException(status_code=404, detail=f"Composition not found: {composition_id}")
+        del _COMPOSITIONS[composition_id]
+        return {"status": "ok", "message": f"Composition {composition_id} deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete composition: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
 # Marketplace Endpoints
 # =============================================================================
 
@@ -459,6 +597,7 @@ def _profile_to_dict(profile) -> dict:
         "name": profile.name,
         "description": profile.description,
         "blocks": profile.blocks,
+        "block_ids": profile.blocks,
         "agent_type": profile.agent_type,
         "use_cases": profile.use_cases,
         "recommended": profile.recommended,
