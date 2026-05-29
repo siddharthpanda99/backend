@@ -1,8 +1,13 @@
 import logging
+import json
+import secrets
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Query
+from sqlmodel import select
 
 from app.modules.common.types.index import APIResponse
+from common_lib.modules.keys_management.models import Settings, Model
 from common_lib.modules.keys_management import (
     KeyManagementService,
     ApiKeyCreate,
@@ -78,6 +83,20 @@ async def toggle_key(key_id: int, payload: Dict[str, Any]):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.put("/{key_id}", response_model=APIResponse)
+async def update_key(key_id: int, payload: ApiKeyUpdate):
+    try:
+        result = _svc.update_key(key_id, payload)
+        if not result:
+            raise HTTPException(status_code=404, detail="Key not found")
+        return APIResponse(data=result.model_dump(), message="Key updated")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update key {key_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.patch("/platform/{platform}", response_model=APIResponse)
 async def toggle_platform(platform: str, payload: Dict[str, Any]):
     try:
@@ -91,6 +110,35 @@ async def toggle_platform(platform: str, payload: Dict[str, Any]):
         )
     except Exception as e:
         logger.error(f"Failed to toggle platform {platform}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/hub", response_model=APIResponse)
+async def get_hub():
+    try:
+        platforms = _svc.get_platform_health()
+        keys = _svc.list_keys()
+        return APIResponse(
+            data={
+                "platforms": [p.model_dump() for p in platforms],
+                "keys": [
+                    {
+                        "id": k.id,
+                        "platform": k.provider,
+                        "status": k.status,
+                        "enabled": k.enabled,
+                        "createdAt": k.created_at,
+                        "lastCheckedAt": k.last_checked_at,
+                        "masked_key": k.masked_key,
+                        "label": k.label,
+                    }
+                    for k in keys
+                ],
+            },
+            message="Keys Hub retrieved",
+        )
+    except Exception as e:
+        logger.error(f"Failed to get Keys Hub: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -110,6 +158,8 @@ async def get_health():
                         "enabled": k.enabled,
                         "createdAt": k.created_at,
                         "lastCheckedAt": k.last_checked_at,
+                        "masked_key": k.masked_key,
+                        "label": k.label,
                     }
                     for k in keys
                 ],
@@ -267,4 +317,111 @@ async def regenerate_unified_api_key():
         )
     except Exception as e:
         logger.error(f"Failed to regenerate unified API key: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/unified", response_model=APIResponse)
+async def get_unified_keys():
+    try:
+        with _svc._session() as db:
+            settings_rows = db.exec(
+                select(Settings).where(Settings.key_name.like("unified_key:%"))
+            ).all()
+            keys = []
+            for row in settings_rows:
+                try:
+                    keys.append(json.loads(row.value))
+                except Exception:
+                    pass
+            return APIResponse(data=keys, message="Unified keys retrieved")
+    except Exception as e:
+        logger.error(f"Failed to retrieve unified keys: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/unified", response_model=APIResponse)
+async def create_unified_key(payload: Dict[str, Any]):
+    try:
+        name = payload.get("name", "Unnamed Unified Key")
+        providers = payload.get("providers", [])
+        models = payload.get("models", [])
+        rpm = payload.get("rpm", 60)
+        tpd = payload.get("tpd", 10000)
+        guardrails = payload.get("guardrails", False)
+
+        # Generate a unique unified key
+        key_id = "sk-un-" + secrets.token_hex(20)
+
+        unified_key_data = {
+            "id": key_id,
+            "name": name,
+            "providers": providers,
+            "models": models,
+            "rpm": rpm,
+            "tpd": tpd,
+            "guardrails": guardrails,
+            "created_at": datetime.utcnow().isoformat(),
+            "status": "healthy",
+        }
+
+        with _svc._session() as db:
+            setting_row = Settings(
+                key_name=f"unified_key:{key_id}", value=json.dumps(unified_key_data)
+            )
+            db.add(setting_row)
+            db.commit()
+
+        return APIResponse(
+            data=unified_key_data, message="Unified key created successfully"
+        )
+    except Exception as e:
+        logger.error(f"Failed to create unified key: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/unified/{key_id}", response_model=APIResponse)
+async def update_unified_key(key_id: str, payload: Dict[str, Any]):
+    try:
+        with _svc._session() as db:
+            setting_row = db.exec(
+                select(Settings).where(Settings.key_name == f"unified_key:{key_id}")
+            ).first()
+            if not setting_row:
+                raise HTTPException(status_code=404, detail="Unified key not found")
+            existing = json.loads(setting_row.value)
+            existing["name"] = payload.get("name", existing["name"])
+            existing["providers"] = payload.get("providers", existing["providers"])
+            existing["models"] = payload.get("models", existing["models"])
+            existing["rpm"] = payload.get("rpm", existing["rpm"])
+            existing["tpd"] = payload.get("tpd", existing["tpd"])
+            existing["guardrails"] = payload.get("guardrails", existing["guardrails"])
+            setting_row.value = json.dumps(existing)
+            db.add(setting_row)
+            db.commit()
+        return APIResponse(data=existing, message="Unified key updated successfully")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update unified key {key_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/unified/{key_id}", response_model=APIResponse)
+async def delete_unified_key(key_id: str):
+    try:
+        with _svc._session() as db:
+            setting_row = db.exec(
+                select(Settings).where(Settings.key_name == f"unified_key:{key_id}")
+            ).first()
+            if not setting_row:
+                raise HTTPException(status_code=404, detail="Unified key not found")
+            db.delete(setting_row)
+            db.commit()
+        return APIResponse(
+            data={"success": True}, message="Unified key deleted successfully"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete unified key {key_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

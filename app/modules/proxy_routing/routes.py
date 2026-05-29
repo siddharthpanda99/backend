@@ -19,6 +19,8 @@ from common_lib.modules.proxy_routing import (
     ProxyModelCatalog,
 )
 from common_lib.modules.keys_management.service import KeyManagementService
+from common_lib.modules.data_storage.database.connection import get_engine
+from sqlmodel import Session, text
 
 logger = logging.getLogger(__name__)
 
@@ -127,9 +129,50 @@ async def get_fallback_token_usage() -> FallbackTokenUsage:
     return proxy_service.get_token_usage()
 
 
+def _get_local_llm_models() -> List[ProxyModelCatalog]:
+    try:
+        engine = get_engine()
+        with Session(engine) as session:
+            rows = session.exec(
+                text("""
+                    SELECT id, name, provider, parameters, repo_id, file_path, is_local
+                    FROM ai_models
+                    WHERE is_local = true AND status = 'completed'
+                      AND provider IN ('vllm', 'huggingface')
+                      AND (modality = 'text' OR modality = 'multimodal')
+                    ORDER BY id
+                """)
+            ).all()
+            results = []
+            for i, r in enumerate(rows):
+                params = r.parameters or ""
+                results.append(
+                    ProxyModelCatalog(
+                        id=10000 + i,
+                        platform="local",
+                        model_id=r.id,
+                        display_name=f"{r.name} ({r.provider})",
+                        intelligence_rank=50,
+                        speed_rank=50,
+                        size_label=params,
+                        rpm_limit=60,
+                        rpd_limit=1000,
+                        context_window=32768,
+                        enabled=True,
+                        key_count=1,
+                    )
+                )
+            return results
+    except Exception as e:
+        logger.warning(f"Failed to fetch local models: {e}")
+        return []
+
+
 @router.get("/catalog", response_model=List[ProxyModelCatalog])
 async def get_model_catalog() -> List[ProxyModelCatalog]:
-    return proxy_service.get_model_catalog()
+    api_models = proxy_service.get_model_catalog()
+    local_models = _get_local_llm_models()
+    return api_models + local_models
 
 
 @router.get("/rate-limits")
