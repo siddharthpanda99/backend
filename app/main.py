@@ -64,6 +64,7 @@ from app.modules.daw.routes import router as daw_router
 from app.modules.hooks.routes import router as hooks_router
 from app.modules.dashboard.routes import router as dashboard_router
 from app.modules.system.routes import router as system_router
+from app.modules.settings.routes import router as settings_router
 from app.modules.dip.routes.ingestion import router as dip_ingestion_router
 from app.modules.dip.routes.pipeline import pipeline_router
 from app.modules.file_browser import router as file_browser_router
@@ -689,6 +690,13 @@ def create_app() -> FastAPI:
         configs_router,
         prefix=f"{settings.API_V1_STR}",
         tags=["Configs"],
+        dependencies=global_deps,
+    )
+
+    print(f"Startup: Including Settings router with prefix: {settings.API_V1_STR}")
+    app.include_router(
+        settings_router,
+        prefix=f"{settings.API_V1_STR}",
         dependencies=global_deps,
     )
 
