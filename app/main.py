@@ -5,8 +5,6 @@ import json
 import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 # --- BOOTSTRAP: Ensure development common_lib takes precedence ---
 REPO_ROOT = Path(__file__).parent.parent.parent.resolve()
 COMMON_LIB_SRC = str(REPO_ROOT / "Python Libs" / "common_lib" / "src")
@@ -23,10 +21,11 @@ from common_lib.modules.image_processing.core.common.optimizations import (
 
 set_global_precision()
 
-# --- FILE LOGGING INITIALIZATION ---
-from app.core.logging_config import setup_logging
+# --- OBSERVABILITY INITIALIZATION ---
+from common_lib.modules.observability import initialize_logging, initialize_tracing
 
-setup_logging("logs/server.log")
+initialize_logging()
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
@@ -75,6 +74,7 @@ from app.modules.sam3.routes import router as sam3_router
 from app.modules.keys_management import router as keys_router
 from app.modules.proxy_routing import router as proxy_router
 from app.modules.collage.routes import router as collage_router
+from app.modules.experiments.routes import router as experiments_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -110,10 +110,13 @@ async def lifespan(app: FastAPI):
             init_db()
             print("Database initialized and models registered.")
             try:
-                from common_lib.modules.keys_management.service import KeyManagementService
+                from common_lib.modules.keys_management.service import (
+                    KeyManagementService,
+                )
+
                 seeded_m, seeded_f = KeyManagementService().seed_proxy_catalog()
                 print(f"Proxy catalog seeded: {seeded_m} models, {seeded_f} fallbacks.")
-                
+
                 seeded_k = KeyManagementService().seed_from_config()
                 if seeded_k:
                     print(f"Auto-seeded {seeded_k} API keys from config.ini.")
@@ -399,6 +402,39 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Observability Middleware (outermost — capture correlation context first)
+    from common_lib.modules.observability.constants import (
+        ENABLE_OBSERVABILITY_EXTENSIONS,
+    )
+
+    if ENABLE_OBSERVABILITY_EXTENSIONS:
+        from common_lib.modules.observability.middleware import (
+            CorrelationMiddleware,
+            RequestLoggingMiddleware,
+        )
+
+        app.add_middleware(CorrelationMiddleware)
+        app.add_middleware(RequestLoggingMiddleware)
+        print("Startup: Correlation and Request Logging middleware enabled")
+
+    # Register all events in the observability catalog
+    from common_lib.modules.observability.events import register_all_events
+
+    register_all_events()
+    print("Startup: All observability events registered")
+
+    # Wire AI trackers into execution paths
+    from common_lib.modules.observability.wiring import wire_all
+
+    wire_all()
+    print("Startup: AI Tracker wiring complete")
+
+    # Register SLO defaults
+    from common_lib.modules.observability.slos import SLOManager
+
+    SLOManager.register_defaults()
+    print("Startup: SLO defaults registered")
+
     # Set all CORS enabled origins
     # Set all CORS enabled origins
     # Using allow_origin_regex to allow any origin with credentials (safe for dev, restrict in prod if needed)
@@ -626,7 +662,9 @@ def create_app() -> FastAPI:
     )
 
     # New Collage & Sticker API
-    print(f"Startup: Including Collage router with prefix: {settings.API_V1_STR}/collage")
+    print(
+        f"Startup: Including Collage router with prefix: {settings.API_V1_STR}/collage"
+    )
     app.include_router(
         collage_router,
         prefix=f"{settings.API_V1_STR}/collage",
@@ -986,6 +1024,16 @@ def create_app() -> FastAPI:
         tags=["macros"],
     )
 
+    print(
+        f"Startup: Including Experiments router with prefix: {settings.API_V1_STR}/experiments"
+    )
+    app.include_router(
+        experiments_router,
+        prefix=f"{settings.API_V1_STR}/experiments",
+        tags=["Experiments"],
+        dependencies=global_deps,
+    )
+
     # Serve generated images as static files
     from common_lib.paths import GENERATED_CONTENT
 
@@ -1040,6 +1088,38 @@ def create_app() -> FastAPI:
     app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(Exception, generic_exception_handler)
+
+    # Observability endpoints and tracing
+    from common_lib.modules.observability import (
+        register_health_endpoint,
+        initialize_tracing,
+    )
+
+    register_health_endpoint(app)
+    initialize_tracing(app)
+
+    # Prometheus auto-instrumentation for HTTP + custom metrics
+    try:
+        from prometheus_fastapi_instrumentator import Instrumentator
+
+        Instrumentator().instrument(app).expose(
+            app, endpoint="/metrics", include_in_schema=False
+        )
+    except Exception:
+        from common_lib.modules.observability import register_metrics_endpoint
+
+        register_metrics_endpoint(app)
+
+    # Observability admin API (SLOs, lineage, compliance) — routed via common_lib
+    from common_lib.modules.observability.admin_routes import router as obs_admin_router
+
+    print(
+        f"Startup: Including Observability Admin router with prefix: {settings.API_V1_STR}"
+    )
+    app.include_router(
+        obs_admin_router,
+        prefix=f"{settings.API_V1_STR}",
+    )
 
     return app
 

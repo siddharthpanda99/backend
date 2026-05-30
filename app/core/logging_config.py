@@ -31,16 +31,18 @@ def setup_logging(log_file: str = "logs/server.log"):
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
     # Using SafeTimedRotatingFileHandler for hourly ('H') and daily intervals.
-    handler = SafeTimedRotatingFileHandler(
+    file_handler = SafeTimedRotatingFileHandler(
         log_file, when="H", interval=1, backupCount=72, encoding="utf-8", atTime=None
     )
-    # The suffix property determines the filename rotation suffix.
-    handler.suffix = "%Y-%m-%d_%H"
+    file_handler.suffix = "%Y-%m-%d_%H"
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(log_format))
 
     logging.basicConfig(
         level=logging.INFO,
         format=log_format,
-        handlers=[handler],
+        handlers=[file_handler, console_handler],
         force=True,  # Ensure we override any existing basicConfig
     )
 
