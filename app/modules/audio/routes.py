@@ -6,6 +6,8 @@ import os
 from common_lib.modules.audio_processing.schemas import (
     TTSRequest,
     TTSResponse,
+    SpeakRequest,
+    SpeakResponse,
     TranscriptionRequest,
     TranscriptionResponse,
     AudioEditRequest,
@@ -61,6 +63,14 @@ class AudioAnalysisRequest(BaseModel):
 async def generate_tts(request: TTSRequest):
     try:
         return await audio_service.generate_tts(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/speak", response_model=SpeakResponse)
+async def generate_speak(request: SpeakRequest):
+    try:
+        return await audio_service.generate_speak(request)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
