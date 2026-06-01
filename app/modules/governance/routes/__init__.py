@@ -20,6 +20,7 @@ from app.modules.governance.routes.role_assignments import (
 from app.modules.governance.routes.approval_policies import (
     router as approval_policies_router,
 )
+from app.modules.governance.routes.rules_engine import router as rules_engine_router
 
 router = APIRouter()
 router.include_router(identity_router)
@@ -39,5 +40,6 @@ router.include_router(integration_router)
 router.include_router(delegation_router)
 router.include_router(role_assignments_router)
 router.include_router(approval_policies_router)
+router.include_router(rules_engine_router)
 
 __all__ = ["router"]

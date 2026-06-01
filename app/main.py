@@ -75,6 +75,7 @@ from app.modules.keys_management import router as keys_router
 from app.modules.proxy_routing import router as proxy_router
 from app.modules.collage.routes import router as collage_router
 from app.modules.experiments.routes import router as experiments_router
+from app.modules.ext_apps import router as ext_apps_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -904,6 +905,16 @@ def create_app() -> FastAPI:
         integration_router,
         prefix=settings.API_V1_STR,
         tags=["integration"],
+    )
+
+    # Ext-Apps API
+    print(
+        f"Startup: Including Ext-Apps router with prefix: {settings.API_V1_STR}/ext-apps"
+    )
+    app.include_router(
+        ext_apps_router,
+        prefix=settings.API_V1_STR,
+        tags=["Ext-Apps"],
     )
 
     # Scheduler API (cron jobs, scheduled workflows)
