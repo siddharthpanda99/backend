@@ -1,7 +1,7 @@
 {
     "platform": {
         "appName": "Antigravity Orchestration Hub",
-        "themeId": "titanium",
+        "themeId": "midnightCity",
         "accentColor": "purple",
         "defaultEngine": "openai",
         "defaultModel": "gpt-4o",
@@ -10,7 +10,14 @@
         "streamResponses": true,
         "debugMode": false,
         "autoSaveLogs": true,
-        "systemPrompt": "You are Antigravity, an advanced developer agent built on state-of-the-art ReAct orchestration graph architectures."
+        "systemPrompt": "You are Antigravity, an advanced developer agent built on state-of-the-art ReAct orchestration graph architectures.",
+        "telemetryEnabled": false,
+        "liveReloadEnabled": true,
+        "soundCuesEnabled": true,
+        "embeddingsEngine": "minio",
+        "semanticCachePolicy": "optimistic",
+        "parallelConcurrency": 4,
+        "maxOrchestrationSteps": 20
     },
     "connections": {
         "openai": "sk-proj-\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u20223A1B",

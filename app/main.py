@@ -413,8 +413,8 @@ def create_app() -> FastAPI:
             RequestLoggingMiddleware,
         )
 
-        app.add_middleware(CorrelationMiddleware)
-        app.add_middleware(RequestLoggingMiddleware)
+        # app.add_middleware(CorrelationMiddleware)
+        # app.add_middleware(RequestLoggingMiddleware)
         print("Startup: Correlation and Request Logging middleware enabled")
 
     # Register all events in the observability catalog
@@ -1109,6 +1109,19 @@ def create_app() -> FastAPI:
         from common_lib.modules.observability import register_metrics_endpoint
 
         register_metrics_endpoint(app)
+
+    # Governance API
+    from app.modules.governance.routes import router as governance_router
+
+    print(
+        f"Startup: Including Governance router with prefix: {settings.API_V1_STR}/governance"
+    )
+    app.include_router(
+        governance_router,
+        prefix=f"{settings.API_V1_STR}/governance",
+        tags=["Agent Governance"],
+        dependencies=global_deps,
+    )
 
     # Observability admin API (SLOs, lineage, compliance) — routed via common_lib
     from common_lib.modules.observability.admin_routes import router as obs_admin_router
