@@ -121,8 +121,13 @@ async def lifespan(app: FastAPI):
                 seeded_k = KeyManagementService().seed_from_config()
                 if seeded_k:
                     print(f"Auto-seeded {seeded_k} API keys from config.ini.")
+
+                # Seed Human-in-the-Loop (HITL) seed data
+                from common_lib.modules.governance.hitl.service import get_hitl_service
+                get_hitl_service()._load_seed_data()
+                print("HITL Governance seed data loaded.")
             except Exception as se:
-                print(f"Warning: Proxy catalog or key seeding failed: {se}")
+                print(f"Warning: Proxy catalog, key, or HITL seeding failed: {se}")
             break
         except Exception as e:
             if attempt < max_retries - 1:

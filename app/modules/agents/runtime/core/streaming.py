@@ -73,6 +73,7 @@ async def stream_agent_generator(
 
         initial: dict[str, Any] = {
             "input": message,
+            "session_id": session_id,
             "intermediate_steps": [],
             # --- Provide defaults for ALL ReActState keys so LangGraph does not
             # silently reject the input on the first call to a fresh thread_id.
@@ -83,30 +84,51 @@ async def stream_agent_generator(
             "operational_metadata": {},
             "context_metrics": {},
             "execution_constraints": {},
+            "approved_actions": [],
         }
 
         # Handle HITL Decision: If the user approved/modified a tool call
         if decision:
             action = decision.get("action")
-            if action == "approve":
+            if action in ("approve", "modify"):
+                from common_lib.modules.governance.hitl.service import get_hitl_service
+
+                hitl_service = get_hitl_service()
+                request_id = decision.get("request_id", "")
+                decided_by = decision.get("decided_by", "runtime-user")
+                tool_input = decision.get("tool_input") or {}
+                if request_id:
+                    if action == "modify":
+                        hitl_service.modify(request_id, decided_by, tool_input, decision.get("notes", ""))
+                    else:
+                        hitl_service.approve(request_id, decided_by, decision.get("notes", ""))
+                    hitl_service.execute(request_id, "Agent runtime resumed after human decision")
                 # Inject approval into high-level state so execute_tool_node sees it
                 approved = {
                     "tool": decision.get("tool"),
-                    "tool_input": decision.get("tool_input"),
+                    "tool_input": tool_input,
                     "approved_at": datetime.now().isoformat(),
+                    "request_id": request_id,
                 }
                 # We need to update the state BEFORE streaming
                 agent.graph.update_state(
                     {"configurable": {"thread_id": session_id}},
                     {"approved_actions": [approved]},
-                    as_node="execute_tool",  # resume at tool execution
+                    as_node="agent_thinking",  # conditional edge resumes at tool execution
                 )
                 logger.info(
                     "[Streaming] Injected approval for tool: %s", approved["tool"]
                 )
             elif action == "reject":
-                # Handle rejection: we could inject a "User rejected" message
-                # For now, let's just clear the pending action and return a finish
+                from common_lib.modules.governance.hitl.service import get_hitl_service
+
+                request_id = decision.get("request_id", "")
+                if request_id:
+                    get_hitl_service().deny(
+                        request_id,
+                        decision.get("decided_by", "runtime-user"),
+                        decision.get("notes", ""),
+                    )
                 yield _enc(
                     {
                         "event_type": "agent_complete",
@@ -412,7 +434,10 @@ async def stream_agent_generator(
                             "hitl",
                             "✋ Waiting for Approval",
                             f"Tool: {pending.get('tool')}",
-                            {"tool": pending.get("tool")},
+                            {
+                                "tool": pending.get("tool"),
+                                "request_id": pending.get("request_id"),
+                            },
                         )
                         return  # Stop streaming at the interruption point
 
