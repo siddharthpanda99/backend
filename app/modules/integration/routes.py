@@ -424,3 +424,71 @@ async def observability_reset():
     except Exception as e:
         logger.error(f"Observability reset failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Memory Bridge
+# =============================================================================
+
+
+@router.get("/memory/bridge/stats")
+async def memory_bridge_stats():
+    """Get memory bridge integration statistics."""
+    try:
+        from common_lib.modules.integration.memory_bridge import get_memory_bridge
+
+        bridge = get_memory_bridge()
+        s = bridge.get_stats()
+        return {
+            "total_events_routed": s.get("events_bridged", 0),
+            "events_last_hour": 0,
+            "error_rate": s.get("errors", 0) / max(s.get("events_bridged", 1), 1),
+            "connected_modules": [
+                "core",
+                "context",
+                "storage",
+                "retrieval",
+                "semantics",
+                "security",
+                "federation",
+            ],
+            "avg_processing_time_ms": 0,
+            "uptime_seconds": 0,
+            "last_heartbeat": "",
+        }
+    except Exception as e:
+        logger.error(f"Memory bridge stats failed: {e}", exc_info=True)
+        return {
+            "total_events_routed": 0,
+            "events_last_hour": 0,
+            "error_rate": 0,
+            "connected_modules": [],
+            "avg_processing_time_ms": 0,
+            "uptime_seconds": 0,
+            "last_heartbeat": "",
+        }
+
+
+@router.post("/memory/bridge/event")
+async def fire_memory_bridge_event(payload: Dict[str, Any] = Body(...)):
+    """Fire a memory event through the integration bridge."""
+    try:
+        from common_lib.modules.integration.memory_bridge import (
+            get_memory_bridge,
+            MemoryEventType,
+        )
+
+        bridge = get_memory_bridge()
+        event_type = payload.get("event_type", "memory.store")
+        data = payload.get("data", {})
+        trace_id = payload.get("trace_id")
+
+        result = await bridge.fire_memory_event(
+            event_type=MemoryEventType(event_type),
+            data=data,
+            trace_id=trace_id,
+        )
+        return {"status": "ok", "result": result}
+    except Exception as e:
+        logger.error(f"Memory bridge event failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
