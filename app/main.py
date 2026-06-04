@@ -54,6 +54,7 @@ from app.modules.workflows.routes.collaboration import router as collaboration_r
 from app.modules.workflows.routes.combinatorial import router as combinatorial_router
 from app.modules.tools.routes.index import router as tools_router
 from app.modules.memory.routes import router as cognitive_memory_router
+from app.modules.memories.routes.index import router as memories_router
 from app.modules.models.routes import router as models_router
 from app.modules.models.external_routes import router as external_models_router
 from app.modules.data_forge.routes import router as data_forge_router
@@ -124,6 +125,7 @@ async def lifespan(app: FastAPI):
 
                 # Seed Human-in-the-Loop (HITL) seed data
                 from common_lib.modules.governance.hitl.service import get_hitl_service
+
                 get_hitl_service()._load_seed_data()
                 print("HITL Governance seed data loaded.")
             except Exception as se:
@@ -383,9 +385,100 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Warning: Could not start scheduler: {e}")
 
+    # Start periodic decay loop task (interval live-configurable from config.ini / API)
+    decay_task = None
+    try:
+        import asyncio
+        from common_lib.modules.memory.config import get_config as _gmcfg
+
+        _init_decay = _gmcfg().decay_interval_seconds
+        logger.info(f"Periodic memory decay interval configured to {_init_decay}s")
+
+        async def decay_periodic_loop():
+            await asyncio.sleep(15)
+            while True:
+                try:
+                    from app.modules.memories.dependencies import get_memory_service
+
+                    svc = get_memory_service()
+                    logger.info(
+                        "Executing periodic memory decay cycle background task..."
+                    )
+                    await svc.run_decay_cycle()
+                except Exception as e:
+                    logger.error(
+                        f"Error in periodic memory decay cycle background task: {e}"
+                    )
+                from common_lib.modules.memory.config import get_config as _gmcfg2
+
+                await asyncio.sleep(_gmcfg2().decay_interval_seconds)
+
+        decay_task = asyncio.create_task(decay_periodic_loop())
+        print(
+            f"Startup: Periodic memory decay task started (interval={_init_decay}s, live-updatable)"
+        )
+    except Exception as e:
+        print(f"Warning: Could not start periodic memory decay task: {e}")
+
+    # Start periodic compaction loop task (interval live-configurable from config.ini / API)
+    compaction_task = None
+    try:
+        import asyncio
+        from common_lib.modules.memory.config import get_config as _gmcfg
+
+        _init_compact = _gmcfg().compaction_interval_seconds
+        logger.info(
+            f"Periodic memory compaction interval configured to {_init_compact}s"
+        )
+
+        async def compaction_periodic_loop():
+            await asyncio.sleep(30)
+            while True:
+                try:
+                    from app.modules.memories.dependencies import get_memory_service
+
+                    svc = get_memory_service()
+                    await svc.check_and_run_autocompaction(threshold=15)
+                except Exception as e:
+                    logger.error(
+                        f"Error in periodic memory compaction background task: {e}"
+                    )
+                from common_lib.modules.memory.config import get_config as _gmcfg2
+
+                await asyncio.sleep(_gmcfg2().compaction_interval_seconds)
+
+        compaction_task = asyncio.create_task(compaction_periodic_loop())
+        print(
+            f"Startup: Periodic memory compaction task started (interval={_init_compact}s, live-updatable)"
+        )
+    except Exception as e:
+        print(f"Warning: Could not start periodic memory compaction task: {e}")
+
     yield
     # Shutdown
     engine.dispose()
+
+    # Stop periodic decay loop task
+    if decay_task:
+        try:
+            decay_task.cancel()
+            await decay_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"Warning: Error canceling periodic memory decay task: {e}")
+        print("Shutdown: Periodic memory decay task stopped")
+
+    # Stop periodic compaction loop task
+    if compaction_task:
+        try:
+            compaction_task.cancel()
+            await compaction_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"Warning: Error canceling periodic memory compaction task: {e}")
+        print("Shutdown: Periodic memory compaction task stopped")
 
     # Stop scheduler cron loops
     try:
@@ -832,6 +925,16 @@ def create_app() -> FastAPI:
         cognitive_memory_router,
         prefix=f"{settings.API_V1_STR}/memory",
         tags=["Memory"],
+        dependencies=global_deps,
+    )
+
+    print(
+        f"Startup: Including Memories router with prefix: {settings.API_V1_STR}/memories"
+    )
+    app.include_router(
+        memories_router,
+        prefix=f"{settings.API_V1_STR}/memories",
+        tags=["Memories"],
         dependencies=global_deps,
     )
 

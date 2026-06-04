@@ -30,6 +30,11 @@ def get_memory_service() -> MemoryService:
 
         # Primary pgvector adapter
         adapter = PgVectorAdapter(database_url)
+        try:
+            adapter.connect_sync()
+            logger.info("Primary pgvector adapter connected successfully")
+        except Exception as e:
+            logger.warning(f"Primary adapter connection failed: {e}")
         repository = MemoryRepository(adapter)
 
         # Hot tier (Redis) adapter
@@ -50,9 +55,7 @@ def get_memory_service() -> MemoryService:
                 key_prefix="memory:",
             )
             # Connect will fall back to in-memory if Redis unavailable
-            import asyncio
-
-            asyncio.get_event_loop().run_until_complete(hot_adapter.connect())
+            hot_adapter.connect_sync()
         except Exception as e:
             logger.warning(f"Hot adapter initialization failed: {e}")
             hot_adapter = None
@@ -71,9 +74,7 @@ def get_memory_service() -> MemoryService:
                     index_type=index_type,
                     use_pgvector=True,
                 )
-                import asyncio
-
-                asyncio.get_event_loop().run_until_complete(vector_adapter.connect())
+                vector_adapter.connect_sync()
                 logger.info(
                     f"Vector adapter connected (dim={embedding_dim}, index={index_type})"
                 )
