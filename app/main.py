@@ -55,6 +55,7 @@ from app.modules.workflows.routes.combinatorial import router as combinatorial_r
 from app.modules.tools.routes.index import router as tools_router
 from app.modules.memory.routes import router as cognitive_memory_router
 from app.modules.memories.routes.index import router as memories_router
+from app.modules.vectorstores.routes import router as vectorstores_router
 from app.modules.models.routes import router as models_router
 from app.modules.models.external_routes import router as external_models_router
 from app.modules.data_forge.routes import router as data_forge_router
@@ -453,6 +454,37 @@ async def lifespan(app: FastAPI):
         )
     except Exception as e:
         print(f"Warning: Could not start periodic memory compaction task: {e}")
+
+    # --- Initialize TurboVec adapter if enabled ---
+    try:
+        vector_backend = os.getenv("VECTOR_BACKEND", "auto")
+        if vector_backend in ("turbovec", "auto"):
+            from common_lib.modules.memory.service import get_memory_service
+
+            svc = get_memory_service()
+            if svc and not svc.turbovec_adapter:
+                from common_lib.vectorstores.factory import VectorStoreFactory
+
+                factory = VectorStoreFactory(
+                    {
+                        "vector_backend": "turbovec",
+                        "dim": int(os.getenv("EMBEDDING_DIMENSION", "768")),
+                        "bit_width": int(os.getenv("TURBOVEC_BIT_WIDTH", "2")),
+                        "turbovec_index_path": os.getenv(
+                            "TURBOVEC_INDEX_PATH", "/data/turbovec"
+                        ),
+                    }
+                )
+                if factory._turbovec_available():
+                    adapter = factory.create(vector_backend="turbovec")
+                    svc.set_turbovec_adapter(adapter)
+                    print(
+                        f"Startup: TurboVec vector store initialized (dim={adapter.dim}, bit_width={adapter.bit_width})"
+                    )
+                else:
+                    print("Startup: TurboVec not available (pip install turbovec)")
+    except Exception as e:
+        print(f"Startup: TurboVec initialization skipped: {e}")
 
     yield
     # Shutdown
@@ -935,6 +967,17 @@ def create_app() -> FastAPI:
         memories_router,
         prefix=f"{settings.API_V1_STR}/memories",
         tags=["Memories"],
+        dependencies=global_deps,
+    )
+
+    # Vector Stores (TurboVec management)
+    print(
+        f"Startup: Including VectorStores router with prefix: {settings.API_V1_STR}/vectorstores"
+    )
+    app.include_router(
+        vectorstores_router,
+        prefix=f"{settings.API_V1_STR}",
+        tags=["Vector Stores"],
         dependencies=global_deps,
     )
 
