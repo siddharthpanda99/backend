@@ -13,6 +13,7 @@ from sqlmodel import select, Session
 from common_lib.modules.data_storage.database.connection import get_session
 from common_lib.modules.users.models import User
 from common_lib.modules.rbac.models import Role, UserRole
+from common_lib.modules.settings.service import theme_service
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +227,98 @@ async def factory_reset_settings():
         "status": "success",
         "message": "System settings restored to default config",
     }
+
+
+# ==================== THEMES CRUD ====================
+
+
+@router.get("/themes")
+async def list_themes(session: Session = Depends(get_session)):
+    """Return all themes (built-in + custom) from the database."""
+    themes = theme_service.list_all(session)
+    if not themes:
+        storage = load_storage()
+        themes = storage.get("themes", [])
+    return themes
+
+
+@router.get("/themes/builtin")
+async def list_builtin_themes(session: Session = Depends(get_session)):
+    """Return only built-in themes."""
+    return theme_service.list_builtin(session)
+
+
+@router.post("/themes/seed")
+async def seed_themes(session: Session = Depends(get_session)):
+    """Seed/refresh built-in themes from themes.json into the database."""
+    return theme_service.seed_from_json(session)
+
+
+@router.post("/themes")
+async def create_theme(
+    payload: Dict[str, Any] = Body(...),
+    session: Session = Depends(get_session),
+):
+    """Create a new custom theme."""
+    result = theme_service.create(session, payload)
+    return {"status": "success", "data": result}
+
+
+@router.put("/themes/{theme_id}")
+async def update_theme(
+    theme_id: str,
+    payload: Dict[str, Any] = Body(...),
+    session: Session = Depends(get_session),
+):
+    """Update an existing theme by id."""
+    try:
+        result = theme_service.update(session, theme_id, payload)
+        return {"status": "success", "data": result}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@router.delete("/themes/{theme_id}")
+async def delete_theme(
+    theme_id: str,
+    session: Session = Depends(get_session),
+):
+    """Delete a custom theme by id."""
+    try:
+        theme_service.delete(session, theme_id)
+        return {"status": "success", "message": "Theme deleted"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@router.post("/themes/{theme_id}/duplicate")
+async def duplicate_theme(
+    theme_id: str,
+    session: Session = Depends(get_session),
+):
+    """Duplicate a theme (built-in or custom)."""
+    try:
+        result = theme_service.duplicate(session, theme_id)
+        return {"status": "success", "data": result}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/themes/apply")
+async def apply_theme(payload: Dict[str, Any] = Body(...)):
+    """Apply a theme by setting themeId in platform settings."""
+    theme_id = payload.get("themeId", "dark")
+    storage = load_storage()
+    if "platform" not in storage:
+        storage["platform"] = {}
+    storage["platform"]["themeId"] = theme_id
+    save_storage(storage)
+    return {"status": "success", "data": {"themeId": theme_id}}
+
 
 
 # ==================== LOGGING ROUTINES ====================

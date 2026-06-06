@@ -231,3 +231,130 @@ def test_memory_forecasting_endpoints(api_prefix):
     assert response.status_code == 200
     data = response.json()
     assert "data" in data
+
+
+def test_memory_security_endpoints(api_prefix):
+    """Test Memory Security API endpoints (PII, encryption, ACL)."""
+    # Test PII detection
+    response = client.post(
+        f"{api_prefix}/memories/security/pii/detect",
+        json={"content": "My email is john@example.com and phone is 555-1234."}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "data" in data
+    assert "entities" in data or "pii_entities" in data["data"]
+
+    # Test encryption status
+    response = client.get(f"{api_prefix}/memories/security/encryption/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert "data" in data
+
+    # Test ACL check
+    response = client.post(
+        f"{api_prefix}/memories/security/acl/check",
+        json={"agent_id": "test_agent", "resource": "memory:test", "action": "read"}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "data" in data
+
+
+def test_memory_mql_endpoints(api_prefix):
+    """Test Memory MQL (Memory Query Language) API endpoints."""
+    # Test MQL validation
+    response = client.post(
+        f"{api_prefix}/memories/mql/validate",
+        json={"query": "FIND memory WHERE type = 'episodic' ORDER BY importance DESC LIMIT 5"}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "data" in data
+    assert "valid" in data["data"] or "is_valid" in data["data"] or "errors" in data["data"]
+
+    # Test list MQL functions
+    response = client.get(f"{api_prefix}/memories/mql/functions")
+    assert response.status_code == 200
+    data = response.json()
+    assert "data" in data or "functions" in data
+
+
+def test_memory_federation_endpoints(api_prefix):
+    """Test Memory Federation API endpoints (sync, topology, status)."""
+    # Test discover topology
+    response = client.get(f"{api_prefix}/memories/federation/topology")
+    assert response.status_code == 200
+    data = response.json()
+    assert "data" in data
+    assert "nodes" in data or "peers" in data["data"]
+
+    # Test federation status
+    response = client.get(f"{api_prefix}/memories/federation/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert "data" in data
+
+    # Test federation stats
+    response = client.get(f"{api_prefix}/memories/federation/stats")
+    assert response.status_code == 200
+    data = response.json()
+    assert "data" in data
+
+
+def test_memory_multimodal_endpoints(api_prefix):
+    """Test Memory Multimodal API endpoints (cross-modal search, assets)."""
+    # Test cross-modal search
+    response = client.post(
+        f"{api_prefix}/memories/multimodal/search",
+        json={"query": "sunset over mountains", "modalities": ["image", "audio"], "limit": 5}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "data" in data
+    assert "results" in data or "count" in data["data"] or isinstance(data["data"], list)
+
+    # Test list assets (uses a dummy memory_id that gracefully returns empty)
+    response = client.get(f"{api_prefix}/memories/multimodal/assets/test_memory_id")
+    assert response.status_code in (200, 404)
+    if response.status_code == 200:
+        data = response.json()
+        assert "data" in data
+
+
+def test_memory_observability_endpoints(api_prefix):
+    """Test Memory Observability API endpoints (health, alerts, metrics)."""
+    # Test health check
+    response = client.get(f"{api_prefix}/memories/observability/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert "data" in data
+    assert "status" in data["data"] or "score" in data["data"] or "healthy" in data["data"]
+
+    # Test alerts
+    response = client.get(f"{api_prefix}/memories/observability/alerts")
+    assert response.status_code == 200
+    data = response.json()
+    assert "data" in data
+
+    # Test metrics
+    response = client.get(f"{api_prefix}/memories/observability/metrics")
+    assert response.status_code == 200
+    data = response.json()
+    assert "data" in data
+
+
+def test_memory_persona_endpoints(api_prefix):
+    """Test Memory Persona API endpoints (list, get, delete persona)."""
+    # Test list personas
+    response = client.get(f"{api_prefix}/memories/persona/")
+    assert response.status_code == 200
+    data = response.json()
+    assert "data" in data
+
+    # Test get persona (may 404 gracefully for unknown agent)
+    response = client.get(f"{api_prefix}/memories/persona/unknown_agent")
+    assert response.status_code in (200, 404)
+    if response.status_code == 200:
+        data = response.json()
+        assert "data" in data

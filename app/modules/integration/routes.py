@@ -19,6 +19,10 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/integration", tags=["integration"])
 
+# Include memory instance sub-routes (deploy/teardown/list/detail)
+from app.modules.integration.instance_routes import router as instance_router
+router.include_router(instance_router)
+
 logger = logging.getLogger(__name__)
 
 

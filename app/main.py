@@ -112,6 +112,16 @@ async def lifespan(app: FastAPI):
 
             init_db()
             print("Database initialized and models registered.")
+            # Seed built-in themes from themes.json into DB
+            try:
+                from common_lib.modules.settings.service import theme_service
+                from sqlmodel import Session as SQLSession
+                with SQLSession(engine) as seed_session:
+                    result = theme_service.seed_from_json(seed_session)
+                    print(f"Startup: {result.get('message', 'Themes seeded')}")
+            except Exception as se:
+                print(f"Warning: Theme seeding failed: {se}")
+
             try:
                 from common_lib.modules.keys_management.service import (
                     KeyManagementService,

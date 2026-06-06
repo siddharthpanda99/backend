@@ -28,6 +28,7 @@ from app.modules.memory.blueprints_routes import router as blueprints_router
 from app.modules.memory.blocks_routes import router as blocks_router
 from app.modules.memory.docs_routes import router as docs_router
 from app.modules.memory.compaction_routes import router as compaction_router
+from app.modules.memory.conflict_routes import router as conflict_router
 
 # Include all sub-routers under the main router
 # All sub-routers have their own prefixes (e.g., /core, /context)
@@ -59,6 +60,7 @@ router.include_router(marketplace_router)
 router.include_router(driver_router)
 router.include_router(stores_router)
 router.include_router(compaction_router)
+router.include_router(conflict_router)
 
 # Reorder routes so that wildcard/parameterized routes at the root level (like /{memory_id})
 # are evaluated last, preventing them from hijacking static sub-router paths (like /blocks).
