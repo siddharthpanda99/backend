@@ -59,6 +59,86 @@ def register_agent_tools(mcp: FastMCP):
         set_hitl(enabled)
         return {"status": "updated", "hitl_enabled": enabled}
 
+    # --- HITL REQUEST TOOLS ---
+
+    HITL_REQUEST_ATTRS = [
+        "approval_policy_id", "agent_id", "action", "tool", "risk_score",
+        "justification", "route_to", "requested_at", "expires_at", "decided_by",
+        "decided_at", "decision_notes", "approval_token", "source", "session_id",
+        "trace_id", "tool_input", "modified_tool_input", "executed_at",
+        "execution_outcome", "feedback_rating", "feedback_comment", "timeline",
+    ]
+
+    @mcp.tool()
+    async def request_hitl_approval(
+        agent_id: str,
+        action: str = "",
+        tool: str = "",
+        risk_score: int = 0,
+        justification: str = "",
+        tool_input: Optional[Dict[str, Any]] = None,
+        approval_policy_id: str = "",
+        session_id: str = "",
+    ) -> Dict[str, Any]:
+        """Submit a new HITL approval request. Returns the pending request with its status and token."""
+        from common_lib.modules.governance.hitl.service import get_hitl_service
+        svc = get_hitl_service()
+        item = svc.create_request(
+            approval_policy_id=approval_policy_id,
+            agent_id=agent_id,
+            action=action,
+            tool=tool,
+            risk_score=risk_score,
+            justification=justification,
+            route_to="",
+            source="mcp",
+            session_id=session_id,
+            trace_id="",
+            tool_input=tool_input or {},
+        )
+        result = {"id": getattr(item, "id", ""), "status": getattr(item, "status", "pending")}
+        for attr in HITL_REQUEST_ATTRS:
+            if hasattr(item, attr):
+                result[attr] = getattr(item, attr)
+        return result
+
+    @mcp.tool()
+    async def check_hitl_status(request_id: str) -> Dict[str, Any]:
+        """Check the current status of a HITL approval request by its ID."""
+        from common_lib.modules.governance.hitl.service import get_hitl_service
+        svc = get_hitl_service()
+        item = svc.get_request(request_id)
+        if not item:
+            return {"status": "not_found", "id": request_id}
+        result = {"id": getattr(item, "id", ""), "status": getattr(item, "status", "unknown")}
+        for attr in HITL_REQUEST_ATTRS:
+            if hasattr(item, attr):
+                result[attr] = getattr(item, attr)
+        return result
+
+    @mcp.tool()
+    async def list_hitl_overrides() -> List[Dict[str, Any]]:
+        """List all emergency overrides currently active in the HITL system."""
+        from common_lib.modules.governance.hitl.service import get_hitl_service
+        svc = get_hitl_service()
+        items = svc.list_overrides()
+        result = []
+        for item in items:
+            d = {}
+            for attr in [
+                "target", "target_type", "action", "reason",
+                "authorized_by", "incident_id", "created_at",
+            ]:
+                if hasattr(item, attr):
+                    v = getattr(item, attr)
+                    d[attr] = (
+                        str(v)
+                        if not isinstance(v, (str, int, float, bool, type(None)))
+                        else v
+                    )
+            result.append(d)
+        return result
+
     @mcp.tool()
     async def deploy_agent_persona(model_path: str, provider: str = "vllm", agent_id: str = "master_agent", system_prompt: Optional[str] = None) -> Dict[str, Any]:
         """Deploy and activate a custom agent persona on the specified inference engine."""

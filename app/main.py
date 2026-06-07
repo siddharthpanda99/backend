@@ -78,6 +78,9 @@ from app.modules.proxy_routing import router as proxy_router
 from app.modules.collage.routes import router as collage_router
 from app.modules.experiments.routes import router as experiments_router
 from app.modules.ext_apps import router as ext_apps_router
+from app.modules.connectors.routes import connector_router, connection_router
+from app.modules.connectors.mcp.server import router as connectors_mcp_router
+from app.modules.plugins.routes import plugin_router
 from fastapi import Depends
 from app.modules.auth.dependencies.index import get_current_active_user
 
@@ -116,6 +119,7 @@ async def lifespan(app: FastAPI):
             try:
                 from common_lib.modules.settings.service import theme_service
                 from sqlmodel import Session as SQLSession
+
                 with SQLSession(engine) as seed_session:
                     result = theme_service.seed_from_json(seed_session)
                     print(f"Startup: {result.get('message', 'Themes seeded')}")
@@ -141,6 +145,110 @@ async def lifespan(app: FastAPI):
                 print("HITL Governance seed data loaded.")
             except Exception as se:
                 print(f"Warning: Proxy catalog, key, or HITL seeding failed: {se}")
+
+            # Seed 20 popular connector definitions
+            try:
+                from app.modules.connectors.seed import get_connector_seeds
+                from common_lib.modules.plugins.connectors.models.db import (
+                    ConnectorRecord,
+                )
+                from sqlmodel import Session as SQLSession
+
+                with SQLSession(engine) as seed_session:
+                    new_count = 0
+                    updated_count = 0
+                    for connector_data in get_connector_seeds():
+                        existing = seed_session.get(
+                            ConnectorRecord, connector_data["id"]
+                        )
+                        if existing:
+                            # Update existing record — keeps seed.py as single source of truth
+                            for field, value in connector_data.items():
+                                setattr(existing, field, value)
+                            updated_count += 1
+                        else:
+                            record = ConnectorRecord(**connector_data)
+                            seed_session.add(record)
+                            new_count += 1
+                    if new_count or updated_count:
+                        seed_session.commit()
+                        print(
+                            f"Connectors seeded: {new_count} new, {updated_count} updated"
+                        )
+                    else:
+                        print("Connectors: all already up to date")
+            except Exception as se:
+                print(f"Warning: Connector seeding failed: {se}")
+
+            # Seed default dev connection for Atlassian (DEV_MODE only)
+            if settings.DEV_MODE:
+                try:
+                    from common_lib.modules.plugins.connectors.models.db import (
+                        ConnectionRecord,
+                    )
+                    from common_lib.modules.keys_management.service import (
+                        KeyManagementService,
+                    )
+                    from common_lib.modules.keys_management.schemas import (
+                        ApiKeyCreate,
+                        KeyProvider,
+                    )
+                    from sqlmodel import Session as SQLSession
+                    from sqlmodel import select
+
+                    with SQLSession(engine) as dev_session:
+                        existing_dev = dev_session.exec(
+                            select(ConnectionRecord).where(
+                                ConnectionRecord.connector_id == "atlassian",
+                                ConnectionRecord.label
+                                == "Atlassian Dev Default",
+                            )
+                        ).first()
+
+                        if not existing_dev:
+                            # Create a placeholder API key
+                            import uuid
+
+                            kms = KeyManagementService()
+                            key_result = kms.create_key(
+                                ApiKeyCreate(
+                                    provider=KeyProvider.ATLASSIAN,
+                                    label="Atlassian Dev Default Key",
+                                    key_value="dev-placeholder-api-key",
+                                    enabled=True,
+                                )
+                            )
+                            key_id = key_result.id
+
+                            dev_conn = ConnectionRecord(
+                                id=str(uuid.uuid4()),
+                                connector_id="atlassian",
+                                user_id="default",
+                                auth_scheme="api_key",
+                                key_id=key_id,
+                                status="active",
+                                label="Atlassian Dev Default",
+                                form_data={
+                                    "atlassian_instance_url": "https://your-domain.atlassian.net",
+                                    "atlassian_email": "dev@example.com",
+                                },
+                                metadata_json={
+                                    "seeded": True,
+                                    "source": "startup",
+                                },
+                            )
+                            dev_session.add(dev_conn)
+                            dev_session.commit()
+                            print(
+                                f"Seeded default Atlassian dev connection (key_id={key_id})"
+                            )
+                        else:
+                            print("Atlassian dev connection already exists")
+                except Exception as se:
+                    print(
+                        f"Warning: Default connection seeding failed: {se}"
+                    )
+
             break
         except Exception as e:
             if attempt < max_retries - 1:
@@ -1076,6 +1184,39 @@ def create_app() -> FastAPI:
         ext_apps_router,
         prefix=settings.API_V1_STR,
         tags=["Ext-Apps"],
+    )
+
+    # Connectors API (tool registry, form schemas)
+    print(f"Startup: Including Connectors router with prefix: {settings.API_V1_STR}")
+    app.include_router(
+        connector_router,
+        prefix=settings.API_V1_STR,
+        tags=["Connectors"],
+    )
+    app.include_router(
+        connection_router,
+        prefix=settings.API_V1_STR,
+        tags=["Connections"],
+    )
+
+    # Connectors MCP (AI agent tool discovery)
+    print(
+        f"Startup: Including Connectors MCP router with prefix: {settings.API_V1_STR}"
+    )
+    app.include_router(
+        connectors_mcp_router,
+        prefix=settings.API_V1_STR,
+        tags=["MCP-Connectors"],
+    )
+
+    # Plugins API (plugin instances + module linker)
+    print(
+        f"Startup: Including Plugin router with prefix: {settings.API_V1_STR}/plugins"
+    )
+    app.include_router(
+        plugin_router,
+        prefix=settings.API_V1_STR,
+        tags=["Plugins"],
     )
 
     # Scheduler API (cron jobs, scheduled workflows)
