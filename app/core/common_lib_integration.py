@@ -1,4 +1,5 @@
 import os
+from common_lib.core.di_container import bridge
 from common_lib.modules.orchestration.context.memory.services import (
     SQLAlchemyMemoryStore,
 )
@@ -25,3 +26,14 @@ def sync_entity_to_fs(entity_type: str, entity_id: str):
         sync_manager.export_to_file(entity_type, entity_id, force=True)
     except Exception as e:
         print(f"Warning: Failed to sync {entity_type} {entity_id} to file system: {e}")
+
+
+# ── Wire the DI container ───────────────────────────────────────────
+# Export common_memory, sync_manager, and sync_entity_to_fs into the
+# AppBridge so that common_lib modules can access them without
+# importing from app.core directly.
+bridge.initialize(
+    memory_store=common_memory,
+    sync_manager=sync_manager,
+    sync_entity_to_fs=sync_entity_to_fs,
+)

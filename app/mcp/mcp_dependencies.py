@@ -52,6 +52,21 @@ def resolve_engine_manager():
     from app.modules.agents.runtime.core import get_engine_manager
     return get_engine_manager()
 
+_knowledge_engine_service_instance = None
+
+
+async def resolve_knowledge_engine_service():
+    """Helper to get the singleton Knowledge Engine service instance."""
+    global _knowledge_engine_service_instance
+    if _knowledge_engine_service_instance is None:
+        from common_lib.modules.knowledge_engine.service import KnowledgeEngineService
+
+        svc = KnowledgeEngineService()
+        await svc.initialize()
+        _knowledge_engine_service_instance = svc
+    return _knowledge_engine_service_instance
+
+
 def resolve_vision_controller():
     """Helper to get vision task controller."""
     from app.modules.vision.routes import controller

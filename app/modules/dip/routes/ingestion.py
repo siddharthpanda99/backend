@@ -8,6 +8,7 @@ from fastapi import (
     Query,
 )
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 import uuid
 import os
 from typing import List, Optional, Any
@@ -20,6 +21,9 @@ from common_lib.modules.dip.ingestion.controller import (
     save_extracted_text,
     get_extraction_stats,
     get_ingestion_sources,
+    create_ingestion_source,
+    delete_ingestion_source,
+    update_ingestion_source,
 )
 from common_lib.modules.dip.document_vault import (
     list_documents,
@@ -141,6 +145,52 @@ async def get_extraction_stats():
 async def get_sources():
     """Get ingestion sources."""
     return await get_ingestion_sources()
+
+
+class IngestionSourceCreate(BaseModel):
+    name: str
+    type: str
+    config: Optional[dict[str, Any]] = None
+    platform: Optional[str] = None
+    enabled: bool = True
+
+
+@router.post("/sources")
+async def create_source(payload: IngestionSourceCreate):
+    """Create a new ingestion source."""
+    result = await create_ingestion_source(
+        name=payload.name,
+        type=payload.type,
+        config=payload.config,
+        platform=payload.platform,
+        enabled=payload.enabled,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error"))
+    return result
+
+
+@router.delete("/sources/{source_id}")
+async def delete_source(source_id: str):
+    """Delete an ingestion source."""
+    result = await delete_ingestion_source(source_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error"))
+    return result
+
+
+class IngestionSourceUpdate(BaseModel):
+    updates: dict[str, Any]
+
+
+@router.put("/sources/{source_id}")
+async def update_source(source_id: str, payload: IngestionSourceUpdate):
+    """Update an ingestion source."""
+    result = await update_ingestion_source(source_id, payload.updates)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error"))
+    return result
+
 
 
 @router.get("/vault")

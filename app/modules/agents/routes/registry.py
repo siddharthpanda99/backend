@@ -19,7 +19,7 @@ CATEGORY_MAP = {
     "guardrails": "prompts",
     "constraints": "prompts",
     "preferences": "prompts",
-    "knowledge": "database",
+    "knowledge": "knowledge",
     "skills": "skills",
     "agents": "configs/agents",
     "examples": "prompts/examples",

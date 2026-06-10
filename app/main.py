@@ -67,7 +67,11 @@ from app.modules.dashboard.routes import router as dashboard_router
 from app.modules.system.routes import router as system_router
 from app.modules.settings.routes import router as settings_router
 from app.modules.dip.routes.ingestion import router as dip_ingestion_router
-from app.modules.dip.routes.pipeline import pipeline_router
+from app.modules.dip.routes.pipeline import pipeline_router as dip_pipeline_router
+from app.modules.dip.routes.rag import router as dip_rag_router
+from app.modules.dip.routes.kg import router as dip_kg_router
+from app.modules.dip.routes.storage import router as dip_storage_router
+from app.modules.dip.routes.embeddings import router as dip_embeddings_router
 from app.modules.file_browser import router as file_browser_router
 from app.modules.file_browser.macro_routes import router as macro_router
 from app.modules.notification.routes import router as notification_router
@@ -200,8 +204,7 @@ async def lifespan(app: FastAPI):
                         existing_dev = dev_session.exec(
                             select(ConnectionRecord).where(
                                 ConnectionRecord.connector_id == "atlassian",
-                                ConnectionRecord.label
-                                == "Atlassian Dev Default",
+                                ConnectionRecord.label == "Atlassian Dev Default",
                             )
                         ).first()
 
@@ -245,9 +248,7 @@ async def lifespan(app: FastAPI):
                         else:
                             print("Atlassian dev connection already exists")
                 except Exception as se:
-                    print(
-                        f"Warning: Default connection seeding failed: {se}"
-                    )
+                    print(f"Warning: Default connection seeding failed: {se}")
 
             break
         except Exception as e:
@@ -269,6 +270,345 @@ async def lifespan(app: FastAPI):
                 print("=" * 60)
                 sys.exit(1)
 
+    # --- SEED: Self-learning sample configs ---
+    try:
+        from app.modules.knowledge.models import ComponentConfigRecord
+        from common_lib.modules.data_storage.database.connection import (
+            engine as _sl_engine,
+        )
+        from sqlmodel import Session as _SLSession, select as _sl_select
+
+        with _SLSession(_sl_engine) as _sl_seed:
+            existing = _sl_seed.exec(
+                _sl_select(ComponentConfigRecord).where(
+                    ComponentConfigRecord.instance_id == "sl_sample_simple"
+                )
+            ).first()
+            if not existing:
+                now = (
+                    __import__("datetime")
+                    .datetime.now(__import__("datetime").timezone.utc)
+                    .replace(tzinfo=None)
+                )
+                _rows: list[ComponentConfigRecord] = []
+
+                # ── Simple: Quick Starter ──
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_simple",
+                        category="full",
+                        config_data={
+                            "name": "Quick Starter",
+                            "description": "Minimal config with core quality logging and scorer.",
+                            "tags": ["beginner", "minimal"],
+                            "variant": "v1",
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_simple",
+                        category="qualityLog",
+                        config_data={
+                            "enabled": True,
+                            "log_dir": "",
+                            "enabled_fields": [
+                                "query",
+                                "result_count",
+                                "latency_ms",
+                                "precision",
+                                "recall",
+                            ],
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_simple",
+                        category="scorer",
+                        config_data={"decay_rate": 0.1, "min_samples": 1},
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_simple",
+                        category="failure",
+                        config_data={
+                            "latency_threshold_ms": 500,
+                            "min_severity": "low",
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+
+                # ── Medium: Balanced Learner ──
+                _full_cfg = {
+                    "name": "Balanced Learner",
+                    "description": "Mid-tier config with meta-reasoning, belief revision, and conflict resolution.",
+                    "tags": ["intermediate", "adaptive"],
+                    "variant": "v1",
+                }
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_medium",
+                        category="full",
+                        config_data=_full_cfg,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_medium",
+                        category="qualityLog",
+                        config_data={
+                            "enabled": True,
+                            "log_dir": "",
+                            "enabled_fields": [
+                                "query",
+                                "retrieval_plan",
+                                "result_count",
+                                "latency_ms",
+                                "precision",
+                                "recall",
+                                "user_feedback",
+                                "user_rating",
+                                "methods_used",
+                                "error",
+                            ],
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_medium",
+                        category="autoEvolve",
+                        config_data={"enabled": True, "interval": 100},
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_medium",
+                        category="scorer",
+                        config_data={"decay_rate": 0.15, "min_samples": 3},
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_medium",
+                        category="failure",
+                        config_data={
+                            "latency_threshold_ms": 300,
+                            "min_severity": "medium",
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_medium",
+                        category="reasoner",
+                        config_data={
+                            "short_query_threshold": 5,
+                            "enable_hyde_suggestion": True,
+                            "latency_weight": 0.8,
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_medium",
+                        category="belief",
+                        config_data={
+                            "confidence_threshold": 0.6,
+                            "use_moving_average": True,
+                            "constant_learning_rate": 0.1,
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_medium",
+                        category="conflict",
+                        config_data={
+                            "strategy": "auto",
+                            "min_confidence_gap": 0.2,
+                            "min_source_trust_gap": 0.15,
+                            "enable_auto_resolution": True,
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+
+                # ── Complex: Full Autopilot ──
+                _full_cfg2 = {
+                    "name": "Full Autopilot",
+                    "description": "All 9 subsystems enabled with evolution branching and pruning.",
+                    "tags": ["advanced", "production", "autopilot"],
+                    "variant": "v4",
+                }
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_complex",
+                        category="full",
+                        config_data=_full_cfg2,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_complex",
+                        category="qualityLog",
+                        config_data={
+                            "enabled": True,
+                            "log_dir": "/var/log/retrieval",
+                            "enabled_fields": [
+                                "query",
+                                "retrieval_plan",
+                                "result_count",
+                                "latency_ms",
+                                "precision",
+                                "recall",
+                                "user_feedback",
+                                "user_rating",
+                                "methods_used",
+                                "error",
+                            ],
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_complex",
+                        category="autoEvolve",
+                        config_data={"enabled": True, "interval": 50},
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_complex",
+                        category="scorer",
+                        config_data={"decay_rate": 0.2, "min_samples": 5},
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_complex",
+                        category="failure",
+                        config_data={
+                            "latency_threshold_ms": 200,
+                            "min_severity": "high",
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_complex",
+                        category="reasoner",
+                        config_data={
+                            "short_query_threshold": 3,
+                            "enable_hyde_suggestion": True,
+                            "latency_weight": 1.5,
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_complex",
+                        category="belief",
+                        config_data={
+                            "confidence_threshold": 0.7,
+                            "use_moving_average": True,
+                            "constant_learning_rate": 0.05,
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_complex",
+                        category="conflict",
+                        config_data={
+                            "strategy": "auto",
+                            "min_confidence_gap": 0.15,
+                            "min_source_trust_gap": 0.1,
+                            "enable_auto_resolution": True,
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_complex",
+                        category="branching",
+                        config_data={
+                            "enable_branching": True,
+                            "diversity_weight": 0.6,
+                            "max_branches": 5,
+                            "specialization_threshold": 0.8,
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                _rows.append(
+                    ComponentConfigRecord(
+                        instance_id="sl_sample_complex",
+                        category="pruner",
+                        config_data={
+                            "min_importance": 0.3,
+                            "max_age_hours": 48,
+                            "enable_user_review": False,
+                            "auto_prune_threshold": 0.5,
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+
+                for _r in _rows:
+                    _sl_seed.add(_r)
+                _sl_seed.commit()
+                print(
+                    f"Startup: Seeded {len(_rows)} self-learning config rows across 3 sample instances"
+                )
+            else:
+                print("Startup: Self-learning sample configs already seeded")
+    except Exception as se:
+        print(f"Warning: Self-learning config seeding failed: {se}")
+
     # --- SYNC: Import all entities from file system to database ---
     if not settings.SKIP_REGISTRY_SYNC:
         print("Startup: Synchronizing file system entities to database...")
@@ -280,6 +620,24 @@ async def lifespan(app: FastAPI):
 
             AIModelsContainer().seed_defaults()
             print("AI Model Registry synchronized.")
+
+            # --- SYNC: Embedding Model Registry ---
+            try:
+                from sqlmodel import create_engine, Session
+                from common_lib.modules.data_storage.database.constants import (
+                    DEFAULT_DB_URL,
+                )
+                from common_lib.modules.knowledge_engine.embedding.registry import (
+                    init_registry,
+                )
+                import os
+
+                _engine = create_engine(os.getenv("DATABASE_URL", DEFAULT_DB_URL))
+                with Session(_engine) as _session:
+                    init_registry(_session)
+                print("Embedding Model Registry synchronized.")
+            except Exception as ei:
+                print(f"Warning: Embedding registry sync failed: {ei}")
 
             # Perform sync
             report = sync_manager.sync_all_from_files()
@@ -1149,9 +1507,47 @@ def create_app() -> FastAPI:
         f"Startup: Including DIP Pipeline router with prefix: {settings.API_V1_STR}/dip/pipeline"
     )
     app.include_router(
-        pipeline_router,
+        dip_pipeline_router,
         prefix=settings.API_V1_STR,
         tags=["dip/pipeline"],
+    )
+
+    # DIP RAG API (legacy — delegates to KnowledgeEngine)
+    print(
+        f"Startup: Including DIP RAG router with prefix: {settings.API_V1_STR}/dip/rag"
+    )
+    app.include_router(
+        dip_rag_router,
+        prefix=settings.API_V1_STR,
+        tags=["dip/rag"],
+    )
+
+    # DIP Knowledge Graph API
+    print(f"Startup: Including DIP KG router with prefix: {settings.API_V1_STR}/dip/kg")
+    app.include_router(
+        dip_kg_router,
+        prefix=settings.API_V1_STR,
+        tags=["dip/kg"],
+    )
+
+    # DIP Storage API
+    print(
+        f"Startup: Including DIP Storage router with prefix: {settings.API_V1_STR}/dip/storage"
+    )
+    app.include_router(
+        dip_storage_router,
+        prefix=settings.API_V1_STR,
+        tags=["dip/storage"],
+    )
+
+    # DIP Embeddings API (legacy — delegates to KnowledgeEngine)
+    print(
+        f"Startup: Including DIP Embeddings router with prefix: {settings.API_V1_STR}/dip/embeddings"
+    )
+    app.include_router(
+        dip_embeddings_router,
+        prefix=settings.API_V1_STR,
+        tags=["dip/embeddings"],
     )
 
     # Notification SSE API
@@ -1422,6 +1818,19 @@ def create_app() -> FastAPI:
         from common_lib.modules.observability import register_metrics_endpoint
 
         register_metrics_endpoint(app)
+
+    # Knowledge Engine API
+    from app.modules.knowledge.routes import router as knowledge_router
+
+    print(
+        f"Startup: Including Knowledge Engine router with prefix: {settings.API_V1_STR}/knowledge"
+    )
+    app.include_router(
+        knowledge_router,
+        prefix=settings.API_V1_STR,
+        tags=["Knowledge Engine"],
+        dependencies=global_deps,
+    )
 
     # Governance API
     from app.modules.governance.routes import router as governance_router

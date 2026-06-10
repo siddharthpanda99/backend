@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException
 from typing import List, Dict, Any
-from app.modules.graph.routes.index import _load_graph
+from common_lib.modules.graph import GraphService
+
+_graph_svc = GraphService()
 
 router = APIRouter(prefix="/dip/kg", tags=["dip/kg"])
 
@@ -10,7 +12,7 @@ async def list_kg_entities(
     refresh: bool = Query(False)
 ):
     """List knowledge graph entities (nodes)."""
-    graph_data = await _load_graph(refresh=refresh)
+    graph_data = await _graph_svc.load_graph(refresh=refresh)
     nodes = graph_data.nodes
     
     if category:
@@ -24,7 +26,7 @@ async def list_kg_entities(
 @router.get("/relations")
 async def list_kg_relations(refresh: bool = Query(False)):
     """List knowledge graph relations (edges)."""
-    graph_data = await _load_graph(refresh=refresh)
+    graph_data = await _graph_svc.load_graph(refresh=refresh)
     edges = graph_data.edges
     
     return {
@@ -35,7 +37,7 @@ async def list_kg_relations(refresh: bool = Query(False)):
 @router.get("/metrics")
 async def get_kg_metrics():
     """Get knowledge graph health and density metrics."""
-    graph_data = await _load_graph()
+    graph_data = await _graph_svc.load_graph()
     
     # Calculate density or other metrics if needed
     node_count = len(graph_data.nodes)

@@ -22,6 +22,7 @@ from app.mcp.tools.sessions import register_session_tools
 from app.mcp.tools.system import register_system_tools
 from app.mcp.tools.governance import register_governance_tools
 from app.mcp.tools.hooks_triggers import register_hooks_triggers_tools
+from app.mcp.tools.knowledge import register_knowledge_tools
 from app.mcp.resources.cognitive import register_cognitive_resources
 
 # Setup MCP-specific logging
@@ -59,6 +60,7 @@ register_session_tools(mcp_server)
 register_system_tools(mcp_server)
 register_governance_tools(mcp_server)
 register_hooks_triggers_tools(mcp_server)
+register_knowledge_tools(mcp_server)
 
 # 3. Register Modular Resources
 register_cognitive_resources(mcp_server)

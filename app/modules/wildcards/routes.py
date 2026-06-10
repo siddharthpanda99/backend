@@ -15,7 +15,7 @@ from common_lib.modules.data_storage.database.connection import (
     _get_db_service,
 )
 
-from app.modules.wildcards.service import WildcardService
+from common_lib.modules.wildcards.service import WildcardService
 from common_lib.modules.vision.schemas import (
     WildcardRecordSchema,
     WildcardListResponse,

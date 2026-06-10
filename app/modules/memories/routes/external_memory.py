@@ -1,39 +1,15 @@
-from typing import Optional, List
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 from app.modules.memories.dependencies import get_memory_service
-from common_lib.modules.memory.service import MemoryService, MemoryType
+from common_lib.modules.memory.service import MemoryService
+from common_lib.modules.memory.schemas import (
+    MemoryCreate,
+    MemoryResponse,
+    MemorySearchResponse,
+    MemoryStatsResponse,
+)
 
 router = APIRouter(prefix="", tags=["memory"])
-
-
-class MemoryCreate(BaseModel):
-    content: str
-    memory_type: str = "episodic"
-    agent_id: Optional[str] = None
-    session_id: Optional[str] = None
-    turn: Optional[int] = None
-    importance: float = 0.5
-
-
-class MemoryResponse(BaseModel):
-    id: str
-    content: str
-    memory_type: str
-    agent_id: Optional[str] = None
-    session_id: Optional[str] = None
-
-
-class MemorySearchResponse(BaseModel):
-    results: list
-    total: int
-
-
-class MemoryStatsResponse(BaseModel):
-    total_memories: int
-    retrievals: int
-    active_sessions: int
-    by_type: dict
 
 
 @router.post("/", response_model=MemoryResponse)
@@ -51,7 +27,7 @@ async def store_memory(
     return MemoryResponse(
         id=memory_id, 
         content=data.content, 
-        memory_type=data.memory_type,
+        memory_type=str(data.memory_type),
         agent_id=data.agent_id,
         session_id=data.session_id
     )
@@ -62,8 +38,6 @@ async def get_memory(
     memory_id: str, 
     service: MemoryService = Depends(get_memory_service)
 ):
-    # This assumes the service has a get method, but it doesn't yet. 
-    # For now, we'll return a stub or mock it from the repository
     if service.repository:
         record = await service.repository.get_memory(memory_id)
         if record:

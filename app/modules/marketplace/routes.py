@@ -1,46 +1,20 @@
-"""Marketplace API Routes.
-
-Provides REST endpoints for browsing marketplace items:
-- Memory blocks, skills, agents, workflows
-- Hardware, algorithms, optimizers, utilities, connectors
-"""
+"""Marketplace API Routes — thin routes delegating to MarketplaceService."""
 
 import logging
 import os
-import yaml
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 
-from common_lib.paths import get_repo_root
+import yaml
+
+from common_lib.modules.marketplace.service import MarketplaceService
+from common_lib.paths import TEMPLATES_ROOT
 
 router = APIRouter(tags=["marketplace"])
 
 logger = logging.getLogger(__name__)
 
-
-def _scan_templates(entity_type: str) -> List[Dict[str, Any]]:
-    """Scan templates directory for marketplace entities."""
-    from common_lib.paths import TEMPLATES_ROOT
-    templates_dir = os.path.join(TEMPLATES_ROOT, "marketplace", entity_type)
-    items = []
-
-    if not os.path.exists(templates_dir):
-        logger.warning(f"Marketplace directory does not exist: {templates_dir}")
-        return items
-
-    for filename in os.listdir(templates_dir):
-        if filename.endswith(".yaml") or filename.endswith(".yml"):
-            filepath = os.path.join(templates_dir, filename)
-            try:
-                with open(filepath, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f)
-                    if data:
-                        items.append(data)
-            except Exception as e:
-                logger.error(f"Failed to load {filepath}: {e}")
-
-    return items
-
+_svc = MarketplaceService()
 
 
 # =============================================================================
@@ -52,54 +26,13 @@ def _scan_templates(entity_type: str) -> List[Dict[str, Any]]:
 async def list_blocks(category: Optional[str] = Query(None)):
     """List all memory blocks, optionally filtered by category."""
     try:
-        from common_lib.modules.memory.memory_driver import (
-            CORE_BLOCKS,
-            CONTEXT_BLOCKS,
-            SEMANTIC_BLOCKS,
-            SECURITY_BLOCKS,
-            ADAPTATION_BLOCKS,
-            STRATEGY_BLOCKS,
-            EXECUTION_BLOCKS,
-            FORECASTING_BLOCKS,
-            ECONOMICS_BLOCKS,
-            CAUSAL_BLOCKS,
-            TESTING_BLOCKS,
-            FEDERATION_BLOCKS,
-            OBSERVABILITY_BLOCKS,
-            VERSIONING_BLOCKS,
-            PERSONA_BLOCKS,
-            MULTIMODAL_BLOCKS,
-            MQL_BLOCKS,
-            STORES_BLOCKS,
-            WORKING_BLOCKS,
-        )
-
-        all_blocks = (
-            CORE_BLOCKS
-            + CONTEXT_BLOCKS
-            + SEMANTIC_BLOCKS
-            + SECURITY_BLOCKS
-            + ADAPTATION_BLOCKS
-            + STRATEGY_BLOCKS
-            + EXECUTION_BLOCKS
-            + FORECASTING_BLOCKS
-            + ECONOMICS_BLOCKS
-            + CAUSAL_BLOCKS
-            + TESTING_BLOCKS
-            + FEDERATION_BLOCKS
-            + OBSERVABILITY_BLOCKS
-            + VERSIONING_BLOCKS
-            + PERSONA_BLOCKS
-            + MULTIMODAL_BLOCKS
-            + MQL_BLOCKS
-            + STORES_BLOCKS
-            + WORKING_BLOCKS
-        )
+        all_blocks = _svc.get_all_blocks()
+        from common_lib.modules.memory.memory_driver import BlockCategory
         if category:
             all_blocks = [b for b in all_blocks if b.category.value == category.lower()]
         return {
             "status": "ok",
-            "blocks": [_block_to_dict(b) for b in all_blocks],
+            "blocks": [_svc.block_to_dict(b) for b in all_blocks],
             "count": len(all_blocks),
         }
     except Exception as e:
@@ -111,50 +44,8 @@ async def list_blocks(category: Optional[str] = Query(None)):
 async def list_block_categories():
     """List all block categories with counts."""
     try:
-        from common_lib.modules.memory.memory_driver import (
-            CORE_BLOCKS,
-            CONTEXT_BLOCKS,
-            SEMANTIC_BLOCKS,
-            SECURITY_BLOCKS,
-            ADAPTATION_BLOCKS,
-            STRATEGY_BLOCKS,
-            EXECUTION_BLOCKS,
-            FORECASTING_BLOCKS,
-            ECONOMICS_BLOCKS,
-            CAUSAL_BLOCKS,
-            TESTING_BLOCKS,
-            FEDERATION_BLOCKS,
-            OBSERVABILITY_BLOCKS,
-            VERSIONING_BLOCKS,
-            PERSONA_BLOCKS,
-            MULTIMODAL_BLOCKS,
-            MQL_BLOCKS,
-            STORES_BLOCKS,
-            WORKING_BLOCKS,
-            BlockCategory,
-        )
-
-        all_blocks = (
-            CORE_BLOCKS
-            + CONTEXT_BLOCKS
-            + SEMANTIC_BLOCKS
-            + SECURITY_BLOCKS
-            + ADAPTATION_BLOCKS
-            + STRATEGY_BLOCKS
-            + EXECUTION_BLOCKS
-            + FORECASTING_BLOCKS
-            + ECONOMICS_BLOCKS
-            + CAUSAL_BLOCKS
-            + TESTING_BLOCKS
-            + FEDERATION_BLOCKS
-            + OBSERVABILITY_BLOCKS
-            + VERSIONING_BLOCKS
-            + PERSONA_BLOCKS
-            + MULTIMODAL_BLOCKS
-            + MQL_BLOCKS
-            + STORES_BLOCKS
-            + WORKING_BLOCKS
-        )
+        all_blocks = _svc.get_all_blocks()
+        from common_lib.modules.memory.memory_driver import BlockCategory
         categories = {}
         for cat in BlockCategory:
             count = sum(1 for b in all_blocks if b.category == cat)
@@ -169,53 +60,11 @@ async def list_block_categories():
 async def get_block(block_id: str):
     """Get a specific memory block by ID."""
     try:
-        from common_lib.modules.memory.memory_driver import (
-            CORE_BLOCKS,
-            CONTEXT_BLOCKS,
-            SEMANTIC_BLOCKS,
-            SECURITY_BLOCKS,
-            ADAPTATION_BLOCKS,
-            STRATEGY_BLOCKS,
-            EXECUTION_BLOCKS,
-            FORECASTING_BLOCKS,
-            ECONOMICS_BLOCKS,
-            CAUSAL_BLOCKS,
-            TESTING_BLOCKS,
-            FEDERATION_BLOCKS,
-            OBSERVABILITY_BLOCKS,
-            VERSIONING_BLOCKS,
-            PERSONA_BLOCKS,
-            MULTIMODAL_BLOCKS,
-            MQL_BLOCKS,
-            STORES_BLOCKS,
-            WORKING_BLOCKS,
-        )
-
-        all_blocks = (
-            CORE_BLOCKS
-            + CONTEXT_BLOCKS
-            + SEMANTIC_BLOCKS
-            + SECURITY_BLOCKS
-            + ADAPTATION_BLOCKS
-            + STRATEGY_BLOCKS
-            + EXECUTION_BLOCKS
-            + FORECASTING_BLOCKS
-            + ECONOMICS_BLOCKS
-            + CAUSAL_BLOCKS
-            + TESTING_BLOCKS
-            + FEDERATION_BLOCKS
-            + OBSERVABILITY_BLOCKS
-            + VERSIONING_BLOCKS
-            + PERSONA_BLOCKS
-            + MULTIMODAL_BLOCKS
-            + MQL_BLOCKS
-            + STORES_BLOCKS
-            + WORKING_BLOCKS
-        )
+        all_blocks = _svc.get_all_blocks()
         block = next((b for b in all_blocks if b.id == block_id), None)
         if not block:
             raise HTTPException(status_code=404, detail=f"Block not found: {block_id}")
-        return {"status": "ok", "block": _block_to_dict(block)}
+        return {"status": "ok", "block": _svc.block_to_dict(block)}
     except HTTPException:
         raise
     except Exception as e:
@@ -233,10 +82,9 @@ async def list_profiles():
     """List all pre-built memory profiles."""
     try:
         from common_lib.modules.memory.memory_driver import MEMORY_PROFILES
-
         return {
             "status": "ok",
-            "profiles": [_profile_to_dict(p) for p in MEMORY_PROFILES],
+            "profiles": [_svc.profile_to_dict(p) for p in MEMORY_PROFILES],
             "count": len(MEMORY_PROFILES),
         }
     except Exception as e:
@@ -249,13 +97,10 @@ async def get_profile(profile_id: str):
     """Get a specific memory profile by ID."""
     try:
         from common_lib.modules.memory.memory_driver import MEMORY_PROFILES
-
         profile = next((p for p in MEMORY_PROFILES if p.id == profile_id), None)
         if not profile:
-            raise HTTPException(
-                status_code=404, detail=f"Profile not found: {profile_id}"
-            )
-        return {"status": "ok", "profile": _profile_to_dict(profile)}
+            raise HTTPException(status_code=404, detail=f"Profile not found: {profile_id}")
+        return {"status": "ok", "profile": _svc.profile_to_dict(profile)}
     except HTTPException:
         raise
     except Exception as e:
@@ -268,14 +113,10 @@ async def compose_profile(request: dict):
     """Compose a custom profile from blocks."""
     try:
         from common_lib.modules.memory.memory_driver import MemoryDriver
-
         block_ids = request.get("block_ids", [])
         driver = MemoryDriver()
         result = driver.compose_profile("custom", block_ids)
-        return {
-            "status": "ok",
-            "profile": {"blocks": result, "block_count": len(result)},
-        }
+        return {"status": "ok", "profile": {"blocks": result, "block_count": len(result)}}
     except Exception as e:
         logger.error(f"Failed to compose profile: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -290,14 +131,10 @@ async def compose_profile(request: dict):
 async def list_hardware():
     """List memory hardware adapters."""
     try:
-        from common_lib.modules.memory.memory_marketplace import (
-            MarketplaceRegistry,
-            MarketplaceCategory,
-        )
-
+        from common_lib.modules.memory.memory_marketplace import MarketplaceRegistry, MarketplaceCategory
         registry = MarketplaceRegistry()
         items = registry.list_items(MarketplaceCategory.HARDWARE)
-        return {"status": "ok", "items": [_item_to_dict(i) for i in items]}
+        return {"status": "ok", "items": [_svc.item_to_dict(i) for i in items]}
     except Exception as e:
         logger.error(f"Failed to list hardware: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -307,14 +144,10 @@ async def list_hardware():
 async def list_algorithms():
     """List memory algorithms."""
     try:
-        from common_lib.modules.memory.memory_marketplace import (
-            MarketplaceRegistry,
-            MarketplaceCategory,
-        )
-
+        from common_lib.modules.memory.memory_marketplace import MarketplaceRegistry, MarketplaceCategory
         registry = MarketplaceRegistry()
         items = registry.list_items(MarketplaceCategory.ALGORITHM)
-        return {"status": "ok", "items": [_item_to_dict(i) for i in items]}
+        return {"status": "ok", "items": [_svc.item_to_dict(i) for i in items]}
     except Exception as e:
         logger.error(f"Failed to list algorithms: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -324,14 +157,10 @@ async def list_algorithms():
 async def list_optimizers():
     """List memory optimizers."""
     try:
-        from common_lib.modules.memory.memory_marketplace import (
-            MarketplaceRegistry,
-            MarketplaceCategory,
-        )
-
+        from common_lib.modules.memory.memory_marketplace import MarketplaceRegistry, MarketplaceCategory
         registry = MarketplaceRegistry()
         items = registry.list_items(MarketplaceCategory.OPTIMIZATION)
-        return {"status": "ok", "items": [_item_to_dict(i) for i in items]}
+        return {"status": "ok", "items": [_svc.item_to_dict(i) for i in items]}
     except Exception as e:
         logger.error(f"Failed to list optimizers: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -341,14 +170,10 @@ async def list_optimizers():
 async def list_utilities():
     """List memory utilities."""
     try:
-        from common_lib.modules.memory.memory_marketplace import (
-            MarketplaceRegistry,
-            MarketplaceCategory,
-        )
-
+        from common_lib.modules.memory.memory_marketplace import MarketplaceRegistry, MarketplaceCategory
         registry = MarketplaceRegistry()
         items = registry.list_items(MarketplaceCategory.UTILITY)
-        return {"status": "ok", "items": [_item_to_dict(i) for i in items]}
+        return {"status": "ok", "items": [_svc.item_to_dict(i) for i in items]}
     except Exception as e:
         logger.error(f"Failed to list utilities: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -358,14 +183,10 @@ async def list_utilities():
 async def list_connectors():
     """List memory connectors."""
     try:
-        from common_lib.modules.memory.memory_marketplace import (
-            MarketplaceRegistry,
-            MarketplaceCategory,
-        )
-
+        from common_lib.modules.memory.memory_marketplace import MarketplaceRegistry, MarketplaceCategory
         registry = MarketplaceRegistry()
         items = registry.list_items(MarketplaceCategory.CONNECTOR)
-        return {"status": "ok", "items": [_item_to_dict(i) for i in items]}
+        return {"status": "ok", "items": [_svc.item_to_dict(i) for i in items]}
     except Exception as e:
         logger.error(f"Failed to list connectors: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -375,11 +196,7 @@ async def list_connectors():
 async def list_categories():
     """List marketplace categories with counts."""
     try:
-        from common_lib.modules.memory.memory_marketplace import (
-            MarketplaceRegistry,
-            MarketplaceCategory,
-        )
-
+        from common_lib.modules.memory.memory_marketplace import MarketplaceRegistry, MarketplaceCategory
         registry = MarketplaceRegistry()
         categories = {}
         for cat in MarketplaceCategory:
@@ -400,7 +217,7 @@ async def list_categories():
 async def list_agents():
     """List marketplace agents from templates."""
     try:
-        items = _scan_templates("agents")
+        items = _svc.scan_templates("agents")
         return {"status": "ok", "items": items, "count": len(items)}
     except Exception as e:
         logger.error(f"Failed to list agents: {e}", exc_info=True)
@@ -411,7 +228,7 @@ async def list_agents():
 async def list_skills():
     """List marketplace skills from templates."""
     try:
-        items = _scan_templates("skills")
+        items = _svc.scan_templates("skills")
         return {"status": "ok", "items": items, "count": len(items)}
     except Exception as e:
         logger.error(f"Failed to list skills: {e}", exc_info=True)
@@ -422,7 +239,7 @@ async def list_skills():
 async def list_workflows():
     """List marketplace workflows from templates."""
     try:
-        items = _scan_templates("workflows")
+        items = _svc.scan_templates("workflows")
         return {"status": "ok", "items": items, "count": len(items)}
     except Exception as e:
         logger.error(f"Failed to list workflows: {e}", exc_info=True)
@@ -433,89 +250,51 @@ async def list_workflows():
 async def upload_template(file: UploadFile = File(...)):
     """Upload a new marketplace entity YAML template."""
     if not (file.filename.endswith(".yaml") or file.filename.endswith(".yml")):
-        raise HTTPException(
-            status_code=400, detail="Invalid file type. Only .yaml or .yml files are accepted."
-        )
+        raise HTTPException(status_code=400, detail="Invalid file type. Only .yaml or .yml files are accepted.")
 
     try:
         content = await file.read()
         try:
             data = yaml.safe_load(content.decode("utf-8"))
         except yaml.YAMLError as ye:
-            raise HTTPException(
-                status_code=400, detail=f"Malformed YAML content: {ye}"
-            )
+            raise HTTPException(status_code=400, detail=f"Malformed YAML content: {ye}")
 
         if not data or not isinstance(data, dict):
-            raise HTTPException(
-                status_code=400, detail="YAML content must represent a key-value object."
-            )
+            raise HTTPException(status_code=400, detail="YAML content must represent a key-value object.")
 
-        # Validate mandatory keys
         required_keys = ["id", "name", "type"]
         missing = [k for k in required_keys if k not in data]
         if missing:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Missing mandatory fields: {', '.join(missing)}"
-            )
+            raise HTTPException(status_code=400, detail=f"Missing mandatory fields: {', '.join(missing)}")
 
-        entity_type = data["type"].lower()
-        if entity_type in ["skill", "skills"]:
-            normalized_type = "skills"
-        elif entity_type in ["agent", "agents"]:
-            normalized_type = "agents"
-        elif entity_type in ["workflow", "workflows"]:
-            normalized_type = "workflows"
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid entity type. Must be 'skill', 'agent', or 'workflow'."
-            )
+        normalized_type = _svc.normalize_entity_type(data["type"])
+        if not normalized_type:
+            raise HTTPException(status_code=400, detail="Invalid entity type. Must be 'skill', 'agent', or 'workflow'.")
 
-        from common_lib.paths import TEMPLATES_ROOT
         target_dir = os.path.join(TEMPLATES_ROOT, "marketplace", normalized_type)
         os.makedirs(target_dir, exist_ok=True)
 
-        clean_id = "".join(c for c in data["id"] if c.isalnum() or c in ("_", "-")).lower()
+        clean_id = _svc.make_clean_id(data["id"])
         if not clean_id:
-            raise HTTPException(
-                status_code=400, detail="Invalid entity ID."
-            )
+            raise HTTPException(status_code=400, detail="Invalid entity ID.")
 
-        filename = f"{clean_id}.yaml"
-        target_path = os.path.join(target_dir, filename)
-
-        # Normalize type inside the saved data
-        data["type"] = entity_type[:-1] if entity_type.endswith("s") else entity_type
-
-        # Ensure sensible defaults for marketplace list rendering
-        if "rating" not in data:
-            data["rating"] = 5.0
-        if "downloads" not in data:
-            data["downloads"] = 0
-        if "category" not in data:
-            data["category"] = "utility"
-        if "tags" not in data:
-            data["tags"] = []
+        target_path = os.path.join(target_dir, f"{clean_id}.yaml")
+        data["type"] = normalized_type[:-1]  # singular
+        data.setdefault("rating", 5.0)
+        data.setdefault("downloads", 0)
+        data.setdefault("category", "utility")
+        data.setdefault("tags", [])
 
         with open(target_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
 
-        logger.info(f"Successfully uploaded marketplace {normalized_type[:-1]}: {clean_id}")
-        return {
-            "status": "ok",
-            "message": f"Successfully uploaded and registered {data['name']}",
-            "item": data
-        }
-
+        logger.info(f"Uploaded marketplace {normalized_type[:-1]}: {clean_id}")
+        return {"status": "ok", "message": f"Successfully uploaded {data['name']}", "item": data}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to upload template: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to upload template: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to upload template: {str(e)}")
 
 
 @router.post("/install")
@@ -604,61 +383,3 @@ async def install_marketplace_item(request: dict):
         )
 
 
-# =============================================================================
-# Helpers
-# =============================================================================
-
-
-def _block_to_dict(block) -> dict:
-    return {
-        "id": block.id,
-        "name": block.name,
-        "description": block.description,
-        "category": block.category.value,
-        "capabilities": block.capabilities,
-        "dependencies": block.dependencies,
-        "config": block.config,
-        "enabled": block.enabled,
-        "priority": block.priority,
-        "usage_examples": getattr(block, "usage_examples", []),
-        "related_blocks": getattr(block, "related_blocks", []),
-        "performance_notes": getattr(block, "performance_notes", ""),
-        "configuration_guide": getattr(block, "configuration_guide", ""),
-        "api_reference": getattr(block, "api_reference", {}),
-    }
-
-
-def _profile_to_dict(profile) -> dict:
-    return {
-        "id": profile.id,
-        "name": profile.name,
-        "description": profile.description,
-        "blocks": profile.blocks,
-        "block_ids": profile.blocks,
-        "agent_type": getattr(profile, "agent_type", "general"),
-        "use_cases": getattr(profile, "use_cases", []),
-        "recommended": getattr(profile, "recommended", False),
-        "created_at": "2026-05-01T00:00:00Z",
-        "updated_at": "2026-05-29T15:30:00Z",
-    }
-
-
-def _item_to_dict(item) -> dict:
-    return {
-        "id": item.id,
-        "name": item.name,
-        "description": item.description,
-        "category": item.category.value,
-        "version": item.version,
-        "author": item.author,
-        "license": item.license,
-        "tags": item.tags,
-        "config": item.config,
-        "dependencies": item.dependencies,
-        "compatible_platforms": item.compatible_platforms,
-        "compatible_agents": item.compatible_agents,
-        "compatible_harnesses": item.compatible_harnesses,
-        "rating": item.rating,
-        "downloads": item.downloads,
-        "metadata": item.metadata,
-    }

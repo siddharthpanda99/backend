@@ -1,6 +1,7 @@
+"""Prompts API Routes — thin routes delegating to common_lib services."""
+
 import logging
 import uuid
-from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -29,25 +30,57 @@ class PromptSaveRequest(BaseModel):
     metadata_json: Optional[Dict[str, Any]] = {}
 
 
+def _import_prompt_from_url(url: str) -> dict:
+    """Import a prompt from PromptHero and return adapted data."""
+    from common_lib.plugins.web_scraper.spiders.prompthero import PromptHeroSpider
+    from common_lib.plugins.web_scraper.core.engine import ScraperCore
+
+    fetcher = ScraperCore().get_fetcher()
+    spider = PromptHeroSpider(fetcher)
+    details = spider.fetch_prompt_details(url)
+    if not details.get("success"):
+        raise HTTPException(
+            status_code=400, detail=details.get("error", "Failed to fetch prompt")
+        )
+    return spider.adapt_to_prompt_record(details)
+
+
+def _save_imported_prompt(prompt_id: str, request: PromptSaveRequest) -> dict:
+    """Save a prompt via common_memory and sync to filesystem."""
+    from app.core.common_lib_integration import common_memory, sync_entity_to_fs
+
+    if common_memory.get_prompt_definition(prompt_id):
+        prompt_id = f"{prompt_id}_{uuid.uuid4().hex[:4]}"
+
+    success = common_memory.save_prompt_definition(
+        entity_id=prompt_id,
+        system_prompt=request.system_prompt,
+        config={
+            "name": request.name,
+            "description": request.description,
+            "category": request.category,
+            "logical_category": request.logical_category,
+            "tags": request.tags,
+            "config": request.config,
+            "metadata_json": request.metadata_json,
+        },
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save prompt to DB")
+
+    sync_entity_to_fs("prompt", prompt_id)
+    saved = common_memory.get_prompt_definition(prompt_id)
+    return saved
+
+
 @router.post("/import", response_model=APIResponse[Dict[str, Any]])
 async def import_prompt_from_url(request: PromptImportRequest):
     """Scrape a PromptHero URL and return adapted prompt data ready to save."""
     try:
-        from common_lib.plugins.web_scraper.spiders.prompthero import PromptHeroSpider
-        from common_lib.plugins.web_scraper.core.engine import ScraperCore
-
-        fetcher = ScraperCore().get_fetcher()
-        spider = PromptHeroSpider(fetcher)
-        details = spider.fetch_prompt_details(request.url)
-        if not details.get("success"):
-            raise HTTPException(
-                status_code=400, detail=details.get("error", "Failed to fetch prompt")
-            )
-
-        record = spider.adapt_to_prompt_record(details)
+        record = _import_prompt_from_url(request.url)
         return APIResponse(
             data=record,
-            message=f"Imported '{details.get('title', '')}' — preview before saving",
+            message=f"Imported '{record.get('name', '')}' — preview before saving",
         )
     except HTTPException:
         raise
@@ -60,33 +93,9 @@ async def import_prompt_from_url(request: PromptImportRequest):
 async def save_imported_prompt(request: PromptSaveRequest):
     """Save an imported prompt to the database as a PromptRecord."""
     try:
-        from app.core.common_lib_integration import common_memory, sync_entity_to_fs
-
         prompt_id = request.id or f"prompthero_{uuid.uuid4().hex[:8]}"
-        if common_memory.get_prompt_definition(prompt_id):
-            prompt_id = f"{prompt_id}_{uuid.uuid4().hex[:4]}"
-
-        success = common_memory.save_prompt_definition(
-            entity_id=prompt_id,
-            system_prompt=request.system_prompt,
-            config={
-                "name": request.name,
-                "description": request.description,
-                "category": request.category,
-                "logical_category": request.logical_category,
-                "tags": request.tags,
-                "config": request.config,
-                "metadata_json": request.metadata_json,
-            },
-        )
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to save prompt to DB")
-
-        sync_entity_to_fs("prompt", prompt_id)
-        saved = common_memory.get_prompt_definition(prompt_id)
-        return APIResponse(
-            data=saved, message=f"Prompt '{request.name}' saved successfully"
-        )
+        saved = _save_imported_prompt(prompt_id, request)
+        return APIResponse(data=saved, message=f"Prompt '{request.name}' saved")
     except HTTPException:
         raise
     except Exception as e:
@@ -98,41 +107,20 @@ async def save_imported_prompt(request: PromptSaveRequest):
 async def import_and_save_prompt(request: PromptImportRequest):
     """Scrape a PromptHero URL and immediately save to the database."""
     try:
-        from common_lib.plugins.web_scraper.spiders.prompthero import PromptHeroSpider
-        from common_lib.plugins.web_scraper.core.engine import ScraperCore
-        from app.core.common_lib_integration import common_memory, sync_entity_to_fs
-
-        fetcher = ScraperCore().get_fetcher()
-        spider = PromptHeroSpider(fetcher)
-        details = spider.fetch_prompt_details(request.url)
-        if not details.get("success"):
-            raise HTTPException(
-                status_code=400, detail=details.get("error", "Failed to fetch prompt")
-            )
-
-        record = spider.adapt_to_prompt_record(details)
-        prompt_id = record["id"]
-        if common_memory.get_prompt_definition(prompt_id):
-            prompt_id = f"{prompt_id}_{uuid.uuid4().hex[:4]}"
-
-        success = common_memory.save_prompt_definition(
-            entity_id=prompt_id,
-            system_prompt=record["system_prompt"],
-            config={
-                "name": record["name"],
-                "description": record.get("description", ""),
-                "category": record.get("category", "community"),
-                "logical_category": record.get("logical_category", "prompts"),
-                "tags": record.get("tags", []),
-                "config": record.get("config", {}),
-                "metadata_json": record.get("metadata_json", {}),
-            },
+        record = _import_prompt_from_url(request.url)
+        save_req = PromptSaveRequest(
+            id=record.get("id"),
+            name=record.get("name", "Imported Prompt"),
+            system_prompt=record.get("system_prompt", ""),
+            description=record.get("description", ""),
+            category=record.get("category", "community"),
+            logical_category=record.get("logical_category", "prompts"),
+            tags=record.get("tags", []),
+            config=record.get("config", {}),
+            metadata_json=record.get("metadata_json", {}),
         )
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to save prompt to DB")
-
-        sync_entity_to_fs("prompt", prompt_id)
-        saved = common_memory.get_prompt_definition(prompt_id)
+        prompt_id = record.get("id", f"prompthero_{uuid.uuid4().hex[:8]}")
+        saved = _save_imported_prompt(prompt_id, save_req)
         return APIResponse(
             data=saved, message=f"Prompt '{record['name']}' imported and saved"
         )
@@ -148,7 +136,6 @@ async def list_imported_prompts():
     """List all prompts in the database."""
     try:
         from app.core.common_lib_integration import common_memory
-
         prompts = common_memory.list_prompt_definitions()
         return APIResponse(data=prompts, message=f"Found {len(prompts)} prompts")
     except Exception as e:
@@ -179,8 +166,7 @@ async def batch_import_prompts(
             try:
                 details = spider.fetch_prompt_details(prompt_data["url"])
                 if details.get("success"):
-                    record = spider.adapt_to_prompt_record(details)
-                    records.append(record)
+                    records.append(spider.adapt_to_prompt_record(details))
                 else:
                     records.append(spider.adapt_to_prompt_record(prompt_data))
             except Exception as e:
@@ -202,7 +188,6 @@ async def list_prompts_by_source(source: str):
     """List prompts filtered by source (e.g., 'prompthero')."""
     try:
         from app.core.common_lib_integration import common_memory
-
         prompts = common_memory.list_prompt_definitions()
         filtered = [
             p

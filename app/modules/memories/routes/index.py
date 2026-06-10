@@ -1,8 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
 
 from common_lib.modules.memory.service import MemoryService, FeatureFlags, MemoryType
+from common_lib.modules.memory.schemas import (
+    MemoryCreate,
+    MemoryUpdate,
+    MemoryStoreConfig,
+    RetrievalRequest,
+    ContextRequest,
+    PolicyConfig,
+    PruneRequest,
+)
 from common_lib.modules.memory.memory_storage.repositories.memory_repository import (
     MemoryRepository,
 )
@@ -10,50 +18,8 @@ from common_lib.modules.memory.memory_storage.adapters.relational_adapter import
     RelationalStorageAdapter,
 )
 from app.modules.common.types.index import APIResponse
-from app.modules.auth.dependencies.index import get_current_active_user
 
 router = APIRouter()
-
-
-class MemoryCreate(BaseModel):
-    content: str
-    memory_type: MemoryType = MemoryType.EPISODIC
-    agent_id: Optional[str] = None
-    session_id: Optional[str] = None
-    importance: float = 0.5
-    confidence: float = 0.5
-    metadata: Optional[Dict[str, Any]] = None
-
-
-class MemoryUpdate(BaseModel):
-    content: Optional[str] = None
-    importance: Optional[float] = None
-    metadata: Optional[Dict[str, Any]] = None
-
-
-class MemoryStoreConfig(BaseModel):
-    store_type: str
-    name: str
-    max_records: int = 10000
-    ttl_seconds: int = 3600
-
-
-class RetrievalRequest(BaseModel):
-    query: str
-    store_types: List[MemoryType] = [MemoryType.SEMANTIC, MemoryType.EPISODIC]
-    limit: int = 10
-
-
-class ContextRequest(BaseModel):
-    session_id: str
-    max_tokens: int = 4000
-
-
-class PolicyConfig(BaseModel):
-    policy_name: str
-    enabled: bool = True
-    config: Dict[str, Any] = {}
-
 
 from app.modules.memories.dependencies import get_memory_service
 
@@ -694,29 +660,12 @@ async def get_federation_status(service: MemoryService = Depends(get_memory_serv
     return APIResponse(data=status, message="Federation status retrieved")
 
 
-# =============================================================================
-# Phase 1: Memory Pruning API
-# =============================================================================
-
-
-class PruneRequest(BaseModel):
-    strategy: str = "importance"
-    min_importance: float = 0.1
-    max_age_days: int = 90
-    session_id: Optional[str] = None
-    dry_run: bool = False
-
-
 @router.post("/prune", response_model=APIResponse[Dict[str, Any]])
 async def prune_memories(
     request: PruneRequest,
     service: MemoryService = Depends(get_memory_service),
 ):
-    """Prune low-value memories using configurable strategies.
-
-    Delegates logic to MemoryService.prune_memories() in common_lib.
-    Integrates with the integration module for event routing and error handling.
-    """
+    """Prune low-value memories using configurable strategies."""
     from common_lib.modules.integration import (
         get_event_router,
         get_error_handler,
@@ -725,8 +674,6 @@ async def prune_memories(
     from common_lib.modules.integration.context_propagation import create_trace_context
 
     trace_ctx = create_trace_context(source="api", operation="memory.prune")
-    event_router = get_event_router()
-    error_handler = get_error_handler()
 
     try:
         result = await service.prune_memories(
@@ -737,7 +684,7 @@ async def prune_memories(
             dry_run=request.dry_run,
         )
 
-        await event_router.fire_event(
+        await get_event_router().fire_event(
             event_type="memory.prune",
             data={
                 "strategy": request.strategy,
@@ -752,7 +699,7 @@ async def prune_memories(
             data=result, message=f"Pruning completed ({request.strategy})"
         )
     except Exception as e:
-        error_handler.handle_error(
+        get_error_handler().handle_error(
             error=e,
             module="memory",
             operation="prune",
