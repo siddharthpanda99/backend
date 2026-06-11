@@ -166,6 +166,13 @@ def delete_ruleset(ruleset_id: str, session: Session = Depends(get_session)):
     ruleset = session.get(RuleSetModel, ruleset_id)
     if not ruleset:
         raise HTTPException(status_code=404, detail="Rule set not found")
+    
+    # First delete any links
+    links = session.exec(select(RuleSetRuleLink).where(RuleSetRuleLink.rule_set_id == ruleset_id)).all()
+    for link in links:
+        session.delete(link)
+    session.flush()
+    
     session.delete(ruleset)
     session.commit()
     return {"message": "Deleted successfully"}
@@ -240,6 +247,7 @@ def delete_rule(rule_id: str, session: Session = Depends(get_session)):
     links = session.exec(select(RuleSetRuleLink).where(RuleSetRuleLink.rule_id == rule_id)).all()
     for link in links:
         session.delete(link)
+    session.flush()
     
     session.delete(rule)
     session.commit()

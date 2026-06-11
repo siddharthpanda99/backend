@@ -41,7 +41,10 @@ def _get_registry_svc() -> EntityRegistryService:
         )
         if em and getattr(em, "registry_svc", None):
             reg.set_registry_svc(em.registry_svc)
-            if hasattr(em.registry_svc, "search_provider") and em.registry_svc.search_provider is None:
+            if (
+                hasattr(em.registry_svc, "search_provider")
+                and em.registry_svc.search_provider is None
+            ):
                 search_svc = get_search_service()
                 em.registry_svc.search_provider = search_svc.search
         _registry_svc = reg
@@ -119,6 +122,93 @@ async def sync_progress_stream():
     return StreamingResponse(progress_generator(), media_type="text/event-stream")
 
 
+@router.get("/catalog/features", response_model=APIResponse[Dict[str, Any]])
+async def get_features_catalog():
+    """Exhaustive, deduplicated feature catalog for agents + humans."""
+    from app.modules.agents.runtime.routes import available_workflows
+
+    try:
+        svc = _get_registry_svc()
+        catalog = await svc.get_features_catalog(
+            available_workflows_fn=available_workflows,
+        )
+        return APIResponse(
+            data=catalog,
+            message=f"Feature catalog retrieved: {catalog['total']} items across {len(catalog['by_type'])} types",
+        )
+    except Exception as e:
+        logger.error(f"Failed to get feature catalog: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/catalog/{source}/{item_id}", response_model=APIResponse[Dict[str, Any]])
+async def get_catalog_item(source: str, item_id: str):
+    """Get a single feature catalog item with overrides."""
+    try:
+        svc = _get_registry_svc()
+        item = await svc.get_catalog_item(source, item_id)
+        if not item:
+            raise HTTPException(
+                status_code=404, detail=f"Catalog item '{source}/{item_id}' not found"
+            )
+        return APIResponse(data=item, message="Catalog item retrieved")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get catalog item {source}/{item_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/catalog/{source}/{item_id}", response_model=APIResponse[Dict[str, Any]])
+async def update_catalog_item(
+    source: str, item_id: str, body: Dict[str, Any] = Body(...)
+):
+    """Update metadata overrides for a catalog item."""
+    try:
+        svc = _get_registry_svc()
+        result = svc.update_catalog_item(source, item_id, body)
+        return APIResponse(data=result, message="Catalog item updated")
+    except Exception as e:
+        logger.error(f"Failed to update catalog item {source}/{item_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/catalog/{source}/{item_id}/schema", response_model=APIResponse[Dict[str, Any]]
+)
+async def get_catalog_item_schema(source: str, item_id: str):
+    """Get execution schema (inputs, outputs) for a catalog item."""
+    try:
+        svc = _get_registry_svc()
+        schema = svc.get_catalog_item_schema(source, item_id)
+        if not schema:
+            raise HTTPException(
+                status_code=404, detail=f"Schema not found for '{source}/{item_id}'"
+            )
+        return APIResponse(data=schema, message="Schema retrieved")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get schema for {source}/{item_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/catalog/{source}/{item_id}/execute", response_model=APIResponse[Dict[str, Any]]
+)
+async def execute_catalog_item(
+    source: str, item_id: str, body: Dict[str, Any] = Body(default={})
+):
+    """Execute a catalog tool with provided inputs and return results."""
+    try:
+        svc = _get_registry_svc()
+        result = svc.execute_catalog_item(source, item_id, body.get("inputs", {}))
+        return APIResponse(data=result, message="Execution completed")
+    except Exception as e:
+        logger.error(f"Failed to execute {source}/{item_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{entity_type}/{entity_id}", response_model=APIResponse[Dict[str, Any]])
 async def get_entity(entity_type: str, entity_id: str):
     try:
@@ -143,7 +233,8 @@ async def get_entity(entity_type: str, entity_id: str):
 @router.get("/", response_model=APIResponse[Dict[str, Any]])
 async def list_entities(
     entity_type: Optional[str] = Query(
-        None, description="Filter by entity type: tools, workflows, agents, skills, etc."
+        None,
+        description="Filter by entity type: tools, workflows, agents, skills, etc.",
     ),
 ):
     from app.modules.agents.runtime.routes import available_workflows
@@ -186,7 +277,9 @@ async def create_node_definition(definition: Dict[str, Any]):
             category=definition.get("category"),
             tags=definition.get("tags"),
             description=definition.get("description"),
-            metadata_json=definition.get("metadata") or definition.get("metadata_json") or {},
+            metadata_json=definition.get("metadata")
+            or definition.get("metadata_json")
+            or {},
             ui=definition.get("ui"),
             properties=definition.get("properties"),
         )
@@ -276,7 +369,9 @@ async def create_entity(
 
 
 @router.put("/{entity_type}/{entity_id}", response_model=APIResponse[Dict[str, Any]])
-async def update_entity(entity_type: str, entity_id: str, definition: Dict[str, Any] = Body(...)):
+async def update_entity(
+    entity_type: str, entity_id: str, definition: Dict[str, Any] = Body(...)
+):
     try:
         svc = _get_registry_svc()
         result = svc.update_entity(entity_type, entity_id, definition, on_sync=_on_sync)
@@ -343,7 +438,9 @@ async def upsert_section(body: Dict[str, Any] = Body(...)):
 # ---------------------------------------------------------------------------
 
 
-@router.get("/agent/{agent_id}/resolved_prompt", response_model=APIResponse[Dict[str, Any]])
+@router.get(
+    "/agent/{agent_id}/resolved_prompt", response_model=APIResponse[Dict[str, Any]]
+)
 async def get_resolved_prompt(agent_id: str):
     try:
         svc = _get_registry_svc()
@@ -383,7 +480,9 @@ async def export_agent_markdown(agent_id: str):
         result = svc.export_agent_markdown(agent_id)
         if not result:
             raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
-        return APIResponse(data=result, message="Agent exported successfully as markdown")
+        return APIResponse(
+            data=result, message="Agent exported successfully as markdown"
+        )
     except Exception as e:
         logger.error(f"Failed to export agent {agent_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
