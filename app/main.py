@@ -250,6 +250,24 @@ async def lifespan(app: FastAPI):
                 except Exception as se:
                     print(f"Warning: Default connection seeding failed: {se}")
 
+            # --- SEED: Knowledge Hub initial data ---
+            try:
+                from common_lib.modules.knowledge_hub.seed_data import seed_all
+                from sqlmodel import Session as KHSession
+
+                with KHSession(engine) as kh_seed:
+                    counts = seed_all(kh_seed)
+                    print(
+                        f"Startup: Knowledge Hub seeded: "
+                        f"{counts['source_types']} source types, "
+                        f"{counts['source_configs']} configs, "
+                        f"{counts['pipelines']} pipelines, "
+                        f"{counts['packets']} packets, "
+                        f"{counts['projects']} projects"
+                    )
+            except Exception as kh_se:
+                print(f"Warning: Knowledge Hub seeding failed: {kh_se}")
+
             break
         except Exception as e:
             if attempt < max_retries - 1:
@@ -1854,6 +1872,42 @@ def create_app() -> FastAPI:
     app.include_router(
         obs_admin_router,
         prefix=f"{settings.API_V1_STR}",
+    )
+
+    # ── Knowledge Sources Hub API ─────────────────────────────
+    from app.modules.knowledge_hub import (
+        sources_router,
+        pipelines_router,
+        packets_router,
+        projects_router as kh_projects_router,
+    )
+
+    print(
+        f"Startup: Including Knowledge Hub Sources router with prefix: {settings.API_V1_STR}/knowledge-hub"
+    )
+    app.include_router(
+        sources_router,
+        prefix=settings.API_V1_STR,
+        tags=["Knowledge Hub — Sources"],
+        dependencies=global_deps,
+    )
+    app.include_router(
+        pipelines_router,
+        prefix=settings.API_V1_STR,
+        tags=["Knowledge Hub — Ingestion"],
+        dependencies=global_deps,
+    )
+    app.include_router(
+        packets_router,
+        prefix=settings.API_V1_STR,
+        tags=["Knowledge Hub — Packets"],
+        dependencies=global_deps,
+    )
+    app.include_router(
+        kh_projects_router,
+        prefix=settings.API_V1_STR,
+        tags=["Knowledge Hub — Projects"],
+        dependencies=global_deps,
     )
 
     return app

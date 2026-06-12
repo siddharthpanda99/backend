@@ -1,5 +1,10 @@
 import os
 from common_lib.core.di_container import bridge
+from app.core.providers import wire_providers
+
+# Wire common_lib provider protocols (ConfigProvider, StorageProvider)
+wire_providers()
+
 from common_lib.modules.orchestration.context.memory.services import (
     SQLAlchemyMemoryStore,
 )
