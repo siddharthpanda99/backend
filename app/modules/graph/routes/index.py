@@ -49,3 +49,55 @@ async def project_knowledgebase(entity_type: str = Query("knowledgebase")):
 @router.get("/stats", response_model=Dict[str, Any])
 async def get_graph_stats():
     return await _svc.get_stats()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Entity CRUD
+# ═══════════════════════════════════════════════════════════════════
+
+
+@router.post("/nodes", response_model=GraphNode, status_code=201)
+async def create_graph_node(node: GraphNode):
+    return await _svc.create_node(node)
+
+
+@router.put("/nodes/{node_id}", response_model=GraphNode)
+async def update_graph_node(node_id: str, updates: Dict[str, Any]):
+    return await _svc.update_node(node_id, updates)
+
+
+@router.delete("/nodes/{node_id}", response_model=Dict[str, str])
+async def delete_graph_node(node_id: str):
+    return await _svc.delete_node(node_id)
+
+
+@router.post("/edges", response_model=GraphEdge, status_code=201)
+async def create_graph_edge(from_id: str = Query(...), to_id: str = Query(...), label: str = Query("RELATED")):
+    return await _svc.create_edge(from_id, to_id, label)
+
+
+@router.delete("/edges", response_model=Dict[str, str])
+async def delete_graph_edge(from_id: str = Query(...), to_id: str = Query(...), label: str = Query("RELATED")):
+    return await _svc.delete_edge(from_id, to_id, label)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Shortest Path / Communities / Export
+# ═══════════════════════════════════════════════════════════════════
+
+
+@router.get("/shortest-path", response_model=Dict[str, Any])
+async def get_shortest_path(
+    from_id: str = Query(...), to_id: str = Query(...), max_depth: int = Query(6),
+):
+    return await _svc.shortest_path(from_id, to_id, max_depth)
+
+
+@router.get("/communities", response_model=Dict[str, Any])
+async def get_communities():
+    return await _svc.get_communities()
+
+
+@router.get("/export", response_model=Dict[str, Any])
+async def export_graph(fmt: str = Query("json")):
+    return await _svc.export_graph(fmt)

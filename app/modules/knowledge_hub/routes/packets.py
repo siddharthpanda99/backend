@@ -1,21 +1,33 @@
-"""
-Knowledge Hub — Packet Routes.
+"""Knowledge Hub — Packet Routes.
 
 Endpoints:
-    GET    /knowledge-hub/packets                — List packets
-    POST   /knowledge-hub/packets                — Create packet
-    GET    /knowledge-hub/packets/{id}           — Get packet
-    PUT    /knowledge-hub/packets/{id}           — Update packet
-    DELETE /knowledge-hub/packets/{id}           — Delete packet
-    POST   /knowledge-hub/packets/{id}/resolve   — Resolve/aggregate packet data
-    POST   /knowledge-hub/packets/{id}/verify    — Verify packet
-    GET    /knowledge-hub/packets/{id}/data      — Get resolved data
-    POST   /knowledge-hub/packets/{id}/test-all  — Test all sources/pipelines
+    GET    /knowledge-hub/packets                  — List packets
+    POST   /knowledge-hub/packets                  — Create packet
+    GET    /knowledge-hub/packets/{id}             — Get packet
+    PUT    /knowledge-hub/packets/{id}             — Update packet
+    DELETE /knowledge-hub/packets/{id}             — Delete packet
+    POST   /knowledge-hub/packets/{id}/resolve     — Resolve/aggregate packet data
+    POST   /knowledge-hub/packets/{id}/verify      — Verify packet
+    GET    /knowledge-hub/packets/{id}/data        — Get resolved data
+    POST   /knowledge-hub/packets/{id}/test-all    — Test all sources/pipelines
+
+    # Phase 3 enhancements
+    GET    /knowledge-hub/packets/{id}/items        — List items
+    POST   /knowledge-hub/packets/{id}/items        — Add item
+    DELETE /knowledge-hub/packets/{id}/items/{item_id} — Remove item
+    PUT    /knowledge-hub/packets/{id}/items/reorder    — Reorder items
+    PUT    /knowledge-hub/packets/{id}/items/{item_id}/pin — Pin/unpin item
+    POST   /knowledge-hub/packets/{id}/publish     — Publish packet
+    POST   /knowledge-hub/packets/{id}/unpublish   — Unpublish packet
+    GET    /knowledge-hub/packets/{id}/export      — Export (json, markdown)
+    POST   /knowledge-hub/packets/{id}/duplicate   — Duplicate packet
 """
 
 from __future__ import annotations
 
 import logging
+import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -23,7 +35,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session
 
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.knowledge_hub.models import PacketRecord
+from common_lib.modules.knowledge_hub.models import PacketRecord, PacketItemRecord
 from common_lib.modules.knowledge_hub.services.packet_service import (
     PacketService,
 )
@@ -43,6 +55,7 @@ class PacketCreate(BaseModel):
     source_config_ids: List[str] = Field(default_factory=list)
     pipeline_ids: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
+    packet_type: str = Field("curated", description="curated or dynamic")
 
 
 class PacketUpdate(BaseModel):
@@ -51,6 +64,27 @@ class PacketUpdate(BaseModel):
     source_config_ids: Optional[List[str]] = None
     pipeline_ids: Optional[List[str]] = None
     tags: Optional[List[str]] = None
+    packet_type: Optional[str] = None
+
+
+class PacketItemCreate(BaseModel):
+    id: Optional[str] = None
+    item_type: str = Field(default="chunk", description="chunk or custom_note")
+    chunk_id: Optional[str] = None
+    title: Optional[str] = None
+    content: Optional[str] = None
+    relevance_note: Optional[str] = None
+    added_by: Optional[str] = None
+    pinned: bool = False
+    sort_order: Optional[int] = None
+
+
+class PacketReorderRequest(BaseModel):
+    item_ids: List[str] = Field(..., description="Ordered list of item IDs")
+
+
+class PacketDuplicateRequest(BaseModel):
+    include_items: bool = Field(True, description="Copy items to new packet")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -62,10 +96,11 @@ class PacketUpdate(BaseModel):
 def list_packets(
     status: Optional[str] = Query(None, description="Filter by status"),
     tag: Optional[str] = Query(None, description="Filter by tag"),
+    packet_type: Optional[str] = Query(None, description="Filter by type: curated or dynamic"),
     session: Session = Depends(get_session),
 ) -> Dict[str, Any]:
     """List data packets."""
-    packets = PacketService.list_packets(session, status=status, tag=tag)
+    packets = PacketService.list_packets(session, status=status, tag=tag, packet_type=packet_type)
     return {
         "success": True,
         "data": [_packet_to_dict(p) for p in packets],
@@ -101,7 +136,7 @@ def update_packet(
     packet_id: str = Path(..., description="Packet ID"),
     session: Session = Depends(get_session),
 ) -> Dict[str, Any]:
-    """Update an existing data packet."""
+    """Update an existing data packet. Auto-increments version on content change."""
     record = PacketService.update_packet(
         session, packet_id, request.model_dump(exclude_none=True)
     )
@@ -115,7 +150,7 @@ def delete_packet(
     packet_id: str = Path(..., description="Packet ID"),
     session: Session = Depends(get_session),
 ) -> Dict[str, Any]:
-    """Delete a data packet."""
+    """Delete a data packet and all its items."""
     deleted = PacketService.delete_packet(session, packet_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Packet '{packet_id}' not found")
@@ -132,11 +167,7 @@ def resolve_packet(
     packet_id: str = Path(..., description="Packet ID"),
     session: Session = Depends(get_session),
 ) -> Dict[str, Any]:
-    """Resolve/aggregate all data from sources and pipelines in a packet.
-
-    Runs execute on all associated sources and pipelines, caches
-    the consolidated result, and returns the resolved data summary.
-    """
+    """Resolve/aggregate all data from sources and pipelines in a packet."""
     result = PacketService.resolve_packet(session, packet_id)
     if not result.get("success"):
         raise HTTPException(status_code=404, detail=result.get("message"))
@@ -149,11 +180,7 @@ def get_packet_data(
     filter: Optional[str] = Query(None, alias="filter", description="Text filter"),
     session: Session = Depends(get_session),
 ) -> Dict[str, Any]:
-    """Get the resolved data for a packet.
-
-    If not yet resolved, triggers resolution first.
-    Optional filter parameter for text search within the data.
-    """
+    """Get the resolved data for a packet."""
     result = PacketService.get_packet_data(
         session, packet_id, filter_query=filter
     )
@@ -167,12 +194,7 @@ def test_all_packet(
     packet_id: str = Path(..., description="Packet ID"),
     session: Session = Depends(get_session),
 ) -> Dict[str, Any]:
-    """Test all sources and pipelines in a packet.
-
-    Runs execute on every associated source and pipeline, reporting
-    pass/fail status for each. Use this before marking as verified
-    to ensure all data extraction is working.
-    """
+    """Test all sources and pipelines in a packet."""
     result = PacketService.test_all(session, packet_id)
     if not result.get("success"):
         raise HTTPException(status_code=404, detail=result.get("message"))
@@ -184,28 +206,198 @@ def verify_packet(
     packet_id: str = Path(..., description="Packet ID"),
     session: Session = Depends(get_session),
 ) -> Dict[str, Any]:
-    """Mark a data packet as verified (after successful testing).
-
-    Only verified packets can be included in production projects
-    and attached to agents.
-    """
+    """Mark a data packet as verified (after successful testing)."""
     record = PacketService.verify_packet(session, packet_id)
     if not record:
-        # Check if it exists but tests failed
         existing = PacketService.get_packet(session, packet_id)
         if existing:
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    f"Cannot verify packet '{packet_id}': "
-                    "run test-all first and ensure all sources/pipelines pass"
-                ),
+                detail="Cannot verify packet: run test-all first and ensure all pass",
             )
         raise HTTPException(status_code=404, detail=f"Packet '{packet_id}' not found")
     return {
         "success": True,
         "data": _packet_to_dict(record),
         "message": f"Packet '{record.name}' verified successfully",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Phase 3: Publish / Unpublish
+# ═══════════════════════════════════════════════════════════════════
+
+
+@router.post("/packets/{packet_id}/publish")
+def publish_packet(
+    packet_id: str = Path(..., description="Packet ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Publish a packet, making it publicly accessible."""
+    record = PacketService.publish_packet(session, packet_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Packet '{packet_id}' not found")
+    return {
+        "success": True,
+        "data": _packet_to_dict(record),
+        "message": f"Packet '{record.name}' published",
+    }
+
+
+@router.post("/packets/{packet_id}/unpublish")
+def unpublish_packet(
+    packet_id: str = Path(..., description="Packet ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Unpublish a packet, reverting to draft status."""
+    record = PacketService.unpublish_packet(session, packet_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Packet '{packet_id}' not found")
+    return {
+        "success": True,
+        "data": _packet_to_dict(record),
+        "message": f"Packet '{record.name}' unpublished",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Phase 3: Export
+# ═══════════════════════════════════════════════════════════════════
+
+
+@router.get("/packets/{packet_id}/export")
+def export_packet(
+    packet_id: str = Path(..., description="Packet ID"),
+    fmt: str = Query("json", description="Export format: json or markdown"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Export a packet in JSON or Markdown format.
+
+    JSON includes full structured data with metadata and items.
+    Markdown produces a human-readable document with item sections.
+    """
+    if fmt not in ("json", "markdown"):
+        raise HTTPException(status_code=400, detail="Format must be 'json' or 'markdown'")
+    result = PacketService.export_packet(session, packet_id, fmt=fmt)
+    if not result.get("success"):
+        raise HTTPException(status_code=404, detail=result.get("message"))
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Phase 3: Duplicate
+# ═══════════════════════════════════════════════════════════════════
+
+
+@router.post("/packets/{packet_id}/duplicate", status_code=201)
+def duplicate_packet(
+    request: PacketDuplicateRequest,
+    packet_id: str = Path(..., description="Packet ID to duplicate"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Duplicate a packet with a '(Copy)' suffix. Optionally copy items."""
+    record = PacketService.duplicate_packet(
+        session, packet_id, include_items=request.include_items,
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Packet '{packet_id}' not found")
+    return {
+        "success": True,
+        "data": _packet_to_dict(record),
+        "message": f"Packet duplicated as '{record.name}'",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Phase 3: Item CRUD
+# ═══════════════════════════════════════════════════════════════════
+
+
+@router.get("/packets/{packet_id}/items")
+def list_packet_items(
+    packet_id: str = Path(..., description="Packet ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """List all items in a packet, ordered by sort_order."""
+    packet = PacketService.get_packet(session, packet_id)
+    if not packet:
+        raise HTTPException(status_code=404, detail=f"Packet '{packet_id}' not found")
+    items = PacketService.list_items(session, packet_id)
+    return {
+        "success": True,
+        "data": {
+            "packet_id": packet_id,
+            "items": [_item_to_dict(i) for i in items],
+            "total": len(items),
+        },
+    }
+
+
+@router.post("/packets/{packet_id}/items", status_code=201)
+def add_packet_item(
+    request: PacketItemCreate,
+    packet_id: str = Path(..., description="Packet ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Add an item to a packet."""
+    item = PacketService.add_item(session, packet_id, request.model_dump(exclude_none=True))
+    if not item:
+        raise HTTPException(status_code=404, detail=f"Packet '{packet_id}' not found")
+    return {
+        "success": True,
+        "data": _item_to_dict(item),
+        "message": "Item added to packet",
+    }
+
+
+@router.delete("/packets/{packet_id}/items/{item_id}")
+def remove_packet_item(
+    packet_id: str = Path(..., description="Packet ID"),
+    item_id: str = Path(..., description="Item ID to remove"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Remove an item from a packet."""
+    removed = PacketService.remove_item(session, packet_id, item_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Item not found in packet")
+    return {"success": True, "message": "Item removed from packet"}
+
+
+@router.put("/packets/{packet_id}/items/reorder")
+def reorder_packet_items(
+    request: PacketReorderRequest,
+    packet_id: str = Path(..., description="Packet ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Reorder items within a packet."""
+    items = PacketService.reorder_items(session, packet_id, request.item_ids)
+    if items is None:
+        raise HTTPException(status_code=404, detail=f"Packet '{packet_id}' not found")
+    return {
+        "success": True,
+        "data": {
+            "items": [_item_to_dict(i) for i in items],
+            "total": len(items),
+        },
+        "message": "Items reordered",
+    }
+
+
+@router.put("/packets/{packet_id}/items/{item_id}/pin")
+def pin_packet_item(
+    item_id: str = Path(..., description="Item ID"),
+    packet_id: str = Path(..., description="Packet ID"),
+    pinned: bool = Query(True, description="Pin or unpin"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Pin or unpin an item. Pinned items survive dynamic refresh."""
+    item = PacketService.pin_item(session, packet_id, item_id, pinned=pinned)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found in packet")
+    return {
+        "success": True,
+        "data": _item_to_dict(item),
+        "message": f"Item {'pinned' if pinned else 'unpinned'}",
     }
 
 
@@ -218,6 +410,10 @@ def _packet_to_dict(record: PacketRecord) -> Dict[str, Any]:
         "name": record.name,
         "description": record.description,
         "status": record.status,
+        "version": record.version,
+        "packet_type": record.packet_type,
+        "is_published": record.is_published,
+        "published_at": record.published_at.isoformat() if record.published_at else None,
         "verified_at": record.verified_at.isoformat() if record.verified_at else None,
         "verified_by": record.verified_by,
         "source_config_ids": record.source_config_ids,
@@ -227,4 +423,20 @@ def _packet_to_dict(record: PacketRecord) -> Dict[str, Any]:
         "tags": record.tags,
         "created_at": record.created_at.isoformat() if record.created_at else None,
         "updated_at": record.updated_at.isoformat() if record.updated_at else None,
+    }
+
+
+def _item_to_dict(item: PacketItemRecord) -> Dict[str, Any]:
+    return {
+        "id": item.id,
+        "packet_id": item.packet_id,
+        "item_type": item.item_type,
+        "chunk_id": item.chunk_id,
+        "title": item.title,
+        "content": item.content,
+        "relevance_note": item.relevance_note,
+        "added_by": item.added_by,
+        "added_at": item.added_at.isoformat() if item.added_at else None,
+        "pinned": item.pinned,
+        "sort_order": item.sort_order,
     }

@@ -94,6 +94,10 @@ class StreamRequest(BaseModel):
     provider: Optional[str] = None
     attachments: Optional[List[str]] = None
     decision: Optional[Dict[str, Any]] = None
+    agent_id: Optional[str] = None
+    system_prompt: Optional[str] = None
+    model_path: Optional[str] = None
+    loop_id: Optional[str] = None
 
 
 class StateUpdateRequest(BaseModel):
@@ -264,7 +268,9 @@ async def clear_session(req: ClearSessionRequest):
         if req.hard_reset:
             sess = get_active_session()
             if sess.get("provider") == "vllm" and sess.get("model"):
-                logger.info("[Routes] Triggering Hard Reset for model: %s", sess["model"])
+                logger.info(
+                    "[Routes] Triggering Hard Reset for model: %s", sess["model"]
+                )
                 return StreamingResponse(
                     load_agent_generator(model_path=sess["model"], provider="vllm"),
                     media_type="text/event-stream",
@@ -282,7 +288,16 @@ async def clear_session(req: ClearSessionRequest):
 @router.post("/stream")
 async def stream(req: StreamRequest):
     return StreamingResponse(
-        stream_agent_generator(req.message, req.session_id, decision=req.decision),
+        stream_agent_generator(
+            req.message,
+            req.session_id,
+            decision=req.decision,
+            agent_id=req.agent_id,
+            system_prompt=req.system_prompt,
+            model_path=req.model_path,
+            provider=req.provider,
+            loop_id=req.loop_id,
+        ),
         media_type="text/event-stream",
     )
 
@@ -295,7 +310,9 @@ async def read_session_state_endpoint(
     import json
     from sqlmodel import select, func
     from app.modules.agents.runtime.session_models import (
-        AgentSession, AgentConversation, AgentMessage,
+        AgentSession,
+        AgentConversation,
+        AgentMessage,
     )
 
     agent = get_master_agent()
@@ -309,9 +326,13 @@ async def read_session_state_endpoint(
                 {"configurable": {"thread_id": actual_thread_id}}
             )
             graph_state = state.values if state else {}
-            checkpoint_id = str(
-                state.config.get("configurable", {}).get("checkpoint_id", "initial")
-            ) if state else "initial"
+            checkpoint_id = (
+                str(
+                    state.config.get("configurable", {}).get("checkpoint_id", "initial")
+                )
+                if state
+                else "initial"
+            )
         except Exception:
             pass
 
@@ -326,13 +347,17 @@ async def read_session_state_endpoint(
 
     formatted_messages = []
     for m in db_messages:
-        formatted_messages.append({
-            "id": m.id, "role": m.role, "content": m.content,
-            "reasoning": m.reasoning,
-            "trace": json.loads(m.trace_events) if m.trace_events else [],
-            "created_at": m.created_at.isoformat() if m.created_at else None,
-            "conversation_id": m.conversation_id,
-        })
+        formatted_messages.append(
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "reasoning": m.reasoning,
+                "trace": json.loads(m.trace_events) if m.trace_events else [],
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+                "conversation_id": m.conversation_id,
+            }
+        )
 
     has_more = False
     if len(db_messages) == 50:
@@ -347,17 +372,23 @@ async def read_session_state_endpoint(
     session = db.get(AgentSession, session_id)
 
     return {
-        "session_id": session_id, "thread_id": actual_thread_id,
+        "session_id": session_id,
+        "thread_id": actual_thread_id,
         "model_id": session.model_id if session else None,
         "agent_id": session.agent_id if session else None,
         "history": graph_state.get("conversation_history", ""),
-        "messages": formatted_messages, "has_more": has_more,
+        "messages": formatted_messages,
+        "has_more": has_more,
         "intermediate_steps": graph_state.get("intermediate_steps", []),
         "structured_state": graph_state.get("structured_state", {}),
         "hints": graph_state.get("hints", []),
         "operational_metadata": (
             graph_state.get("operational_metadata")
-            or (session.session_metadata if session and session.session_metadata else None)
+            or (
+                session.session_metadata
+                if session and session.session_metadata
+                else None
+            )
             or {}
         ),
         "last_input": graph_state.get("input", ""),

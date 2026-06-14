@@ -69,6 +69,25 @@ def list_templates(category: Optional[str] = Query(None, description="Filter by 
         # Scan all primary categories
         folders_to_scan = list(set(CATEGORY_MAP.values()))
 
+    # Retrieve agents from the database instead of filesystem if scanned
+    if "configs/agents" in folders_to_scan or (category and category.lower() == "agents"):
+        if "configs/agents" in folders_to_scan:
+            folders_to_scan.remove("configs/agents")
+        
+        results["agents"] = []
+        from common_lib.modules.agents.service import agent_service
+        try:
+            db_agents = agent_service.get_all()
+            for agent in db_agents:
+                data = agent.get("definition") or agent
+                data = dict(data)
+                data["logical_category"] = "agents"
+                if "id" not in data:
+                    data["id"] = agent.get("id") or data.get("identity", {}).get("id")
+                results["agents"].append(data)
+        except Exception as e:
+            print(f"Error listing agents from DB: {e}")
+
     for folder in folders_to_scan:
         folder_path = TEMPLATES_DIR / folder
         if not folder_path.exists():
@@ -97,8 +116,24 @@ def get_template(template_id: str):
     """
     Retrieve a specific template by its ID across all categories.
     """
-    # Scan all directories in CATEGORY_MAP
+    # 1. Try to fetch from the DB first if it's an agent
+    from common_lib.modules.agents.service import agent_service
+    try:
+        db_agent = agent_service.get_by_id(template_id)
+        if db_agent:
+            data = db_agent.get("definition") or db_agent
+            data = dict(data)
+            data["logical_category"] = "agents"
+            if "id" not in data:
+                data["id"] = db_agent.get("id") or template_id
+            return APIResponse(data=data, message="Template retrieved successfully from database")
+    except Exception as e:
+        print(f"Error fetching agent {template_id} from DB: {e}")
+
+    # 2. Fallback to scanning filesystem
     for folder in set(CATEGORY_MAP.values()):
+        if folder == "configs/agents":
+            continue
         folder_path = TEMPLATES_DIR / folder
         if not folder_path.exists():
             continue
@@ -130,6 +165,47 @@ def save_template(
     """
     Save a new template or update an existing one in the registry.
     """
+    if category.lower() in ("agents", "configs/agents"):
+        from common_lib.modules.agents.service import agent_service
+        from common_lib.modules.agents.schemas import AgentCreate, AgentUpdate
+
+        agent_id = payload.get("id") or payload.get("identity", {}).get("id")
+        if not agent_id:
+            name = payload.get("name") or payload.get("identity", {}).get("name", "unnamed_template")
+            agent_id = name.lower().replace(" ", "_")
+            payload["id"] = agent_id
+
+        name = payload.get("name") or payload.get("identity", {}).get("name", agent_id)
+        description = payload.get("description") or payload.get("identity", {}).get("description")
+        definition = payload.get("definition") or payload
+        identity = payload.get("identity") or payload.get("definition", {}).get("identity") or {}
+        agent_type = payload.get("agent_type") or "react"
+        version = payload.get("version") or "1.0.0"
+
+        existing = agent_service.get_by_id(agent_id)
+        if existing:
+            agent_in = AgentUpdate(
+                name=name,
+                agent_type=agent_type,
+                identity=identity,
+                definition=definition,
+                description=description
+            )
+            updated = agent_service.update(agent_id, agent_in)
+            return APIResponse(data=updated, message=f"Template '{agent_id}' updated successfully in database")
+        else:
+            agent_in = AgentCreate(
+                id=agent_id,
+                name=name,
+                agent_type=agent_type,
+                version=version,
+                identity=identity,
+                definition=definition,
+                description=description
+            )
+            created = agent_service.create(agent_in)
+            return APIResponse(data=created, message=f"Template '{agent_id}' created successfully in database")
+
     if not TEMPLATES_DIR.exists():
         raise HTTPException(status_code=500, detail="Templates directory not found")
 

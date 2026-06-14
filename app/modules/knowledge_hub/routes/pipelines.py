@@ -2,22 +2,33 @@
 Knowledge Hub — Ingestion Pipeline Routes.
 
 Endpoints:
-    GET    /knowledge-hub/pipelines                — List pipelines
-    POST   /knowledge-hub/pipelines                — Create pipeline
-    GET    /knowledge-hub/pipelines/{id}           — Get pipeline
-    PUT    /knowledge-hub/pipelines/{id}           — Update pipeline
-    DELETE /knowledge-hub/pipelines/{id}           — Delete pipeline
-    POST   /knowledge-hub/pipelines/{id}/execute   — Execute pipeline
-    POST   /knowledge-hub/pipelines/{id}/verify    — Verify pipeline
-    POST   /knowledge-hub/pipelines/validate       — Validate pipeline definition
+    GET    /knowledge-hub/pipelines                    — List pipelines
+    POST   /knowledge-hub/pipelines                    — Create pipeline
+    GET    /knowledge-hub/pipelines/{id}               — Get pipeline
+    PUT    /knowledge-hub/pipelines/{id}               — Update pipeline
+    DELETE /knowledge-hub/pipelines/{id}               — Delete pipeline
+    POST   /knowledge-hub/pipelines/{id}/execute       — Execute pipeline
+    POST   /knowledge-hub/pipelines/{id}/verify        — Verify pipeline
+    POST   /knowledge-hub/pipelines/validate           — Validate pipeline definition
+    GET    /knowledge-hub/pipelines/{id}/jobs          — List jobs for pipeline
+    GET    /knowledge-hub/pipelines/{id}/jobs/{job_id} — Get job details
+    POST   /knowledge-hub/pipelines/{id}/jobs/{job_id}/cancel  — Cancel job
+    POST   /knowledge-hub/pipelines/{id}/jobs/{job_id}/retry   — Retry job
+    GET    /knowledge-hub/pipelines/{id}/jobs/{job_id}/logs    — Get job logs
+    GET    /knowledge-hub/pipelines/{id}/jobs/{job_id}/progress — SSE job progress
+    GET    /knowledge-hub/feature-flags                — List feature flags
+    PUT    /knowledge-hub/feature-flags/{flag}         — Toggle feature flag
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
@@ -25,6 +36,8 @@ from common_lib.modules.data_storage.database.connection import get_session
 from common_lib.modules.knowledge_hub.models import IngestionPipelineRecord
 from common_lib.modules.knowledge_hub.services.ingestion_service import (
     IngestionService,
+    PipelineJobService,
+    _job_to_dict,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,6 +69,10 @@ class PipelineValidateRequest(BaseModel):
     pipeline_definition: Dict[str, Any] = Field(
         ..., description="YAML/JSON workflow definition to validate"
     )
+
+
+class FeatureFlagToggle(BaseModel):
+    enabled: bool = Field(..., description="Whether the feature flag is enabled")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -166,7 +183,8 @@ def execute_pipeline(
     """Execute an ingestion pipeline.
 
     Runs all pipeline steps and returns execution results including
-    records processed per step and total execution time.
+    records processed per step, chunks stored, and embeddings generated.
+    Creates a PipelineJobRecord for progress tracking.
     """
     result = IngestionService.execute_pipeline(session, pipeline_id)
     if not result.get("success"):
@@ -194,6 +212,201 @@ def verify_pipeline(
         "success": True,
         "data": _pipeline_to_dict(record),
         "message": f"Pipeline '{record.name}' verified successfully",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Pipeline Job Management (Phase 9 — Pipeline Monitor)
+# ═══════════════════════════════════════════════════════════════════
+
+
+@router.get("/pipelines/{pipeline_id}/jobs")
+def list_pipeline_jobs(
+    pipeline_id: str = Path(..., description="Pipeline ID"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """List execution jobs for a pipeline."""
+    jobs = PipelineJobService.list_jobs(
+        session, pipeline_id=pipeline_id, status=status, limit=limit, offset=offset
+    )
+    return {
+        "success": True,
+        "data": [_job_to_dict(j) for j in jobs],
+        "total": len(jobs),
+    }
+
+
+@router.get("/pipelines/{pipeline_id}/jobs/{job_id}")
+def get_pipeline_job(
+    pipeline_id: str = Path(..., description="Pipeline ID"),
+    job_id: str = Path(..., description="Job ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Get a single pipeline execution job."""
+    job = PipelineJobService.get_job(session, job_id)
+    if not job or job.pipeline_id != pipeline_id:
+        raise HTTPException(
+            status_code=404, detail=f"Job '{job_id}' not found for pipeline '{pipeline_id}'"
+        )
+    return {"success": True, "data": _job_to_dict(job)}
+
+
+@router.post("/pipelines/{pipeline_id}/jobs/{job_id}/cancel")
+def cancel_pipeline_job(
+    pipeline_id: str = Path(..., description="Pipeline ID"),
+    job_id: str = Path(..., description="Job ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Cancel a running or pending pipeline job."""
+    job = PipelineJobService.get_job(session, job_id)
+    if not job or job.pipeline_id != pipeline_id:
+        raise HTTPException(
+            status_code=404, detail=f"Job '{job_id}' not found for pipeline '{pipeline_id}'"
+        )
+    cancelled = PipelineJobService.cancel_job(session, job_id)
+    if cancelled is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job '{job_id}' is in status '{job.status}' and cannot be cancelled. Only 'pending' or 'running' jobs can be cancelled.",
+        )
+    return {
+        "success": True,
+        "data": _job_to_dict(cancelled),
+        "message": f"Job '{job_id}' cancelled",
+    }
+
+
+@router.post("/pipelines/{pipeline_id}/jobs/{job_id}/retry")
+def retry_pipeline_job(
+    pipeline_id: str = Path(..., description="Pipeline ID"),
+    job_id: str = Path(..., description="Job ID to retry"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Retry a failed or cancelled pipeline job.
+
+    Creates a new execution job for the same pipeline.
+    """
+    job = PipelineJobService.get_job(session, job_id)
+    if not job or job.pipeline_id != pipeline_id:
+        raise HTTPException(
+            status_code=404, detail=f"Job '{job_id}' not found for pipeline '{pipeline_id}'"
+        )
+    new_job = PipelineJobService.retry_job(session, job_id)
+    if new_job is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job '{job_id}' is in status '{job.status}' and cannot be retried. Only 'failed' or 'cancelled' jobs can be retried.",
+        )
+    return {
+        "success": True,
+        "data": _job_to_dict(new_job),
+        "message": f"Retry created new job '{new_job.id}' for pipeline '{pipeline_id}'",
+    }
+
+
+@router.get("/pipelines/{pipeline_id}/jobs/{job_id}/logs")
+def get_pipeline_job_logs(
+    pipeline_id: str = Path(..., description="Pipeline ID"),
+    job_id: str = Path(..., description="Job ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Get the execution log for a pipeline job."""
+    job = PipelineJobService.get_job(session, job_id)
+    if not job or job.pipeline_id != pipeline_id:
+        raise HTTPException(
+            status_code=404, detail=f"Job '{job_id}' not found for pipeline '{pipeline_id}'"
+        )
+    logs = PipelineJobService.get_job_logs(session, job_id)
+    return {"success": True, "data": logs}
+
+
+@router.get("/pipelines/{pipeline_id}/jobs/{job_id}/progress")
+async def stream_pipeline_job_progress(
+    pipeline_id: str = Path(..., description="Pipeline ID"),
+    job_id: str = Path(..., description="Job ID"),
+    session: Session = Depends(get_session),
+) -> StreamingResponse:
+    """Stream pipeline job progress as SSE events."""
+    job = PipelineJobService.get_job(session, job_id)
+    if not job or job.pipeline_id != pipeline_id:
+        raise HTTPException(
+            status_code=404, detail=f"Job '{job_id}' not found for pipeline '{pipeline_id}'"
+        )
+
+    async def event_stream():
+        for _ in range(60):  # Max 60 polls (60 seconds)
+            current = PipelineJobService.get_job_progress(session, job_id)
+            if current is None:
+                yield f"event: error\ndata: {json.dumps({'message': 'Job not found'})}\n\n"
+                return
+
+            yield f"event: progress\ndata: {json.dumps(current)}\n\n"
+
+            if current["status"] in ("completed", "failed", "cancelled"):
+                yield f"event: done\ndata: {json.dumps({'status': current['status']})}\n\n"
+                return
+
+            import asyncio
+            await asyncio.sleep(1)
+
+        yield f"event: timeout\ndata: {json.dumps({'message': 'Progress polling timed out'})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Feature Flags (Phase 9 — Pipeline Monitor)
+# ═══════════════════════════════════════════════════════════════════
+
+
+# In-memory feature flags — persisted across requests within the process
+_FEATURE_FLAGS: Dict[str, bool] = {
+    "pipeline_auto_retry": True,
+    "job_progress_notifications": True,
+    "cancel_job_enabled": True,
+    "retry_job_enabled": True,
+    "job_logs_enabled": True,
+    "sse_progress_enabled": True,
+}
+
+
+@router.get("/feature-flags")
+def list_feature_flags() -> Dict[str, Any]:
+    """List all feature flags with their current state."""
+    return {
+        "success": True,
+        "data": _FEATURE_FLAGS,
+        "total": len(_FEATURE_FLAGS),
+    }
+
+
+@router.put("/feature-flags/{flag}")
+def toggle_feature_flag(
+    flag: str = Path(..., description="Feature flag name"),
+    enabled: bool = Query(True, description="Whether the flag is enabled"),
+) -> Dict[str, Any]:
+    """Toggle a feature flag on or off."""
+    if flag not in _FEATURE_FLAGS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Feature flag '{flag}' not found. Available: {list(_FEATURE_FLAGS.keys())}",
+        )
+    _FEATURE_FLAGS[flag] = enabled
+    return {
+        "success": True,
+        "data": {flag: _FEATURE_FLAGS[flag]},
+        "message": f"Feature flag '{flag}' set to {_FEATURE_FLAGS[flag]}",
     }
 
 

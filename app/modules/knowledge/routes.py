@@ -48,6 +48,10 @@ Endpoints:
     DELETE /security/pii/scans         — Clear all scan history
     POST /nlp/ner/train                — Train custom NER model
     GET  /nlp/ner/entity-types         — List available NER entity types
+    POST /quality/archive-stale        — Bulk archive stale chunks (soft-delete)
+    POST /quality/reembed              — Bulk re-embed low-confidence chunks
+    GET  /quality/recommendations       — Generate quality improvement recommendations
+    POST /quality/run-validation        — Run full validation scan as tracked job
 """
 
 from __future__ import annotations
@@ -70,6 +74,16 @@ from app.modules.knowledge.models import KnowledgeChunkRecord
 from common_lib.modules.data_storage.database.connection import get_session
 from common_lib.modules.knowledge_engine.config import KnowledgeEngineError
 from common_lib.modules.knowledge_engine.service import KnowledgeEngineService
+from common_lib.modules.knowledge_engine.services.quality_service import (
+    QualityService,
+)
+from common_lib.modules.knowledge_hub.models import ConflictRecord
+from common_lib.modules.knowledge_hub.services.analytics_service import (
+    AnalyticsService,
+)
+from common_lib.modules.knowledge_hub.services.conflict_service import (
+    KBConflictService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -724,6 +738,19 @@ async def ingest_document(
 
         session.commit()
 
+        # ── Auto-detect conflicts on all new chunks (Phase 11) ──
+        conflict_svc = KBConflictService()
+        conflicts_detected = 0
+        for cid in stored_ids:
+            chunk_record = session.exec(
+                select(KnowledgeChunkRecord).where(KnowledgeChunkRecord.chunk_id == cid)
+            ).first()
+            if chunk_record:
+                new_conflicts = conflict_svc.scan_on_ingest(
+                    session=session, new_chunk=chunk_record
+                )
+                conflicts_detected += len(new_conflicts)
+
         return {
             "success": True,
             "data": {
@@ -731,8 +758,12 @@ async def ingest_document(
                 "source_id": request.source_id,
                 "chunks_created": len(stored_ids),
                 "chunk_ids": stored_ids,
+                "conflicts_detected": conflicts_detected,
             },
-            "message": f"Ingested document: {len(stored_ids)} chunks created",
+            "message": (
+                f"Ingested document: {len(stored_ids)} chunks created"
+                + (f" ({conflicts_detected} conflict{'s' if conflicts_detected != 1 else ''} detected)" if conflicts_detected else "")
+            ),
         }
 
     except KnowledgeEngineError as e:
@@ -865,7 +896,7 @@ async def list_chunks(
         count_query = count_query.where(KnowledgeChunkRecord.source_id == source_id)
     if domain:
         count_query = count_query.where(KnowledgeChunkRecord.domain == domain)
-    total = session.exec(count_query).scalar() or 0
+    total = session.exec(count_query).one() or 0
 
     # Apply pagination
     query = query.offset(offset).limit(limit)
@@ -2564,6 +2595,608 @@ async def clear_pii_scan_history(
 
 
 # ═══════════════════════════════════════════════════════════════════
+# Analytics Endpoints (Phase 14)
+# ═══════════════════════════════════════════════════════════════════
+
+
+@router.get("/analytics/overview")
+async def analytics_overview(
+    days: Optional[int] = Query(None, ge=1, le=365, description="Lookback days for recent metrics"),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Get overview metrics across all knowledgebase entities.
+
+    Returns total and recent counts for chunks, projects, packets,
+    sources, scrapers, conflicts, and agent usage.
+    """
+    data = AnalyticsService.overview(session=session, days=days)
+    return {
+        "success": True,
+        "data": data,
+        "message": f"Overview: {data['total_chunks']} chunks, {data['total_projects']} projects",
+    }
+
+
+@router.get("/analytics/time-series")
+async def analytics_time_series(
+    metric: str = Query("chunks", description="Metric: chunks, projects, packets, activity"),
+    days: int = Query(30, ge=1, le=365),
+    granularity: str = Query("day", description="day or week"),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Get time series data for a given metric.
+
+    Provides daily or weekly counts of chunks, projects, packets,
+    or activity log entries over the specified period.
+    """
+    if metric not in ("chunks", "projects", "packets", "activity"):
+        raise HTTPException(status_code=400, detail="metric must be: chunks, projects, packets, activity")
+    if granularity not in ("day", "week"):
+        raise HTTPException(status_code=400, detail="granularity must be: day or week")
+    data = AnalyticsService.time_series(
+        session=session, metric=metric, days=days, granularity=granularity
+    )
+    return {
+        "success": True,
+        "data": data,
+        "message": f"Time series: {data['total_in_period']} {metric} in last {days} days",
+    }
+
+
+@router.get("/analytics/top-chunks")
+async def analytics_top_chunks(
+    limit: int = Query(10, ge=1, le=100),
+    days: Optional[int] = Query(None, ge=1, le=365),
+    domain: Optional[str] = Query(None),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Get top chunks by recency and source diversity.
+
+    Returns most recently updated chunks with content previews,
+    optionally filtered by domain. Also provides source type breakdown.
+    """
+    data = AnalyticsService.top_chunks(
+        session=session, limit=limit, days=days, domain=domain
+    )
+    return {
+        "success": True,
+        "data": data,
+        "message": f"Top {data['total_returned']} chunks returned",
+    }
+
+
+@router.get("/analytics/agent-usage")
+async def analytics_agent_usage(
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Get agent packet usage tracking.
+
+    Shows which agents are attached to which knowledge projects,
+    their packet counts, and project statuses.
+    """
+    data = AnalyticsService.agent_usage(session=session)
+    return {
+        "success": True,
+        "data": data,
+        "message": f"{data['total_agents']} agents with {data['total_projects_with_agents']} projects",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Knowledge Base Conflict Resolution Endpoints (Phase 11)
+# ═══════════════════════════════════════════════════════════════════
+
+
+# Lazy-initialized conflict service
+_conflict_service_instance: Optional[Any] = None
+
+
+def _get_conflict_service(_service: KnowledgeEngineService = None) -> Any:
+    global _conflict_service_instance
+    if _conflict_service_instance is None:
+        from common_lib.modules.knowledge_hub.services.conflict_service import (
+            KBConflictService,
+        )
+        _conflict_service_instance = KBConflictService()
+    return _conflict_service_instance
+
+
+class ConflictResolveRequest(BaseModel):
+    winner_chunk_id: str = Field(..., description="UUID of the winning chunk")
+    rationale: str = Field("", description="Resolution rationale")
+    resolved_by: str = Field("system")
+    strategy: str = Field("human_arbitration")
+    force: bool = Field(False, description="Override critical domain escalation")
+
+
+class ConflictDismissRequest(BaseModel):
+    reason: str = Field("")
+    dismissed_by: str = Field("system")
+
+
+class ConflictPropagateRequest(BaseModel):
+    target_chunk_ids: Optional[list[str]] = Field(None, description="Specific chunks to propagate to")
+    propagated_by: str = Field("system")
+
+
+@router.get("/conflicts")
+async def list_conflicts(
+    status: Optional[str] = Query(None, description="Filter by status: open, resolved, dismissed, escalated"),
+    severity: Optional[str] = Query(None, description="Filter by severity: critical, high, medium, low"),
+    domain: Optional[str] = Query(None, description="Filter by domain"),
+    source_id: Optional[str] = Query(None, description="Filter by chunk source"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    refresh: bool = Query(False, description="Re-scan chunks for new conflicts"),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """List knowledge conflicts with optional filtering and scan.
+
+    Pass refresh=true to run a full conflict scan before returning results.
+    Supports filtering by status, severity, domain, and source_id.
+    """
+    if refresh:
+        svc = _get_conflict_service()
+        svc.scan_all(session=session, source_id=source_id)
+
+    query = select(ConflictRecord)
+    if status:
+        query = query.where(ConflictRecord.status == status)
+    if severity:
+        query = query.where(ConflictRecord.severity == severity)
+    if domain:
+        query = query.where(ConflictRecord.domain == domain)
+    if source_id:
+        query = query.where(
+            (ConflictRecord.chunk_a_source == source_id)
+            | (ConflictRecord.chunk_b_source == source_id)
+        )
+
+    # Build separate count query to avoid fragile .whereclause extraction
+    count_query = select(func.count(ConflictRecord.id))
+    if status:
+        count_query = count_query.where(ConflictRecord.status == status)
+    if severity:
+        count_query = count_query.where(ConflictRecord.severity == severity)
+    if domain:
+        count_query = count_query.where(ConflictRecord.domain == domain)
+    if source_id:
+        count_query = count_query.where(
+            (ConflictRecord.chunk_a_source == source_id)
+            | (ConflictRecord.chunk_b_source == source_id)
+        )
+    total = session.exec(count_query).one() or 0
+    query = query.order_by(ConflictRecord.detected_at.desc()).offset(offset).limit(limit)
+    conflicts = session.exec(query).all()
+
+    return {
+        "success": True,
+        "data": {
+            "conflicts": [_conflict_to_dict(c) for c in conflicts],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        },
+        "message": f"Found {total} conflicts",
+    }
+
+
+@router.get("/conflicts/stats")
+async def get_conflict_stats(
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Get aggregate conflict statistics."""
+    svc = _get_conflict_service()
+    stats = svc.get_stats(session=session)
+    return {
+        "success": True,
+        "data": stats,
+        "message": f"{stats['total']} total conflicts",
+    }
+
+
+@router.get("/conflicts/{conflict_id}")
+async def get_conflict(
+    conflict_id: str = Path(..., description="Conflict UUID"),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Get a single conflict with full detail."""
+    conflict = session.exec(
+        select(ConflictRecord).where(ConflictRecord.id == conflict_id)
+    ).first()
+    if not conflict:
+        raise HTTPException(status_code=404, detail=f"Conflict {conflict_id} not found")
+    return {
+        "success": True,
+        "data": _conflict_to_dict(conflict),
+        "message": "Conflict retrieved",
+    }
+
+
+@router.post("/conflicts/{conflict_id}/resolve")
+async def resolve_conflict(
+    request: ConflictResolveRequest,
+    conflict_id: str = Path(..., description="Conflict UUID to resolve"),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Resolve a knowledge conflict.
+
+    Declare a winner chunk and provide rationale. Critical domain
+    conflicts (financial, security, compliance) require force=true
+    or will be escalated for human review.
+    """
+    try:
+        svc = _get_conflict_service()
+        conflict = svc.resolve(
+            session=session,
+            conflict_id=conflict_id,
+            winner_chunk_id=request.winner_chunk_id,
+            rationale=request.rationale,
+            resolved_by=request.resolved_by,
+            strategy=request.strategy,
+            force=request.force,
+        )
+        return {
+            "success": True,
+            "data": _conflict_to_dict(conflict),
+            "message": f"Conflict resolved via {request.strategy}",
+        }
+    except Exception as e:
+        logger.exception("Conflict resolution failed")
+        raise HTTPException(status_code=400 if "already" in str(e) or "must be" in str(e) else 500, detail=str(e))
+
+
+@router.post("/conflicts/{conflict_id}/dismiss")
+async def dismiss_conflict(
+    request: ConflictDismissRequest,
+    conflict_id: str = Path(..., description="Conflict UUID to dismiss"),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Dismiss a conflict without resolving it."""
+    try:
+        svc = _get_conflict_service()
+        conflict = svc.dismiss(
+            session=session,
+            conflict_id=conflict_id,
+            reason=request.reason,
+            dismissed_by=request.dismissed_by,
+        )
+        return {
+            "success": True,
+            "data": _conflict_to_dict(conflict),
+            "message": "Conflict dismissed",
+        }
+    except Exception as e:
+        logger.exception("Conflict dismissal failed")
+        raise HTTPException(status_code=400 if "already" in str(e) else 500, detail=str(e))
+
+
+@router.post("/conflicts/{conflict_id}/propagate")
+async def propagate_conflict(
+    request: ConflictPropagateRequest,
+    conflict_id: str = Path(..., description="Resolved conflict UUID"),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Propagate a resolution to dependent chunks.
+
+    Requires the conflict to be in 'resolved' status. By default,
+    propagates to all chunks sharing the loser's source. Pass
+    specific target_chunk_ids to override.
+    """
+    try:
+        svc = _get_conflict_service()
+        conflict = svc.propagate(
+            session=session,
+            conflict_id=conflict_id,
+            target_chunk_ids=request.target_chunk_ids,
+            propagated_by=request.propagated_by,
+        )
+        return {
+            "success": True,
+            "data": _conflict_to_dict(conflict),
+            "message": f"Resolution propagated to {len(conflict.propagated_to)} chunks",
+        }
+    except Exception as e:
+        logger.exception("Conflict propagation failed")
+        raise HTTPException(status_code=400 if "unresolved" in str(e) else 500, detail=str(e))
+
+
+@router.post("/conflicts/scan")
+async def scan_for_conflicts(
+    source_id: Optional[str] = Query(None, description="Scan only chunks from this source"),
+    limit: int = Query(500, ge=1, le=2000),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Run a full conflict scan across all knowledge chunks.
+
+    Performs pairwise content/embedding comparison to find
+    contradictions, temporal conflicts, and cross-source conflicts.
+    New conflicts are persisted and returned.
+    """
+    svc = _get_conflict_service()
+    new_conflicts = svc.scan_all(session=session, limit=limit, source_id=source_id)
+    return {
+        "success": True,
+        "data": {
+            "new_conflicts": [_conflict_to_dict(c) for c in new_conflicts],
+            "count": len(new_conflicts),
+        },
+        "message": f"Scanned for conflicts: {len(new_conflicts)} detected",
+    }
+
+
+def _conflict_to_dict(rec: ConflictRecord) -> dict[str, Any]:
+    """Convert a ConflictRecord to a serializable dict."""
+    return {
+        "id": rec.id,
+        "chunk_a_id": rec.chunk_a_id,
+        "chunk_b_id": rec.chunk_b_id,
+        "conflict_type": rec.conflict_type,
+        "severity": rec.severity,
+        "domain": rec.domain,
+        "status": rec.status,
+        "chunk_a_content_preview": rec.chunk_a_content_preview,
+        "chunk_b_content_preview": rec.chunk_b_content_preview,
+        "chunk_a_source": rec.chunk_a_source,
+        "chunk_b_source": rec.chunk_b_source,
+        "chunk_a_confidence": rec.chunk_a_confidence,
+        "chunk_b_confidence": rec.chunk_b_confidence,
+        "similarity_score": rec.similarity_score,
+        "resolution_strategy": rec.resolution_strategy,
+        "winner_chunk_id": rec.winner_chunk_id,
+        "loser_chunk_id": rec.loser_chunk_id,
+        "rationale": rec.rationale,
+        "resolved_by": rec.resolved_by,
+        "resolved_at": rec.resolved_at.isoformat() if rec.resolved_at else None,
+        "propagated_to": rec.propagated_to or [],
+        "detected_at": rec.detected_at.isoformat() if isinstance(rec.detected_at, datetime) else rec.detected_at,
+        "updated_at": rec.updated_at.isoformat() if isinstance(rec.updated_at, datetime) else rec.updated_at,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Chunks Editor Endpoints (Phase 12: split, merge, similar, etc.)
+# ═══════════════════════════════════════════════════════════════════
+
+
+_chunk_editor_svc: Optional[Any] = None
+
+
+def _get_chunk_editor_svc(service: KnowledgeEngineService) -> Any:
+    global _chunk_editor_svc
+    if _chunk_editor_svc is None:
+        # Wire up the embedding function from the engine service
+        from common_lib.modules.knowledge_engine.services.chunk_editor_service import (
+            ChunkEditorService,
+        )
+
+        _chunk_editor_svc = ChunkEditorService(
+            embedding_fn=lambda text: service.embed(text=text)
+        )
+    return _chunk_editor_svc
+
+
+class ChunkSplitRequest(BaseModel):
+    split_point: int = Field(
+        ..., description="Character index where the split occurs", ge=0
+    )
+    second_content: str = Field(
+        ..., description="Content for the second (new) child chunk", min_length=1
+    )
+    re_embed: bool = Field(True, description="Whether to regenerate embeddings")
+
+
+class ChunkMergeRequest(BaseModel):
+    chunk_ids: list[str] = Field(
+        ..., description="Chunk UUIDs to merge (min 2)", min_length=2
+    )
+    re_embed: bool = Field(True)
+    merge_strategy: str = Field(
+        "concat", description="concat or newline", pattern="^(concat|newline)$"
+    )
+
+
+class ChunkSimilarRequest(BaseModel):
+    chunk_id: str = Field(..., description="Reference chunk UUID")
+    top_k: int = Field(10, ge=1, le=50)
+    min_score: float = Field(0.0, ge=0.0, le=1.0)
+
+
+class ChunkConfidenceRequest(BaseModel):
+    confidence: float = Field(..., ge=0.0, le=1.0, description="0.0 to 1.0")
+
+
+class ChunkEditRequest(BaseModel):
+    content: str = Field(..., min_length=1, description="New chunk content")
+    re_embed: bool = Field(True)
+
+
+@router.post("/chunks/{chunk_id}/split", status_code=201)
+async def split_chunk(
+    request: ChunkSplitRequest,
+    chunk_id: str = Path(..., description="Chunk UUID to split"),
+    service: KnowledgeEngineService = Depends(get_knowledge_engine_service),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Split a chunk into two child chunks.
+
+    The original chunk becomes the first child (content truncated).
+    A new second child is created. Both reference the original as parent.
+    Embeddings are regenerated by default.
+    """
+    try:
+        editor = _get_chunk_editor_svc(service)
+        child_a, child_b = await editor.split_chunk(
+            session=session,
+            chunk_id=chunk_id,
+            split_point=request.split_point,
+            second_content=request.second_content,
+            re_embed=request.re_embed,
+        )
+
+        return {
+            "success": True,
+            "data": {
+                "children": [_record_to_dict(child_a), _record_to_dict(child_b)],
+                "parent_id": chunk_id,
+            },
+            "message": f"Chunk split into 2 children",
+        }
+    except Exception as e:
+        logger.exception("Chunk split failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chunks/merge", status_code=201)
+async def merge_chunks(
+    request: ChunkMergeRequest,
+    service: KnowledgeEngineService = Depends(get_knowledge_engine_service),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Merge multiple chunks into one combined chunk.
+
+    The first chunk becomes the merged result (content combined).
+    Other chunks are soft-deleted. Merged IDs are recorded in metadata.
+    Supports 'concat' (space-joined) and 'newline' strategies.
+    """
+    try:
+        editor = _get_chunk_editor_svc(service)
+        merged = await editor.merge_chunks(
+            session=session,
+            chunk_ids=request.chunk_ids,
+            re_embed=request.re_embed,
+            merge_strategy=request.merge_strategy,
+        )
+
+        return {
+            "success": True,
+            "data": {
+                "chunk": _record_to_dict(merged),
+                "merged_ids": request.chunk_ids,
+                "strategy": request.merge_strategy,
+            },
+            "message": f"Merged {len(request.chunk_ids)} chunks into one",
+        }
+    except Exception as e:
+        logger.exception("Chunk merge failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chunks/{chunk_id}/similar")
+async def find_similar_chunks(
+    chunk_id: str = Path(..., description="Reference chunk UUID"),
+    top_k: int = Query(10, ge=1, le=50),
+    min_score: float = Query(0.0, ge=0.0, le=1.0),
+    service: KnowledgeEngineService = Depends(get_knowledge_engine_service),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Find semantically similar chunks using cosine similarity.
+
+    Requires chunks to have embedding vectors. Returns results
+    sorted by similarity score (highest first).
+    """
+    try:
+        editor = _get_chunk_editor_svc(service)
+        results = editor.find_similar(
+            session=session,
+            chunk_id=chunk_id,
+            top_k=top_k,
+            min_score=min_score,
+        )
+        return {
+            "success": True,
+            "data": {
+                "results": results,
+                "reference_chunk_id": chunk_id,
+                "count": len(results),
+            },
+            "message": f"Found {len(results)} similar chunks",
+        }
+    except Exception as e:
+        logger.exception("Similar chunks query failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/chunks/{chunk_id}/confidence")
+async def override_chunk_confidence(
+    request: ChunkConfidenceRequest,
+    chunk_id: str = Path(..., description="Chunk UUID"),
+    service: KnowledgeEngineService = Depends(get_knowledge_engine_service),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Override the confidence score for a chunk (0.0–1.0).
+
+    Stored in metadata and used by quality assessment and retrieval ranking.
+    """
+    try:
+        editor = _get_chunk_editor_svc(service)
+        record = editor.override_confidence(
+            session=session, chunk_id=chunk_id, confidence=request.confidence
+        )
+
+        return {
+            "success": True,
+            "data": _record_to_dict(record),
+            "message": f"Confidence set to {request.confidence}",
+        }
+    except Exception as e:
+        logger.exception("Confidence override failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chunks/{chunk_id}/soft-delete")
+async def soft_delete_chunk(
+    chunk_id: str = Path(..., description="Chunk UUID to soft-delete"),
+    service: KnowledgeEngineService = Depends(get_knowledge_engine_service),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Soft-delete a chunk by marking it as inactive.
+
+    The record remains in the database but is excluded from
+    search and retrieval results via the is_deleted metadata flag.
+    """
+    try:
+        editor = _get_chunk_editor_svc(service)
+        result = editor.soft_delete(session=session, chunk_id=chunk_id)
+        return {
+            "success": True,
+            "data": result,
+            "message": f"Chunk {chunk_id[:8]} soft-deleted",
+        }
+    except Exception as e:
+        logger.exception("Soft delete failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chunks/{chunk_id}/children")
+async def get_chunk_children(
+    chunk_id: str = Path(..., description="Parent chunk UUID"),
+    service: KnowledgeEngineService = Depends(get_knowledge_engine_service),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Get direct child chunks (from split operations).
+
+    Returns all chunks whose metadata_json.parent_chunk_id matches.
+    Children are sorted by chunk_level ascending.
+    """
+    try:
+        editor = _get_chunk_editor_svc(service)
+        children = editor.get_children(session=session, chunk_id=chunk_id)
+        return {
+            "success": True,
+            "data": {
+                "children": children,
+                "parent_id": chunk_id,
+                "count": len(children),
+            },
+            "message": f"Found {len(children)} child chunks",
+        }
+    except Exception as e:
+        logger.exception("Get children failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════
 # NER Training Endpoints (thin routing — logic in common_lib)
 # ═══════════════════════════════════════════════════════════════════
 
@@ -2709,3 +3342,151 @@ async def prune_beliefs(
         raise HTTPException(
             status_code=500, detail=f"Failed to prune beliefs: {str(e)}"
         )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Quality API Endpoints (Phase 13)
+# ═══════════════════════════════════════════════════════════════════
+
+# Lazy-initialized quality service instance
+_quality_service_instance: Optional[QualityService] = None
+
+
+def _get_quality_service(service: Optional[KnowledgeEngineService] = None) -> QualityService:
+    global _quality_service_instance
+    if _quality_service_instance is None:
+        embedding_fn = None
+        if service:
+            # Wire up the embedding function from the engine service
+            embedding_fn = lambda text: service.embed(text=text)  # type: ignore[union-attr]
+        _quality_service_instance = QualityService(embedding_fn=embedding_fn)
+    return _quality_service_instance
+
+
+class BulkArchiveRequest(BaseModel):
+    staleness_days: Optional[int] = Field(None, description="Override staleness threshold in days. Uses per-domain config if not provided.")
+    dry_run: bool = Field(True, description="If True, only report without actually archiving")
+
+
+class BulkReembedRequest(BaseModel):
+    min_confidence: float = Field(0.6, ge=0.0, le=1.0, description="Minimum confidence threshold. Chunks below this are re-embedded.")
+    dry_run: bool = Field(True, description="If True, only report without actually re-embedding")
+
+
+@router.post("/quality/archive-stale")
+async def bulk_archive_stale(
+    request: BulkArchiveRequest,
+    service: KnowledgeEngineService = Depends(get_knowledge_engine_service),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Bulk archive stale chunks (soft-delete based on staleness thresholds).
+
+    Identifies chunks older than their domain-specific staleness threshold
+    and soft-deletes them. Supports dry_run to preview before archiving.
+    Use staleness_days to override all per-domain thresholds.
+    """
+    try:
+        qs = _get_quality_service(service)
+        result = await qs.bulk_archive_stale(
+            session=session,
+            staleness_days=request.staleness_days,
+            dry_run=request.dry_run,
+        )
+        return {
+            "success": True,
+            "data": result,
+            "message": (
+                f"Dry-run: identified {result['total_stale']} stale chunks"
+                if result["dry_run"]
+                else f"Archived {result['archived']} stale chunks"
+            ),
+        }
+    except Exception as e:
+        logger.exception("Bulk archive stale failed")
+        raise HTTPException(status_code=500, detail=f"Bulk archive failed: {str(e)}")
+
+
+@router.post("/quality/reembed")
+async def bulk_reembed(
+    request: BulkReembedRequest,
+    service: KnowledgeEngineService = Depends(get_knowledge_engine_service),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Bulk re-embed low-confidence chunks.
+
+    Finds chunks with missing or low-confidence embeddings and
+    regenerates them. Supports dry_run to preview before processing.
+    """
+    try:
+        qs = _get_quality_service(service)
+        result = await qs.bulk_reembed(
+            session=session,
+            min_confidence=request.min_confidence,
+            dry_run=request.dry_run,
+        )
+        return {
+            "success": True,
+            "data": result,
+            "message": (
+                f"Dry-run: {result['total_low_confidence']} chunks need re-embedding"
+                if result["dry_run"]
+                else f"Re-embedded {result['reembedded']} chunks"
+            ),
+        }
+    except Exception as e:
+        logger.exception("Bulk re-embed failed")
+        raise HTTPException(status_code=500, detail=f"Bulk re-embed failed: {str(e)}")
+
+
+@router.get("/quality/recommendations")
+async def get_quality_recommendations(
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Get quality improvement recommendations.
+
+    Analyzes current chunk population, staleness, embedding coverage,
+    and confidence distribution to produce actionable recommendations
+    with severity levels and suggested API actions.
+    """
+    try:
+        qs = _get_quality_service()
+        recommendations = qs.generate_recommendations(session=session)
+        return {
+            "success": True,
+            "data": {
+                "recommendations": recommendations,
+                "total": len(recommendations),
+            },
+            "message": f"Generated {len(recommendations)} recommendations",
+        }
+    except Exception as e:
+        logger.exception("Failed to generate recommendations")
+        raise HTTPException(status_code=500, detail=f"Failed to generate recommendations: {str(e)}")
+
+
+@router.post("/quality/run-validation")
+async def run_validation_job(
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Run a full validation scan across all chunks as a tracked job.
+
+    Checks all active chunks for staleness and low confidence.
+    Produces a job summary with scan duration and per-domain breakdown.
+    """
+    try:
+        qs = _get_quality_service()
+        result = qs.run_validation_job(session=session)
+        return {
+            "success": True,
+            "data": result,
+            "message": (
+                f"Validation job {result['job_id'][:8]} completed: "
+                f"{result['total_chunks_scanned']} chunks scanned, "
+                f"{result['stale_chunks']} stale, "
+                f"{result['low_confidence_chunks']} low confidence "
+                f"({result['duration_seconds']}s)"
+            ),
+        }
+    except Exception as e:
+        logger.exception("Validation job failed")
+        raise HTTPException(status_code=500, detail=f"Validation job failed: {str(e)}")

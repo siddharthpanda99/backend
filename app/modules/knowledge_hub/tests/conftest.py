@@ -13,6 +13,8 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine, select
 from sqlalchemy.pool import StaticPool
 
+from common_lib.modules.knowledge_engine.models.db_records import KnowledgeChunkRecord
+
 from common_lib.modules.knowledge_hub.models import (
     IngestionPipelineRecord,
     KnowledgeProjectRecord,

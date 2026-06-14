@@ -10,7 +10,9 @@ All state is read via getters from agent_loader — no module globals here.
 from __future__ import annotations
 
 import json
+import time
 import traceback
+import uuid
 from datetime import datetime
 from typing import AsyncGenerator, Any, Optional, Dict
 
@@ -41,7 +43,14 @@ NODE_TITLES = {
 
 
 async def stream_agent_generator(
-    message: str, session_id: str, decision: Optional[Dict[str, Any]] = None
+    message: str,
+    session_id: str,
+    decision: Optional[Dict[str, Any]] = None,
+    agent_id: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    model_path: Optional[str] = None,
+    provider: Optional[str] = None,
+    loop_id: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Stream LangGraph ``astream_events`` as SSE-formatted trace events.
@@ -57,9 +66,50 @@ async def stream_agent_generator(
         get_master_agent,
         get_active_session,
     )
+    from app.core.common_lib_integration import common_memory
+    from common_lib.modules.orchestration.agents.agent.tracing import TraceRecorder
+
+    active_session = get_active_session()
+
+    req_provider = provider
+    req_model = model_path
+
+    current_provider = active_session.get("provider")
+    current_model = active_session.get("model")
+
+    if (req_provider and req_provider != current_provider) or (req_model and req_model != current_model):
+        logger.info(
+            f"[Streaming] Hot-swapping agent model/provider: "
+            f"Current: {current_provider}/{current_model} -> Requested: {req_provider}/{req_model}"
+        )
+        from app.modules.agents.runtime.core.agent_loader import load_agent
+        load_agent(
+            model_path=req_model,
+            provider=req_provider or "vllm",
+            agent_id=agent_id or active_session.get("agent_id", "master_agent"),
+            agent_display_name=active_session.get("agent", "Master Agent"),
+            tool_ids=active_session.get("whitelist"),
+            system_prompt=system_prompt or active_session.get("system_prompt"),
+            use_mcp_discovery=active_session.get("use_mcp_discovery", False),
+            global_search_enabled=active_session.get("global_search_enabled", False),
+            preload=True,
+            skip_engine_deploy=False,
+        )
+        active_session = get_active_session()
+        # Keep agent_id in active_session
+        active_session["agent_id"] = agent_id or active_session.get("agent_id", "master_agent")
 
     agent = get_master_agent()
-    active_session = get_active_session()
+    trace_recorder = TraceRecorder(common_memory)
+    trace_id = str(uuid.uuid4())
+    agent_id = active_session.get("agent_id", "unknown")
+    provider = active_session.get("provider", "unknown")
+    model_name = active_session.get("model", "unknown")
+
+    # Track timing for instrumentation
+    llm_start_times: dict[int, float] = {}
+    tool_start_times: dict[str, float] = {}
+    chain_start_times: dict[str, float] = {}
 
     try:
         if not agent or not agent.graph:
@@ -70,6 +120,18 @@ async def stream_agent_generator(
                 }
             )
             return
+
+        # ── Hot-swap system_prompt if provided ─────────────────
+        if system_prompt and system_prompt != active_session.get("system_prompt", ""):
+            active_session["system_prompt"] = system_prompt
+            active_session["agent_id"] = agent_id or active_session.get(
+                "agent_id", "unknown"
+            )
+            if hasattr(agent, "definition") and hasattr(
+                agent.definition, "system_prompt_override"
+            ):
+                agent.definition.system_prompt_override = system_prompt
+            logger.info("[Streaming] System prompt hot-swapped for turn.")
 
         initial: dict[str, Any] = {
             "input": message,
@@ -99,10 +161,19 @@ async def stream_agent_generator(
                 tool_input = decision.get("tool_input") or {}
                 if request_id:
                     if action == "modify":
-                        hitl_service.modify(request_id, decided_by, tool_input, decision.get("notes", ""))
+                        hitl_service.modify(
+                            request_id,
+                            decided_by,
+                            tool_input,
+                            decision.get("notes", ""),
+                        )
                     else:
-                        hitl_service.approve(request_id, decided_by, decision.get("notes", ""))
-                    hitl_service.execute(request_id, "Agent runtime resumed after human decision")
+                        hitl_service.approve(
+                            request_id, decided_by, decision.get("notes", "")
+                        )
+                    hitl_service.execute(
+                        request_id, "Agent runtime resumed after human decision"
+                    )
                 # Inject approval into high-level state so execute_tool_node sees it
                 approved = {
                     "tool": decision.get("tool"),
@@ -160,7 +231,9 @@ async def stream_agent_generator(
         if not current.values.get("operational_metadata"):
             vram = {}
             try:
-                from common_lib.modules.ai_models.llm.vllm_fleet_manager import vllm_fleet
+                from common_lib.modules.ai_models.llm.vllm_fleet_manager import (
+                    vllm_fleet,
+                )
 
                 vram = vllm_fleet.get_gpu_memory()
             except:
@@ -192,7 +265,10 @@ async def stream_agent_generator(
                 from sqlmodel import select
 
                 # Use a local session context to ensure commit
-                from common_lib.modules.data_pipeline.storage.db.engine import get_engine as _get_engine
+                from common_lib.modules.data_pipeline.storage.db.engine import (
+                    get_engine as _get_engine,
+                )
+
                 db_engine = _get_engine()
                 from sqlmodel import Session as SQLSession
 
@@ -268,7 +344,9 @@ async def stream_agent_generator(
         tool_call_counts: dict[str, int] = {}
         consecutive_same_tool = 0
         last_tool_name = ""
-        llm_call_count = 0  # hard kill guard: abort after too many LLM turns with no answer
+        llm_call_count = (
+            0  # hard kill guard: abort after too many LLM turns with no answer
+        )
 
         def ts() -> str:
             return datetime.now().strftime("%H:%M:%S.%f")[:-3]
@@ -302,24 +380,49 @@ async def stream_agent_generator(
             name = ev.get("name", "")
             event_count += 1
             # Only log every 50 events for streaming chunks to avoid log spam
-            if event_count <= 30 or event_count % 50 == 0 or kind not in ("on_chat_model_stream",):
-                logger.info("[Streaming] Event #%d: kind=%s name=%s", event_count, kind, name)
+            if (
+                event_count <= 30
+                or event_count % 50 == 0
+                or kind not in ("on_chat_model_stream",)
+            ):
+                logger.info(
+                    "[Streaming] Event #%d: kind=%s name=%s", event_count, kind, name
+                )
 
             if kind in ("on_llm_start", "on_chat_model_start"):
                 llm_call_count += 1
+                llm_start_times[llm_call_count] = time.time()
                 logger.info("[Streaming] LLM call #%d started", llm_call_count)
                 # Hard kill: abort if the agent has reasoned too many times without an answer
                 if llm_call_count > 8:
-                    yield trace("error", "🛑 Loop detected: LLM called 8+ times without final answer",
-                                "Terminating to prevent infinite loop.")
-                    yield _enc({"event_type": "agent_complete",
-                                "content": "Agent terminated: exceeded maximum reasoning turns."})
+                    yield trace(
+                        "error",
+                        "🛑 Loop detected: LLM called 8+ times without final answer",
+                        "Terminating to prevent infinite loop.",
+                    )
+                    yield _enc(
+                        {
+                            "event_type": "agent_complete",
+                            "content": "Agent terminated: exceeded maximum reasoning turns.",
+                        }
+                    )
                     return
                 prompt_content = _prompt_preview(ev)
                 yield trace(
                     "llm_payload",
                     f"📤 LLM Payload (~{len(prompt_content) // 4} tokens)",
                     prompt_content,
+                )
+                # Record LLM start trace event
+                trace_recorder.record_llm_start(
+                    session_id=session_id,
+                    trace_id=trace_id,
+                    provider=provider,
+                    model=model_name,
+                    llm_call_number=llm_call_count,
+                    step_number=step,
+                    agent_id=agent_id,
+                    prompt_preview=prompt_content[:500] if prompt_content else None,
                 )
 
             elif kind == "on_chat_model_stream":
@@ -333,11 +436,97 @@ async def stream_agent_generator(
                 if accum:
                     yield trace("think", "💭 Model reasoning", accum.strip())
                     accum = ""
+                # Extract token usage from LLM response
+                result = ev.get("data", {}).get("output", {})
+                msg_list = (
+                    result.get("messages", []) if isinstance(result, dict) else []
+                )
+                input_tokens = 0
+                output_tokens = 0
+                llm_duration = 0.0
+                if msg_list:
+                    last_msg = msg_list[-1] if isinstance(msg_list, list) else msg_list
+                    if hasattr(last_msg, "response_metadata"):
+                        usage = last_msg.response_metadata.get("token_usage", {}) or {}
+                        if isinstance(usage, dict):
+                            input_tokens = (
+                                usage.get("prompt_tokens", 0)
+                                or usage.get("input_tokens", 0)
+                                or 0
+                            )
+                            output_tokens = (
+                                usage.get("completion_tokens", 0)
+                                or usage.get("output_tokens", 0)
+                                or 0
+                            )
+                    elif isinstance(last_msg, dict):
+                        usage = (
+                            last_msg.get("response_metadata", {}).get("token_usage", {})
+                            or {}
+                        )
+                        if isinstance(usage, dict):
+                            input_tokens = (
+                                usage.get("prompt_tokens", 0)
+                                or usage.get("input_tokens", 0)
+                                or 0
+                            )
+                            output_tokens = (
+                                usage.get("completion_tokens", 0)
+                                or usage.get("output_tokens", 0)
+                                or 0
+                            )
+
+                if llm_call_count in llm_start_times:
+                    llm_duration = (
+                        time.time() - llm_start_times[llm_call_count]
+                    ) * 1000
+
+                # Compute cost
+                cost_usd = 0.0
+                if input_tokens or output_tokens:
+                    from common_lib.modules.observability.cost_tracker import (
+                        compute_cost,
+                    )
+
+                    cost_usd = compute_cost(
+                        provider, model_name, input_tokens, output_tokens
+                    )
+
+                # Record LLM end trace event
+                trace_recorder.record_llm_end(
+                    session_id=session_id,
+                    trace_id=trace_id,
+                    provider=provider,
+                    model=model_name,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_usd=cost_usd,
+                    duration_ms=llm_duration,
+                    llm_call_number=llm_call_count,
+                    step_number=step,
+                    agent_id=agent_id,
+                )
+                # Emit token usage SSE event for frontend
+                yield _enc(
+                    {
+                        "event_type": "token_usage",
+                        "provider": provider,
+                        "model": model_name,
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "cost_usd": cost_usd,
+                        "duration_ms": round(llm_duration, 2),
+                        "llm_call_number": llm_call_count,
+                    }
+                )
 
             elif kind == "on_tool_start":
                 inp = ev.get("data", {}).get("input", "")
                 if not isinstance(inp, str):
                     inp = json.dumps(inp, default=str)
+
+                # Track timing
+                tool_start_times[name] = time.time()
 
                 # Track tool call frequency for loop detection
                 tool_call_counts[name] = tool_call_counts.get(name, 0) + 1
@@ -346,6 +535,16 @@ async def stream_agent_generator(
                 else:
                     consecutive_same_tool = 1
                     last_tool_name = name
+
+                # Record tool start trace event
+                trace_recorder.record_tool_start(
+                    session_id=session_id,
+                    trace_id=trace_id,
+                    tool_name=name,
+                    tool_input=inp[:1000] if len(inp) > 1000 else inp,
+                    step_number=step,
+                    agent_id=agent_id,
+                )
 
                 # Hard kill: if any single tool is called 8+ times, abort
                 if tool_call_counts[name] > 8:
@@ -370,7 +569,10 @@ async def stream_agent_generator(
                     }
                 )
                 yield trace(
-                    "tool_execution", f"🔧 Tool called: {name}", inp, {"tool_name": name}
+                    "tool_execution",
+                    f"🔧 Tool called: {name}",
+                    inp,
+                    {"tool_name": name},
                 )
 
             elif kind == "on_tool_end":
@@ -380,6 +582,20 @@ async def stream_agent_generator(
                 yield _enc({"event_type": "tool_end", "content": str(out)})
                 yield trace(
                     "tool_result", f"📥 Result: {name}", str(out), {"tool_name": name}
+                )
+                # Record tool end trace event
+                tool_duration = 0.0
+                if name in tool_start_times:
+                    tool_duration = (time.time() - tool_start_times[name]) * 1000
+                trace_recorder.record_tool_end(
+                    session_id=session_id,
+                    trace_id=trace_id,
+                    tool_name=name,
+                    tool_result=str(out)[:1000] if len(str(out)) > 1000 else str(out),
+                    duration_ms=tool_duration,
+                    step_number=step,
+                    tool_status="completed",
+                    agent_id=agent_id,
                 )
 
             elif kind == "on_chain_start" and name in ALLOWED_NODES:
@@ -392,28 +608,58 @@ async def stream_agent_generator(
                 yield trace(
                     "transition", NODE_TITLES.get(name, f"→ {name}"), f"Input: {inp_s}"
                 )
+                # Record chain start trace event
+                chain_start_times[name] = time.time()
+                trace_recorder.record_chain_start(
+                    session_id=session_id,
+                    trace_id=trace_id,
+                    node_name=name,
+                    step_number=step,
+                    agent_id=agent_id,
+                )
 
             elif kind == "on_chain_end":
                 out = ev.get("data", {}).get("output", {})
                 if isinstance(out, dict):
                     outcome = out.get("agent_outcome")
-                    logger.info("[Streaming] on_chain_end name=%s | outcome=%s | keys=%s",
-                                name, type(outcome).__name__, list(out.keys()))
+                    logger.info(
+                        "[Streaming] on_chain_end name=%s | outcome=%s | keys=%s",
+                        name,
+                        type(outcome).__name__,
+                        list(out.keys()),
+                    )
                     if isinstance(outcome, AgentFinish):
                         ans = outcome.return_values.get("output", "")
                         thought = outcome.return_values.get("thought", "")
                         if ans:
                             final_answer = ans
                             if thought:
-                                # Prepend thought to final answer or send separately? 
+                                # Prepend thought to final answer or send separately?
                                 # Better: include in the decision trace
                                 final_answer_thought = thought
-                            logger.info("[Streaming] final_answer SET, len=%d", len(ans))
+                            logger.info(
+                                "[Streaming] final_answer SET, len=%d", len(ans)
+                            )
                 if name in ALLOWED_NODES:
                     out_s = (
                         json.dumps(out, indent=2, default=str)[:1000]
                         if isinstance(out, dict)
                         else str(out)
+                    )
+
+                    # Record chain end trace event
+                    chain_end_duration = 0.0
+                    if name in chain_start_times:
+                        chain_end_duration = (
+                            time.time() - chain_start_times[name]
+                        ) * 1000
+                    trace_recorder.record_chain_end(
+                        session_id=session_id,
+                        trace_id=trace_id,
+                        node_name=name,
+                        duration_ms=chain_end_duration,
+                        step_number=step,
+                        agent_id=agent_id,
                     )
 
                     # Check for HITL Interruption
@@ -477,6 +723,15 @@ async def stream_agent_generator(
                 err = ev.get("data", {}).get("error", "Unknown error")
                 yield trace("error", f"❌ Error in {name or kind}", str(err))
                 logger.error("Error in %s: %s", name, err)
+                # Record error trace event
+                trace_recorder.record_error(
+                    session_id=session_id,
+                    trace_id=trace_id,
+                    error=str(err),
+                    step_number=step,
+                    event_name=name or kind,
+                    agent_id=agent_id,
+                )
 
         if final_answer:
             body = final_answer
@@ -484,13 +739,34 @@ async def stream_agent_generator(
                 body = f"THOUGHT: {final_answer_thought}\nFINAL: {final_answer}"
             yield trace("decision", "✅ Final Answer", body)
             yield _enc({"event_type": "agent_complete", "content": str(final_answer)})
+            # Record agent complete trace event
+            trace_recorder.record_agent_complete(
+                session_id=session_id,
+                trace_id=trace_id,
+                step_number=step,
+                agent_id=agent_id,
+            )
         else:
             yield trace("error", "⚠️ Agent terminated without a final answer")
             yield _enc({"event_type": "agent_complete", "content": ""})
+            trace_recorder.record_error(
+                session_id=session_id,
+                trace_id=trace_id,
+                error="Agent terminated without a final answer",
+                step_number=step,
+                agent_id=agent_id,
+            )
 
     except Exception as exc:
         logger.error(traceback.format_exc())
         yield _enc({"event_type": "error", "content": f"Stream error: {exc}"})
+        trace_recorder.record_error(
+            session_id=session_id,
+            trace_id=trace_id,
+            error=f"Stream error: {exc}",
+            step_number=0,
+            agent_id=agent_id,
+        )
 
 
 # ---------------------------------------------------------------------------

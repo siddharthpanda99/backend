@@ -15,15 +15,22 @@ Endpoints:
         GET    /knowledge-hub/sources/{id}           — Get source config
         PUT    /knowledge-hub/sources/{id}           — Update source config
         DELETE /knowledge-hub/sources/{id}           — Delete source config
-        POST   /knowledge-hub/sources/{id}/execute   — Execute/test source
+        POST   /knowledge-hub/sources/{id}/execute   — Execute source (real API or simulated)
         POST   /knowledge-hub/sources/{id}/verify    — Verify source
         GET    /knowledge-hub/sources/{id}/preview   — Preview source data
+        POST   /knowledge-hub/sources/{id}/pause     — Pause source
+        POST   /knowledge-hub/sources/{id}/resume    — Resume source
+        POST   /knowledge-hub/sources/{id}/auth-url   — Get OAuth authorization URL
+        POST   /knowledge-hub/sources/{id}/auth-callback — Exchange OAuth code for tokens
 """
 
 from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Optional
+
+import time as time_mod
+import uuid as uuid_mod
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
@@ -36,6 +43,12 @@ from common_lib.modules.knowledge_hub.models import (
 )
 from common_lib.modules.knowledge_hub.services.source_service import (
     SourceService,
+    sanitize_config,
+)
+from app.modules.knowledge_hub.services.execution_engine import (
+    get_source_execution_engine,
+    build_oauth_authorization_url,
+    exchange_oauth_code,
 )
 
 logger = logging.getLogger(__name__)
@@ -232,16 +245,23 @@ def delete_source_config(
 @router.post("/sources/{config_id}/execute")
 def execute_source(
     config_id: str = Path(..., description="Source config ID"),
+    body: Optional[ExecuteSourceBody] = None,
     session: Session = Depends(get_session),
 ) -> Dict[str, Any]:
     """Execute/test a source connection.
 
-    Returns sample data and execution status. Use this to verify
-    data extraction is working before marking as verified.
+    Uses real API calls when possible (direct HTTP),
+    falling back to simulation for unmapped or unconfigured source types.
+    Provide an api_token in the request body for authenticated API calls.
+
+    Returns sample data and execution status with execution metadata
+    including which tier was used (http/simulated).
     """
-    result = SourceService.execute_source(session, config_id)
+    engine = get_source_execution_engine()
+    api_token = body.api_token if body else None
+    result = engine.execute(session, config_id, api_token=api_token)
     if not result.get("success"):
-        raise HTTPException(status_code=404, detail=result.get("message"))
+        raise HTTPException(status_code=404, detail=result.get("message", "Source config not found"))
     return result
 
 
@@ -282,6 +302,229 @@ def preview_source(
     return result
 
 
+# ═══════════════════════════════════════════════════════════════════
+# Phase 4: Pause / Resume
+# ═══════════════════════════════════════════════════════════════════
+
+
+@router.post("/sources/{config_id}/pause")
+def pause_source(
+    config_id: str = Path(..., description="Source config ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Pause a source configuration.
+
+    Sets the source status to 'paused'. Paused sources are not
+    executed during scheduled ingestion runs.
+    """
+    record = SourceService.pause_source(session, config_id)
+    if not record:
+        existing = SourceService.get_source_config(session, config_id)
+        if not existing:
+            raise HTTPException(
+                status_code=404, detail=f"Source config '{config_id}' not found"
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot pause source '{config_id}': current status is '{existing.status}'"
+        )
+    return {
+        "success": True,
+        "data": _config_to_dict(record),
+        "message": f"Source '{record.name}' paused",
+    }
+
+
+@router.post("/sources/{config_id}/resume")
+def resume_source(
+    config_id: str = Path(..., description="Source config ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Resume a paused source configuration.
+
+    Restores the source status to 'active', allowing it to be
+    included in scheduled ingestion runs.
+    """
+    record = SourceService.resume_source(session, config_id)
+    if not record:
+        existing = SourceService.get_source_config(session, config_id)
+        if not existing:
+            raise HTTPException(
+                status_code=404, detail=f"Source config '{config_id}' not found"
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot resume source '{config_id}': current status is '{existing.status}'"
+        )
+    return {
+        "success": True,
+        "data": _config_to_dict(record),
+        "message": f"Source '{record.name}' resumed",
+    }
+
+# ═══════════════════════════════════════════════════════════════════
+# OAuth Endpoints (Phase 7)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class ExecuteSourceBody(BaseModel):
+    api_token: Optional[str] = Field(None, description="API token for real execution")
+
+
+class OAuthInitiateRequest(BaseModel):
+    redirect_uri: str = Field(..., description="OAuth redirect URI")
+    client_id: Optional[str] = Field(None, description="OAuth client ID (overrides config)")
+    scopes: Optional[str] = Field(None, description="OAuth scopes (overrides defaults)")
+
+
+class OAuthCallbackRequest(BaseModel):
+    code: str = Field(..., description="OAuth authorization code")
+    redirect_uri: str = Field(..., description="The same redirect URI used in auth URL")
+    client_id: Optional[str] = Field(None, description="OAuth client ID")
+    client_secret: Optional[str] = Field(None, description="OAuth client secret")
+    state: Optional[str] = Field(None, description="CSRF state from the OAuth redirect (validated against stored state)")
+
+
+@router.post("/sources/{config_id}/auth-url")
+def initiate_oauth(
+    request: OAuthInitiateRequest,
+    config_id: str = Path(..., description="Source config ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Generate an OAuth authorization URL for a source config.
+
+    Returns the URL the user should visit to authorize the application.
+    The source type determines which OAuth provider is used.
+    Stores the OAuth state in the source config for CSRF validation.
+    """
+    record = session.get(SourceConfigRecord, config_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Source config '{config_id}' not found")
+
+    state = str(uuid_mod.uuid4())
+    config = dict(record.config or {})
+
+    if request.client_id:
+        config["client_id"] = request.client_id
+    if request.scopes:
+        config["scopes"] = request.scopes
+
+    auth_url = build_oauth_authorization_url(
+        source_type_id=record.source_type_id,
+        redirect_uri=request.redirect_uri,
+        state=state,
+        config=config,
+    )
+
+    if not auth_url:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Source type '{record.source_type_id}' does not support OAuth authentication",
+        )
+
+    # Store OAuth state in config for CSRF validation during callback
+    updated_config = dict(record.config or {})
+    updated_config["oauth_state"] = state
+    updated_config["oauth_redirect_uri"] = request.redirect_uri
+    record.config = updated_config
+    session.add(record)
+    session.commit()
+
+    return {
+        "success": True,
+        "data": {
+            "authorization_url": auth_url,
+            "state": state,
+            "source_type_id": record.source_type_id,
+        },
+        "message": f"OAuth authorization URL generated for {record.name}",
+    }
+
+
+@router.post("/sources/{config_id}/auth-callback")
+async def handle_oauth_callback(
+    request: OAuthCallbackRequest,
+    config_id: str = Path(..., description="Source config ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Handle OAuth callback — exchange authorization code for tokens.
+
+    Exchanges the authorization code for access/refresh tokens and
+    stores them in the source config. The config can then be used
+    for real API execution.
+    """
+    record = session.get(SourceConfigRecord, config_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Source config '{config_id}' not found")
+
+    config = dict(record.config or {})
+
+    # CSRF protection: validate OAuth state if available
+    stored_state = config.get("oauth_state")
+    if stored_state and request.state:
+        if request.state != stored_state:
+            raise HTTPException(
+                status_code=400,
+                detail="OAuth state mismatch — possible CSRF attack. Authorization code rejected.",
+            )
+    elif stored_state and not request.state:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing OAuth state parameter. Provide the state value returned from the OAuth redirect.",
+        )
+
+    if request.client_id:
+        config["client_id"] = request.client_id
+    if request.client_secret:
+        config["client_secret"] = request.client_secret
+
+    token_data = await exchange_oauth_code(
+        source_type_id=record.source_type_id,
+        code=request.code,
+        redirect_uri=request.redirect_uri,
+        config=config,
+    )
+
+    if not token_data or not token_data.get("access_token"):
+        raise HTTPException(
+            status_code=400,
+            detail="OAuth code exchange failed — invalid or expired authorization code",
+        )
+
+    # Store tokens in source config
+    updated_config = dict(record.config or {})
+    updated_config["access_token"] = token_data["access_token"]
+    if token_data.get("refresh_token"):
+        updated_config["refresh_token"] = token_data["refresh_token"]
+    if token_data.get("expires_in"):
+        updated_config["expires_at"] = time_mod.time() + token_data["expires_in"]
+    updated_config["token_type"] = token_data.get("token_type", "Bearer")
+    updated_config["oauth_connected"] = True
+    # Clean up OAuth state
+    updated_config.pop("oauth_state", None)
+    updated_config.pop("oauth_redirect_uri", None)
+
+    record.config = updated_config
+    record.status = "active"
+    session.add(record)
+    session.commit()
+    session.refresh(record)
+
+    logger.info(f"OAuth tokens stored for source config {config_id}")
+
+    return {
+        "success": True,
+        "data": {
+            "source_config_id": config_id,
+            "source_type": record.source_type_id,
+            "token_type": token_data.get("token_type", "Bearer"),
+            "has_refresh_token": bool(token_data.get("refresh_token")),
+            "oauth_connected": True,
+        },
+        "message": f"OAuth completed for {record.name}. Source is now active with real API access.",
+    }
+
+
 # ── Serialization helpers ─────────────────────────────────────
 
 
@@ -304,7 +547,7 @@ def _config_to_dict(record: SourceConfigRecord) -> Dict[str, Any]:
         "source_type_id": record.source_type_id,
         "name": record.name,
         "description": record.description,
-        "config": record.config,
+        "config": sanitize_config(record.config),
         "status": record.status,
         "verified_at": record.verified_at.isoformat() if record.verified_at else None,
         "verified_by": record.verified_by,

@@ -53,7 +53,8 @@ def _get_registry_svc() -> EntityRegistryService:
 
 def _on_sync(entity_type: str, entity_id: str) -> None:
     """Callback to sync entity to filesystem after create/update."""
-    sync_entity_to_fs(entity_type, entity_id)
+    if entity_type != "agent":
+        sync_entity_to_fs(entity_type, entity_id)
 
 
 # ---------------------------------------------------------------------------
@@ -485,4 +486,132 @@ async def export_agent_markdown(agent_id: str):
         )
     except Exception as e:
         logger.error(f"Failed to export agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Agent Versioning
+# ---------------------------------------------------------------------------
+
+
+def _get_versioning_service() -> Any:
+    """Return AgentVersionService wired to common_memory."""
+    from common_lib.modules.orchestration.agents.agent.versioning import (
+        AgentVersionService,
+    )
+
+    return AgentVersionService(common_memory)
+
+
+@router.get(
+    "/agent/{agent_id}/versions",
+    response_model=APIResponse[List[Dict[str, Any]]],
+)
+async def list_agent_versions(
+    agent_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    """List all version snapshots for an agent, newest first."""
+    try:
+        vs = _get_versioning_service()
+        versions = vs.list_versions(agent_id=agent_id, limit=limit, offset=offset)
+        return APIResponse(
+            data=versions,
+            message=f"Found {len(versions)} versions for agent '{agent_id}'",
+        )
+    except Exception as e:
+        logger.error(f"Failed to list versions for {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/agent/{agent_id}/versions/{version_number}",
+    response_model=APIResponse[Dict[str, Any]],
+)
+async def get_agent_version(agent_id: str, version_number: int):
+    """Retrieve a specific version snapshot."""
+    try:
+        vs = _get_versioning_service()
+        version = vs.get_version(
+            agent_id=agent_id, version_number=version_number
+        )
+        if not version:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Version {version_number} not found for agent '{agent_id}'",
+            )
+        return APIResponse(data=version, message="Version retrieved")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Failed to get version {version_number} for {agent_id}: {e}"
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/agent/{agent_id}/versions/{version_number}/restore",
+    response_model=APIResponse[Dict[str, Any]],
+)
+async def restore_agent_version(
+    agent_id: str,
+    version_number: int,
+    body: Dict[str, Any] = Body(default={}),
+):
+    """Restore an agent to a previous version.
+
+    Automatically snapshots the current state before restoring
+    so the operation is reversible.
+    """
+    try:
+        vs = _get_versioning_service()
+        author = body.get("author")
+        message = body.get("message")
+        restored = vs.restore(
+            agent_id=agent_id,
+            version_number=version_number,
+            author=author,
+            message=message,
+        )
+        if not restored:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Failed to restore agent '{agent_id}' to version {version_number}",
+            )
+        return APIResponse(
+            data={"agent_id": agent_id, "version": version_number, "definition": restored},
+            message=f"Agent restored to version {version_number}",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Failed to restore {agent_id} to version {version_number}: {e}"
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/agent/{agent_id}/versions/{v1}/diff/{v2}",
+    response_model=APIResponse[Dict[str, Any]],
+)
+async def diff_agent_versions(agent_id: str, v1: int, v2: int):
+    """Generate a structured diff between two versions."""
+    try:
+        vs = _get_versioning_service()
+        diff_result = vs.diff(agent_id=agent_id, v1=v1, v2=v2)
+        if not diff_result:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Could not diff versions {v1} and {v2} for agent '{agent_id}'. One or both versions may not exist.",
+            )
+        return APIResponse(data=diff_result, message="Diff generated")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Failed to diff versions {v1} vs {v2} for {agent_id}: {e}"
+        )
         raise HTTPException(status_code=500, detail=str(e))

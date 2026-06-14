@@ -25,7 +25,11 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session
 
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.knowledge_hub.models import KnowledgeProjectRecord
+from common_lib.modules.knowledge_hub.models import (
+    ActivityLogRecord,
+    KnowledgeProjectRecord,
+    ProjectMemberRecord,
+)
 from common_lib.modules.knowledge_hub.services.project_service import (
     ProjectService,
 )
@@ -55,6 +59,27 @@ class ProjectUpdate(BaseModel):
 
 class AttachRequest(BaseModel):
     agent_id: str = Field(..., description="Agent ID to attach this project to")
+
+
+class DuplicateRequest(BaseModel):
+    include_docs: bool = Field(default=True, description="Whether to copy documents")
+
+
+class AddMemberRequest(BaseModel):
+    user_id: str = Field(..., description="User ID to add")
+    role: str = Field(
+        default="viewer",
+        pattern="^(viewer|editor|admin)$",
+        description="Role: viewer, editor, admin",
+    )
+
+
+class ChangeRoleRequest(BaseModel):
+    role: str = Field(
+        ...,
+        pattern="^(viewer|editor|admin)$",
+        description="New role: viewer, editor, admin",
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -270,7 +295,178 @@ def get_data_object(
     return result
 
 
+# ═══════════════════════════════════════════════════════════════════
+# Duplicate
+# ═══════════════════════════════════════════════════════════════════
+
+
+@router.post("/projects/{project_id}/duplicate", status_code=201)
+def duplicate_project(
+    request: DuplicateRequest,
+    project_id: str = Path(..., description="Project ID to duplicate"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Duplicate a project, optionally including its documents."""
+    result = ProjectService.duplicate_project(
+        session, project_id, include_docs=request.include_docs,
+    )
+    if not result:
+        raise HTTPException(
+            status_code=404, detail=f"Project '{project_id}' not found"
+        )
+    record, doc_count = result
+    ProjectService.log_activity(
+        session, project_id=record.id, action="duplicated_from",
+        entity_type="project", entity_id=project_id,
+        details={"include_docs": request.include_docs, "doc_count": doc_count},
+    )
+    return {
+        "success": True,
+        "data": _project_to_dict(record),
+        "documents_copied": doc_count,
+        "message": f"Project duplicated as '{record.name}' with {doc_count} document(s)",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Members
+# ═══════════════════════════════════════════════════════════════════
+
+
+@router.get("/projects/{project_id}/members")
+def list_members(
+    project_id: str = Path(..., description="Project ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """List all members of a project."""
+    # Verify project exists
+    project = ProjectService.get_project(session, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404, detail=f"Project '{project_id}' not found"
+        )
+    members = ProjectService.list_members(session, project_id)
+    return {
+        "success": True,
+        "data": [_member_to_dict(m) for m in members],
+        "total": len(members),
+    }
+
+
+@router.post("/projects/{project_id}/members", status_code=201)
+def add_member(
+    request: AddMemberRequest,
+    project_id: str = Path(..., description="Project ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Add a member to a project."""
+    record = ProjectService.add_member(
+        session, project_id, user_id=request.user_id,
+        role=request.role, invited_by="api",
+    )
+    if not record:
+        raise HTTPException(
+            status_code=404, detail=f"Project '{project_id}' not found"
+        )
+    return {
+        "success": True,
+        "data": _member_to_dict(record),
+        "message": f"User '{request.user_id}' added as {request.role}",
+    }
+
+
+@router.delete("/projects/{project_id}/members/{user_id}")
+def remove_member(
+    project_id: str = Path(..., description="Project ID"),
+    user_id: str = Path(..., description="User ID to remove"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Remove a member from a project."""
+    deleted = ProjectService.remove_member(session, project_id, user_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Member '{user_id}' not found in project '{project_id}'",
+        )
+    return {
+        "success": True,
+        "message": f"User '{user_id}' removed from project",
+    }
+
+
+@router.put("/projects/{project_id}/members/{user_id}")
+def change_member_role(
+    request: ChangeRoleRequest,
+    project_id: str = Path(..., description="Project ID"),
+    user_id: str = Path(..., description="User ID"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """Change a member's role in a project."""
+    record = ProjectService.change_member_role(
+        session, project_id, user_id, new_role=request.role,
+    )
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Member '{user_id}' not found in project '{project_id}'",
+        )
+    return {
+        "success": True,
+        "data": _member_to_dict(record),
+        "message": f"User '{user_id}' role changed to '{request.role}'",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Activity Log
+# ═══════════════════════════════════════════════════════════════════
+
+
+@router.get("/projects/{project_id}/activity")
+def list_activity(
+    project_id: str = Path(..., description="Project ID"),
+    limit: int = Query(50, description="Max entries to return"),
+    session: Session = Depends(get_session),
+) -> Dict[str, Any]:
+    """List recent activity log entries for a project."""
+    project = ProjectService.get_project(session, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404, detail=f"Project '{project_id}' not found"
+        )
+    entries = ProjectService.list_activity(session, project_id, limit=limit)
+    return {
+        "success": True,
+        "data": [_activity_to_dict(e) for e in entries],
+        "total": len(entries),
+    }
+
+
 # ── Serialization helpers ─────────────────────────────────────
+
+
+def _member_to_dict(record: ProjectMemberRecord) -> Dict[str, Any]:
+    return {
+        "id": record.id,
+        "project_id": record.project_id,
+        "user_id": record.user_id,
+        "role": record.role,
+        "invited_by": record.invited_by,
+        "invited_at": record.invited_at.isoformat() if record.invited_at else None,
+    }
+
+
+def _activity_to_dict(record: ActivityLogRecord) -> Dict[str, Any]:
+    return {
+        "id": record.id,
+        "project_id": record.project_id,
+        "user_id": record.user_id,
+        "action": record.action,
+        "entity_type": record.entity_type,
+        "entity_id": record.entity_id,
+        "details": record.details,
+        "created_at": record.created_at.isoformat() if record.created_at else None,
+    }
 
 
 def _project_to_dict(record: KnowledgeProjectRecord) -> Dict[str, Any]:

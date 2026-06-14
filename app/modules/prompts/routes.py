@@ -202,3 +202,169 @@ async def list_prompts_by_source(source: str):
     except Exception as e:
         logger.error(f"Failed to filter prompts by source: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Composable Lego Prompts & Combinatorial Generator Endpoints ---
+
+class ComposeBlockItem(BaseModel):
+    id: Optional[str] = None
+    type: str  # 'block' or 'custom'
+    content: str  # Raw text or block template
+    active: bool = True
+    weight: float = 1.0
+
+
+class ComposePromptRequest(BaseModel):
+    blocks: List[ComposeBlockItem]
+    variables: Dict[str, str] = {}
+
+
+class GeneratePromptRequest(BaseModel):
+    template: str
+    mode: str = "combinatorial"  # "combinatorial" or "random"
+    limit: int = 100
+    seed: Optional[int] = None
+
+
+class DbWildcardManager:
+    """Combines DB wildcards and filesystem wildcards."""
+    def __init__(self, fallback_manager: Any):
+        self.fallback_manager = fallback_manager
+
+    def get_wildcard(self, name: str) -> Optional[str]:
+        # Try DB first
+        try:
+            from common_lib.modules.image_processing.functions.text.dynamic_engine.models import WildcardRecord
+            from common_lib.modules.data_storage.database.connection import get_session
+            from sqlmodel import select
+            import random
+
+            with next(get_session()) as session:
+                stmt = select(WildcardRecord).where(WildcardRecord.name == name)
+                record = session.execute(stmt).scalar_one_or_none()
+                if record and record.values:
+                    # Resolve weights if present
+                    weights = []
+                    clean_values = []
+                    has_weights = False
+                    for val in record.values:
+                        if "::" in val:
+                            parts = val.split("::", 1)
+                            try:
+                                w = float(parts[0])
+                                weights.append(w)
+                                clean_values.append(parts[1])
+                                has_weights = True
+                            except ValueError:
+                                weights.append(1.0)
+                                clean_values.append(val)
+                        else:
+                            weights.append(1.0)
+                            clean_values.append(val)
+                    if has_weights:
+                        return random.choices(clean_values, weights=weights, k=1)[0]
+                    return random.choice(record.values)
+        except Exception as e:
+            logger.warning(f"DB Wildcard fetch failed for {name}: {e}")
+
+        # Fallback to filesystem
+        return self.fallback_manager.get_wildcard(name)
+
+    def get_all_values(self, name: str) -> List[str]:
+        # Try DB first
+        try:
+            from common_lib.modules.image_processing.functions.text.dynamic_engine.models import WildcardRecord
+            from common_lib.modules.data_storage.database.connection import get_session
+            from sqlmodel import select
+
+            with next(get_session()) as session:
+                stmt = select(WildcardRecord).where(WildcardRecord.name == name)
+                record = session.execute(stmt).scalar_one_or_none()
+                if record and record.values:
+                    return record.values
+        except Exception as e:
+            logger.warning(f"DB Wildcard list fetch failed for {name}: {e}")
+
+        # Fallback to filesystem
+        return self.fallback_manager.get_all_values(name)
+
+
+@router.get("/blocks", response_model=APIResponse[List[Dict[str, Any]]])
+async def list_prompt_blocks():
+    """List all prompt blocks in the database."""
+    try:
+        from app.core.common_lib_integration import common_memory
+        prompts = common_memory.list_prompt_definitions()
+        blocks = [
+            p for p in prompts
+            if p.get("logical_category") == "block"
+            or p.get("category") == "block"
+            or "block" in p.get("config", {}).get("tags", [])
+            or "block" in p.get("tags", [])
+        ]
+        return APIResponse(data=blocks, message=f"Found {len(blocks)} prompt blocks")
+    except Exception as e:
+        logger.error(f"Failed to list prompt blocks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/compose", response_model=APIResponse[Dict[str, Any]])
+async def compose_prompt(request: ComposePromptRequest):
+    """Compile a composed prompt blueprint from block stacks and variables."""
+    try:
+        compiled_parts = []
+        for item in request.blocks:
+            if not item.active:
+                continue
+            content = item.content
+            # Interpolate variables
+            interpolated = content
+            for k, v in request.variables.items():
+                interpolated = interpolated.replace(f"{{{{{k}}}}}", v)
+                interpolated = interpolated.replace(f"${{{k}}}", v)
+
+            # Apply attention weights if needed
+            if item.weight != 1.0:
+                part = f"({interpolated.strip()}:{item.weight})"
+            else:
+                part = interpolated.strip()
+            compiled_parts.append(part)
+
+        compiled_prompt = "\n\n".join(compiled_parts)
+        return APIResponse(
+            data={
+                "compiled_prompt": compiled_prompt,
+                "block_count": len(compiled_parts)
+            },
+            message="Prompt composed successfully"
+        )
+    except Exception as e:
+        logger.error(f"Failed to compose prompt: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/generate", response_model=APIResponse[List[str]])
+async def generate_prompts(request: GeneratePromptRequest):
+    """Expand dynamic prompt template string into variations."""
+    try:
+        from common_lib.modules.image_processing.functions.text.dynamic_engine.expansion import PromptEngine
+        from common_lib.modules.image_processing.functions.text.dynamic_engine.wildcards import WildcardManager
+        from common_lib.modules.wildcards.service import WildcardService
+
+        fallback_mgr = WildcardManager(str(WildcardService.DEFAULT_ROOT_DIR))
+        db_wildcard_mgr = DbWildcardManager(fallback_mgr)
+        engine = PromptEngine(db_wildcard_mgr)
+
+        if request.mode == "combinatorial":
+            results = engine.expand_combinatorial(request.template, limit=request.limit)
+        else:
+            results = engine.expand_random(
+                request.template,
+                num_prompts=request.limit,
+                seed=request.seed
+            )
+        return APIResponse(data=results, message=f"Generated {len(results)} prompt variations")
+    except Exception as e:
+        logger.error(f"Failed to generate prompts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

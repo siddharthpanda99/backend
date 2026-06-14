@@ -8,12 +8,14 @@ from app.modules.agents.routes.registry import router as registry_router
 from app.modules.agents.runtime.routes import router as runtime_router
 from app.modules.agents.runtime.session_routes import router as session_router
 from app.modules.agents.runtime.pipeline_routes import router as pipeline_router
+from app.modules.agents.runtime.tracing_routes import router as tracing_router
 
 router = APIRouter()
 router.include_router(registry_router, prefix="/registry", tags=["Registry"])
 router.include_router(runtime_router, prefix="/runtime", tags=["Agent Runtime"])
 router.include_router(session_router, prefix="/runtime", tags=["Sessions"])
 router.include_router(pipeline_router, prefix="/pipelines", tags=["Pipelines"])
+router.include_router(tracing_router, prefix="/traces", tags=["Agent Tracing"])
 
 
 @router.get("/", response_model=APIResponse[List[AgentRead]])

@@ -15,11 +15,8 @@ if COMMON_LIB_SRC not in sys.path:
 # Silence the common 'triton' traceback on Windows before importing any torch-related libs
 os.environ["XFORMERS_FORCE_DISABLE_TRITON"] = "1"
 
-from common_lib.modules.image_processing.core.common.optimizations import (
-    set_global_precision,
-)
-
-set_global_precision()
+# Lazy import: set_global_precision() is called only when a CUDA/local model is deployed,
+# to avoid initializing PyTorch CUDA context at startup when using cloud API providers.
 
 # --- OBSERVABILITY INITIALIZATION ---
 from common_lib.modules.observability import initialize_logging, initialize_tracing
@@ -1880,6 +1877,7 @@ def create_app() -> FastAPI:
         pipelines_router,
         packets_router,
         projects_router as kh_projects_router,
+        streaming_router,
     )
 
     print(
@@ -1907,6 +1905,12 @@ def create_app() -> FastAPI:
         kh_projects_router,
         prefix=settings.API_V1_STR,
         tags=["Knowledge Hub — Projects"],
+        dependencies=global_deps,
+    )
+    app.include_router(
+        streaming_router,
+        prefix=settings.API_V1_STR,
+        tags=["Knowledge Hub — Streaming"],
         dependencies=global_deps,
     )
 
