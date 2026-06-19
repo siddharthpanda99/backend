@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     )
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # Database Settings
     POSTGRES_SERVER: str = config.get("Database", "postgres_server", "localhost")

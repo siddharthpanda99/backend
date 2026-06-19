@@ -7,6 +7,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from pydantic import ValidationError
 from common_lib.modules.ai_models.domain.exceptions import ModelNotFoundError
+from common_lib.modules.exceptions import ServiceError
 from app.core.settings import get_settings
 
 
@@ -41,6 +42,7 @@ def _build_error_response(
     module: str,
     detail: Any = None,
     exc: Exception = None,
+    headers: Optional[dict[str, str]] = None,
 ) -> JSONResponse:
     content = {
         "error": code,
@@ -53,7 +55,7 @@ def _build_error_response(
     if exc and get_settings().ENVIRONMENT == "development":
         content["stack_trace"] = traceback.format_exc().splitlines()
 
-    return JSONResponse(status_code=status_code, content=content)
+    return JSONResponse(status_code=status_code, content=content, headers=headers)
 
 async def nexus_exception_handler(request: Request, exc: NexusException):
     module = exc.module or _get_module_from_request(str(request.url))
@@ -174,4 +176,25 @@ async def generic_exception_handler(request: Request, exc: Exception):
         module=module,
         detail=str(exc),
         exc=exc,
+    )
+
+
+async def service_error_handler(request: Request, exc: ServiceError):
+    """Convert common_lib ServiceError to an HTTP JSON response.
+
+    Registered in main.py to catch ServiceError exceptions raised by
+    service-layer code and convert them to consistent HTTP error responses.
+    This keeps service code framework-agnostic while maintaining
+    proper HTTP semantics in the API layer.
+    """
+    module = _get_module_from_request(str(request.url))
+    headers = getattr(exc, "headers", None) if hasattr(exc, "headers") else None
+    return _build_error_response(
+        status_code=exc.status_code,
+        code=exc.code,
+        message=exc.message,
+        module=module,
+        detail=exc.detail,
+        exc=exc,
+        headers=headers,
     )

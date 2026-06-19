@@ -77,6 +77,194 @@ async def search_registry(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/tools", response_model=APIResponse[Dict[str, Any]])
+async def query_tools(
+    category: Optional[str] = Query(None, description="Filter by category"),
+    capability: Optional[str] = Query(None, description="Filter by capability keyword"),
+    version: Optional[str] = Query(None, description="Filter by exact version"),
+    search: Optional[str] = Query(
+        None, description="Text search across name/id/description"
+    ),
+    limit: int = Query(50, ge=1, le=500, description="Max results"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+):
+    """Query the tool catalog with optional filters.
+
+    Exposes RegistryService.query_tools() via HTTP for instance-scoped tool queries.
+    Supports filtering by category, version, capability keyword, and text search.
+    """
+    try:
+        svc = _get_registry_svc()
+        registry_svc = None
+        em = get_engine_manager()
+        if em and getattr(em, "registry_svc", None):
+            registry_svc = em.registry_svc
+
+        if not registry_svc:
+            raise HTTPException(status_code=503, detail="Tool registry not available")
+
+        # Build filter dict
+        filters = {}
+        if category:
+            filters["category"] = category
+        if version:
+            filters["version"] = version
+
+        all_tools = registry_svc.query_tools(filters=filters if filters else None)
+
+        # Convert to dicts and apply text/capability filters
+        results = []
+        for t in all_tools:
+            d = t.model_dump() if hasattr(t, "model_dump") else t
+            item = {
+                "id": d.get("id"),
+                "name": d.get("name"),
+                "description": d.get("capability", {}).get(
+                    "description", d.get("description", "")
+                ),
+                "category": d.get("category", ""),
+                "version": d.get("version", ""),
+                "tags": d.get("metadata", {}).get("tags", [])
+                if isinstance(d.get("metadata"), dict)
+                else [],
+                "capability": d.get("capability", {}).get("description", ""),
+                "handler": d.get("execution", {}).get("handler", ""),
+                "timeout_seconds": d.get("execution", {}).get("timeout_seconds", 30),
+            }
+
+            # Apply search filter
+            if search:
+                q = search.lower()
+                if not (
+                    q in item["id"].lower()
+                    or q in item["name"].lower()
+                    or q in item["description"].lower()
+                    or q in item["capability"].lower()
+                ):
+                    continue
+
+            # Apply capability keyword filter
+            if capability:
+                cap_lower = capability.lower()
+                if (
+                    cap_lower not in item["capability"].lower()
+                    and cap_lower not in item["description"].lower()
+                ):
+                    continue
+
+            results.append(item)
+
+        # Paginate
+        total = len(results)
+        paginated = results[offset : offset + limit]
+
+        return APIResponse(
+            data={
+                "tools": paginated,
+                "total": total,
+                "returned": len(paginated),
+                "filters_applied": {
+                    "category": category,
+                    "capability": capability,
+                    "version": version,
+                    "search": search,
+                },
+                "offset": offset,
+                "limit": limit,
+            },
+            message=f"Query returned {total} tools",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to query tools: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/nodes", response_model=APIResponse[Dict[str, Any]])
+async def query_nodes(
+    category: Optional[str] = Query(None, description="Filter by category"),
+    capability: Optional[str] = Query(None, description="Filter by capability keyword"),
+    search: Optional[str] = Query(
+        None, description="Text search across name/id/description"
+    ),
+    tag: Optional[str] = Query(None, description="Filter by exact tag"),
+    limit: int = Query(100, ge=1, le=500, description="Max results"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+):
+    """Query node definitions with optional filters.
+
+    Returns all node definitions from the database and UI YAML definitions,
+    with filtering by category, capability keyword, text search, and tags.
+    """
+    try:
+        svc = _get_registry_svc()
+        all_nodes = svc.get_node_definitions()
+
+        # Apply filters
+        results = []
+        for node in all_nodes:
+            # Category filter
+            if category:
+                cat = node.get("category", "").lower()
+                if category.lower() not in cat:
+                    continue
+
+            # Search filter
+            if search:
+                q = search.lower()
+                if not (
+                    q in str(node.get("type", "")).lower()
+                    or q in str(node.get("label", "")).lower()
+                    or q in str(node.get("description", "")).lower()
+                ):
+                    continue
+
+            # Tag filter
+            if tag:
+                node_tags = [str(t).lower() for t in node.get("tags", [])]
+                if tag.lower() not in node_tags:
+                    continue
+
+            # Capability filter
+            if capability:
+                caps = [str(c).lower() for c in node.get("capabilities", node.get("tags", []))]
+                cap_lower = capability.lower()
+                if (
+                    cap_lower not in caps
+                    and cap_lower not in str(node.get("description", "")).lower()
+                ):
+                    continue
+
+            results.append(node)
+
+        # Paginate
+        total = len(results)
+        paginated = results[offset : offset + limit]
+
+        return APIResponse(
+            data={
+                "nodes": paginated,
+                "total": total,
+                "returned": len(paginated),
+                "filters_applied": {
+                    "category": category,
+                    "capability": capability,
+                    "search": search,
+                    "tag": tag,
+                },
+                "offset": offset,
+                "limit": limit,
+            },
+            message=f"Query returned {total} node definitions",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to query nodes: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/references", response_model=APIResponse[Dict[str, Any]])
 async def list_references(
     category: Optional[str] = Query(None, description="Filter by category"),
@@ -123,9 +311,20 @@ async def sync_progress_stream():
     return StreamingResponse(progress_generator(), media_type="text/event-stream")
 
 
-@router.get("/catalog/features", response_model=APIResponse[Dict[str, Any]])
-async def get_features_catalog():
-    """Exhaustive, deduplicated feature catalog for agents + humans."""
+@router.get("/catalog/filtered", response_model=APIResponse[Dict[str, Any]])
+async def get_filtered_catalog(
+    entity_type: Optional[str] = Query(
+        None, description="Filter by entity type: tools, nodes, skills, etc."
+    ),
+    category: Optional[str] = Query(None, description="Filter by category name"),
+    search: Optional[str] = Query(
+        None, description="Text search across name/description"
+    ),
+    limit: int = Query(50, ge=1, le=500, description="Max items per type"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    include_versions: bool = Query(False, description="Include version info"),
+):
+    """Filtered feature catalog with server-side search and pagination."""
     from app.modules.agents.runtime.routes import available_workflows
 
     try:
@@ -133,6 +332,131 @@ async def get_features_catalog():
         catalog = await svc.get_features_catalog(
             available_workflows_fn=available_workflows,
         )
+
+        filtered: Dict[str, Any] = {}
+        entity_types = (
+            [entity_type] if entity_type else list(catalog.get("by_type", {}).keys())
+        )
+
+        for etype in entity_types:
+            items = catalog.get("by_type", {}).get(etype, [])
+            if category:
+                items = [
+                    i
+                    for i in items
+                    if i.get("category", "").lower() == category.lower()
+                ]
+            if search:
+                q = search.lower()
+                items = [
+                    i
+                    for i in items
+                    if q in i.get("name", "").lower()
+                    or q in i.get("description", "").lower()
+                    or q in i.get("id", "").lower()
+                ]
+            total = len(items)
+            items = items[offset : offset + limit]
+            filtered[etype] = {
+                "items": items,
+                "total": total,
+                "returned": len(items),
+                "offset": offset,
+                "limit": limit,
+            }
+
+        return APIResponse(
+            data={
+                "by_type": filtered,
+                "total": sum(v["total"] for v in filtered.values()),
+            },
+            message="Filtered catalog retrieved",
+        )
+    except Exception as e:
+        logger.error(f"Failed to get filtered catalog: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/catalog/features", response_model=APIResponse[Dict[str, Any]])
+async def get_features_catalog(
+    capability: Optional[str] = Query(
+        None, description="Filter by capability keyword across all entity types"
+    ),
+    version: Optional[str] = Query(
+        None, description="Filter by exact version string"
+    ),
+    access: Optional[str] = Query(
+        None, description="Filter by access level: agent, human, both"
+    ),
+):
+    """Exhaustive, deduplicated feature catalog for agents + humans.
+
+    Supports optional filtering by:
+    - capability: keyword search across item capabilities/tags
+    - version: exact version match
+    - access: filter by access level (agent, human, both)
+    """
+    from app.modules.agents.runtime.routes import available_workflows
+
+    try:
+        svc = _get_registry_svc()
+        catalog = await svc.get_features_catalog(
+            available_workflows_fn=available_workflows,
+        )
+
+        # Apply server-side filters
+        if capability or version or access:
+            filtered_items: Dict[str, List[Dict[str, Any]]] = {}
+            for etype, items in catalog["items"].items():
+                filtered = []
+                for item in items:
+                    # Capability filter
+                    if capability:
+                        cap_lower = capability.lower()
+                        item_caps = [
+                            str(c).lower()
+                            for c in item.get("capabilities", [])
+                        ]
+                        item_tags = [
+                            str(t).lower()
+                            for t in item.get("tags", [])
+                        ]
+                        if (
+                            cap_lower not in item_caps
+                            and cap_lower not in item_tags
+                            and cap_lower not in item.get("name", "").lower()
+                            and cap_lower not in item.get("description", "").lower()
+                        ):
+                            continue
+
+                    # Version filter
+                    if version:
+                        item_version = item.get("version", "")
+                        if item_version != version:
+                            continue
+
+                    # Access filter
+                    if access:
+                        if item.get("access", "") != access:
+                            continue
+
+                    filtered.append(item)
+
+                if filtered:
+                    filtered_items[etype] = filtered
+
+            catalog = {
+                **{k: v for k, v in catalog.items() if k not in ("total", "by_type", "items")},
+                "total": sum(len(v) for v in filtered_items.values()),
+                "by_type": {k: len(v) for k, v in filtered_items.items()},
+                "items": filtered_items,
+                "filters_applied": {
+                    "capability": capability,
+                    "version": version,
+                    "access": access,
+                },
+            }
+
         return APIResponse(
             data=catalog,
             message=f"Feature catalog retrieved: {catalog['total']} items across {len(catalog['by_type'])} types",
@@ -533,9 +857,7 @@ async def get_agent_version(agent_id: str, version_number: int):
     """Retrieve a specific version snapshot."""
     try:
         vs = _get_versioning_service()
-        version = vs.get_version(
-            agent_id=agent_id, version_number=version_number
-        )
+        version = vs.get_version(agent_id=agent_id, version_number=version_number)
         if not version:
             raise HTTPException(
                 status_code=404,
@@ -545,9 +867,7 @@ async def get_agent_version(agent_id: str, version_number: int):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"Failed to get version {version_number} for {agent_id}: {e}"
-        )
+        logger.error(f"Failed to get version {version_number} for {agent_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -581,15 +901,17 @@ async def restore_agent_version(
                 detail=f"Failed to restore agent '{agent_id}' to version {version_number}",
             )
         return APIResponse(
-            data={"agent_id": agent_id, "version": version_number, "definition": restored},
+            data={
+                "agent_id": agent_id,
+                "version": version_number,
+                "definition": restored,
+            },
             message=f"Agent restored to version {version_number}",
         )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"Failed to restore {agent_id} to version {version_number}: {e}"
-        )
+        logger.error(f"Failed to restore {agent_id} to version {version_number}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -611,7 +933,5 @@ async def diff_agent_versions(agent_id: str, v1: int, v2: int):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"Failed to diff versions {v1} vs {v2} for {agent_id}: {e}"
-        )
+        logger.error(f"Failed to diff versions {v1} vs {v2} for {agent_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

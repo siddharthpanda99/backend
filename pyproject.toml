@@ -39,6 +39,11 @@ dependencies = [
 ]
 
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: Integration tests that require external services or models",
+]
+
 [project.scripts]
 nexus = "app.cli:main"
 dev = "app.cli:dev_server"

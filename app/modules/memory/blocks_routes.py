@@ -3,13 +3,16 @@
 Provides REST endpoints for browsing memory blocks and marketplace items.
 """
 
+import json
 import logging
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlmodel import Session, select, text
+from sqlmodel import Session, select
 
 from common_lib.modules.data_storage.database.connection import get_session
+from common_lib.modules.data_storage.database.repository import NotFoundError
+from common_lib.modules.memory.services import block_service
 from common_lib.modules.memory.blueprint_models import (
     BlockOverrideRecord,
     CustomBlockRecord,
@@ -18,39 +21,6 @@ from common_lib.modules.memory.blueprint_models import (
 router = APIRouter(tags=["memory-blocks"])
 
 logger = logging.getLogger(__name__)
-
-_migration_checked = False
-
-
-def ensure_schema_migrations(session: Session):
-    global _migration_checked
-    if _migration_checked:
-        return
-    _migration_checked = True
-    try:
-        session.execute(
-            text("ALTER TABLE memory_block_overrides ADD COLUMN metadata_override TEXT")
-        )
-        session.commit()
-        logger.info(
-            "Migrated memory_block_overrides table: added metadata_override column."
-        )
-    except Exception:
-        session.rollback()
-
-
-def get_all_blocks():
-    from common_lib.modules.memory.memory_driver import (
-        ALL_BLOCKS,
-        ensure_registry_initialized,
-    )
-    import common_lib.modules.memory.memory_driver as md
-
-    ensure_registry_initialized()
-    if not md.ALL_BLOCKS:
-        md._registry_initialized = False
-        ensure_registry_initialized()
-    return md.ALL_BLOCKS
 
 
 # =============================================================================
@@ -61,58 +31,17 @@ def get_all_blocks():
 @router.get("/blocks")
 async def list_blocks(
     category: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
     session: Session = Depends(get_session),
 ):
     """List all memory blocks, optionally filtered by category, with database overrides merged."""
     try:
-        import json
-
-        ensure_schema_migrations(session)
-        all_blocks = get_all_blocks()
-
-        # Query all overrides from DB
-        overrides = session.exec(select(BlockOverrideRecord)).all()
-        overrides_dict = {o.block_id: o for o in overrides}
-
-        merged_blocks = []
-        for b in all_blocks:
-            override = overrides_dict.get(b.id)
-            block_dict = _block_to_dict(b)
-            if override:
-                try:
-                    block_dict["config"] = json.loads(override.config)
-                except Exception:
-                    pass
-                if override.priority is not None:
-                    block_dict["priority"] = override.priority
-                if (
-                    hasattr(override, "metadata_override")
-                    and override.metadata_override
-                ):
-                    try:
-                        meta = json.loads(override.metadata_override)
-                        for k, v in meta.items():
-                            block_dict[k] = v
-                    except Exception:
-                        pass
-                block_dict["is_overridden"] = True
-            merged_blocks.append(block_dict)
-
-        # Query custom blocks from DB and merge
-        custom_blocks = session.exec(select(CustomBlockRecord)).all()
-        for cb in custom_blocks:
-            merged_blocks.append(_custom_block_to_dict(cb))
-
-        if category:
-            merged_blocks = [
-                b for b in merged_blocks if b["category"].lower() == category.lower()
-            ]
-
-        return {
-            "status": "ok",
-            "blocks": merged_blocks,
-            "count": len(merged_blocks),
-        }
+        result = block_service.list_blocks(
+            session, category=category, search=search, offset=offset, limit=limit
+        )
+        return {"status": "ok", **result}
     except Exception as e:
         logger.error(f"Failed to list blocks: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -122,21 +51,26 @@ async def list_blocks(
 async def list_block_categories(session: Session = Depends(get_session)):
     """List all block categories with counts."""
     try:
-        from common_lib.modules.memory.memory_driver import BlockCategory
+        from common_lib.modules.memory.memory_driver import (
+            BlockCategory,
+            ensure_registry_initialized,
+        )
 
-        ensure_schema_migrations(session)
-        all_blocks = get_all_blocks()
+        ensure_registry_initialized()
+        from common_lib.modules.memory import memory_driver as md
 
-        # Count built-in blocks
+        if not md.ALL_BLOCKS:
+            md._registry_initialized = False
+            ensure_registry_initialized()
+
         categories = {}
         for cat in BlockCategory:
-            count = sum(1 for b in all_blocks if b.category == cat)
+            count = sum(1 for b in md.ALL_BLOCKS if b.category == cat)
             categories[cat.value] = {
                 "label": cat.value.title(),
                 "count": count,
             }
 
-        # Include custom blocks
         custom_blocks = session.exec(select(CustomBlockRecord)).all()
         for cb in custom_blocks:
             cat = cb.category
@@ -154,41 +88,10 @@ async def list_block_categories(session: Session = Depends(get_session)):
 async def get_block(block_id: str, session: Session = Depends(get_session)):
     """Get a specific memory block by ID, merging DB overrides if present."""
     try:
-        import json
-
-        ensure_schema_migrations(session)
-        all_blocks = get_all_blocks()
-
-        block = next((b for b in all_blocks if b.id == block_id), None)
-        if not block:
-            cb = session.get(CustomBlockRecord, block_id)
-            if not cb:
-                raise HTTPException(
-                    status_code=404, detail=f"Block not found: {block_id}"
-                )
-            return {"status": "ok", "block": _custom_block_to_dict(cb)}
-
-        block_dict = _block_to_dict(block)
-        override = session.get(BlockOverrideRecord, block_id)
-        if override:
-            try:
-                block_dict["config"] = json.loads(override.config)
-            except Exception:
-                pass
-            if override.priority is not None:
-                block_dict["priority"] = override.priority
-            if hasattr(override, "metadata_override") and override.metadata_override:
-                try:
-                    meta = json.loads(override.metadata_override)
-                    for k, v in meta.items():
-                        block_dict[k] = v
-                except Exception:
-                    pass
-            block_dict["is_overridden"] = True
-
+        block_dict = block_service.get_block(session, block_id)
         return {"status": "ok", "block": block_dict}
-    except HTTPException:
-        raise
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to get block: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -254,195 +157,21 @@ async def compose_profile(request: dict):
 
 # =============================================================================
 # Compositions Endpoints
-# (User-created compositions backed by YAML profile templates as defaults)
 # =============================================================================
 
-import json
-from datetime import datetime, timezone
 
-from sqlmodel import Session, select, or_
-from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.memory.blueprint_models import (
-    CompositionRecord,
-    BlockOverrideRecord,
-)
-
-
-class BlockConfigOverrideRequest(BaseModel):
-    config: dict
-    priority: Optional[int] = None
-
-
-@router.put("/blocks/{block_id}/config")
-async def save_block_config_override(
-    block_id: str,
-    request: BlockConfigOverrideRequest,
-    session: Session = Depends(get_session),
-):
-    """Save or update a memory block configuration override in the database."""
-    try:
-        import json
-        from datetime import datetime, timezone
-
-        # Check if the block actually exists in codebase
-        all_blocks = get_all_blocks()
-        if not any(b.id == block_id for b in all_blocks):
-            raise HTTPException(
-                status_code=404, detail=f"Memory block {block_id} does not exist."
-            )
-
-        record = session.get(BlockOverrideRecord, block_id)
-        if not record:
-            record = BlockOverrideRecord(
-                block_id=block_id,
-                config=json.dumps(request.config),
-                priority=request.priority,
-            )
-        else:
-            record.config = json.dumps(request.config)
-            record.priority = request.priority
-            record.updated_at = datetime.now(timezone.utc).isoformat()
-
-        session.add(record)
-        session.commit()
-        session.refresh(record)
-
-        # Merge override with base block and return it
-        base_block = next(b for b in all_blocks if b.id == block_id)
-        block_dict = _block_to_dict(base_block)
-        block_dict["config"] = request.config
-        if request.priority is not None:
-            block_dict["priority"] = request.priority
-        block_dict["is_overridden"] = True
-
-        return {"status": "ok", "block": block_dict}
-    except HTTPException:
-        raise
-    except Exception as e:
-        session.rollback()
-        logger.error(
-            f"Failed to save block config override for {block_id}: {e}", exc_info=True
-        )
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.delete("/blocks/{block_id}/config")
-async def delete_block_config_override(
-    block_id: str, session: Session = Depends(get_session)
-):
-    """Delete a block configuration override to restore default settings."""
-    try:
-        record = session.get(BlockOverrideRecord, block_id)
-        if not record:
-            raise HTTPException(
-                status_code=404, detail=f"No config override found for block {block_id}"
-            )
-
-        session.delete(record)
-        session.commit()
-
-        # Return default block
-        all_blocks = get_all_blocks()
-        base_block = next(b for b in all_blocks if b.id == block_id)
-        return {"status": "ok", "block": _block_to_dict(base_block)}
-    except HTTPException:
-        raise
-    except Exception as e:
-        session.rollback()
-        logger.error(
-            f"Failed to delete block config override for {block_id}: {e}", exc_info=True
-        )
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-def _seed_templates_to_db(session: Session) -> None:
-    """Seed DB with YAML memory profile templates and mock compositions if they do not exist."""
-    try:
-        from common_lib.modules.memory.memory_driver import MEMORY_PROFILES
-
-        now_iso = datetime.now(timezone.utc).isoformat()
-
-        # 1. Seed YAML memory profiles
-        for profile in MEMORY_PROFILES:
-            existing = session.get(CompositionRecord, profile.id)
-            if not existing:
-                record = CompositionRecord(
-                    id=profile.id,
-                    name=profile.name,
-                    description=profile.description,
-                    block_ids=json.dumps(list(profile.blocks)),
-                    source="template",
-                    created_at=now_iso,
-                    updated_at=now_iso,
-                )
-                session.add(record)
-
-        # 2. Seed mock compositions from mockData.ts
-        mock_compositions = [
-            {
-                "id": "comp_1780476000000",
-                "name": "Standard Chatbot Profile",
-                "description": "Optimal chatbot config with dialogue buffering and safety redaction filters.",
-                "block_ids": [
-                    "core.store",
-                    "core.stats",
-                    "context.session",
-                    "security.pii",
-                    "persona.profile",
-                ],
-                "source": "template",
-            },
-            {
-                "id": "comp_1780476100000",
-                "name": "Advanced Analyst Config",
-                "description": "Full semantic links, causal graph processing, and structured multi-hop reasoning capabilities.",
-                "block_ids": [
-                    "core.store",
-                    "core.stats",
-                    "semantic.clusters",
-                    "causal.graph",
-                    "execution.reasoning",
-                    "mql.parser",
-                ],
-                "source": "template",
-            },
-        ]
-
-        for mock_comp in mock_compositions:
-            existing = session.get(CompositionRecord, mock_comp["id"])
-            if not existing:
-                record = CompositionRecord(
-                    id=mock_comp["id"],
-                    name=mock_comp["name"],
-                    description=mock_comp["description"],
-                    block_ids=json.dumps(mock_comp["block_ids"]),
-                    source=mock_comp["source"],
-                    created_at=now_iso,
-                    updated_at=now_iso,
-                )
-                session.add(record)
-
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        logger.error(
-            f"Failed to seed template and mock compositions: {e}", exc_info=True
-        )
+class CompositionRequest(BaseModel):
+    name: str
+    description: str = ""
+    block_ids: list
 
 
 @router.get("/compositions")
 async def list_compositions(session: Session = Depends(get_session)):
     """List all memory compositions (seeded from YAML templates + user-created)."""
     try:
-        _seed_templates_to_db(session)
-        records = session.exec(
-            select(CompositionRecord).order_by(CompositionRecord.created_at.desc())
-        ).all()
-        return {
-            "status": "ok",
-            "compositions": [_comp_to_dict(r) for r in records],
-            "count": len(records),
-        }
+        result = block_service.list_compositions(session)
+        return {"status": "ok", **result}
     except Exception as e:
         logger.error(f"Failed to list compositions: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -452,23 +181,13 @@ async def list_compositions(session: Session = Depends(get_session)):
 async def get_composition(composition_id: str, session: Session = Depends(get_session)):
     """Get a specific composition by ID."""
     try:
-        record = session.get(CompositionRecord, composition_id)
-        if not record:
-            raise HTTPException(
-                status_code=404, detail=f"Composition not found: {composition_id}"
-            )
-        return {"status": "ok", "composition": _comp_to_dict(record)}
-    except HTTPException:
-        raise
+        comp = block_service.get_composition(session, composition_id)
+        return {"status": "ok", "composition": comp}
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to get composition: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
-
-class CompositionRequest(BaseModel):
-    name: str
-    description: str = ""
-    block_ids: list
 
 
 @router.post("/compositions")
@@ -477,23 +196,9 @@ async def create_composition(
 ):
     """Create a new user composition."""
     try:
-        now_iso = datetime.now(timezone.utc).isoformat()
-        comp_id = f"comp_{int(datetime.now(timezone.utc).timestamp() * 1000)}"
-        record = CompositionRecord(
-            id=comp_id,
-            name=request.name,
-            description=request.description,
-            block_ids=json.dumps(request.block_ids),
-            source="user",
-            created_at=now_iso,
-            updated_at=now_iso,
-        )
-        session.add(record)
-        session.commit()
-        session.refresh(record)
-        return {"status": "ok", "composition": _comp_to_dict(record)}
+        comp = block_service.create_composition(session, request.model_dump())
+        return {"status": "ok", "composition": comp}
     except Exception as e:
-        session.rollback()
         logger.error(f"Failed to create composition: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -506,23 +211,13 @@ async def update_composition(
 ):
     """Update an existing composition."""
     try:
-        record = session.get(CompositionRecord, composition_id)
-        if not record:
-            raise HTTPException(
-                status_code=404, detail=f"Composition not found: {composition_id}"
-            )
-        record.name = request.name
-        record.description = request.description
-        record.block_ids = json.dumps(request.block_ids)
-        record.updated_at = datetime.now(timezone.utc).isoformat()
-        session.add(record)
-        session.commit()
-        session.refresh(record)
-        return {"status": "ok", "composition": _comp_to_dict(record)}
-    except HTTPException:
-        raise
+        comp = block_service.update_composition(
+            session, composition_id, request.model_dump()
+        )
+        return {"status": "ok", "composition": comp}
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        session.rollback()
         logger.error(f"Failed to update composition: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -533,35 +228,13 @@ async def delete_composition(
 ):
     """Delete a composition."""
     try:
-        record = session.get(CompositionRecord, composition_id)
-        if not record:
-            raise HTTPException(
-                status_code=404, detail=f"Composition not found: {composition_id}"
-            )
-        session.delete(record)
-        session.commit()
+        block_service.delete_composition(session, composition_id)
         return {"status": "ok", "message": f"Composition {composition_id} deleted"}
-    except HTTPException:
-        raise
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        session.rollback()
         logger.error(f"Failed to delete composition: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
-
-def _comp_to_dict(r: CompositionRecord) -> dict:
-    return {
-        "id": r.id,
-        "name": r.name,
-        "description": r.description,
-        "block_ids": json.loads(r.block_ids)
-        if isinstance(r.block_ids, str)
-        else r.block_ids,
-        "source": r.source,
-        "blueprint_id": r.blueprint_id,
-        "created_at": r.created_at,
-        "updated_at": r.updated_at,
-    }
 
 
 # =============================================================================
@@ -738,29 +411,6 @@ async def list_connectors():
 # =============================================================================
 
 
-def _block_to_dict(block) -> dict:
-    return {
-        "id": block.id,
-        "name": getattr(block, "name", ""),
-        "description": getattr(block, "description", ""),
-        "category": block.category.value
-        if hasattr(block.category, "value")
-        else str(block.category),
-        "capabilities": getattr(block, "capabilities", []),
-        "dependencies": getattr(block, "dependencies", []),
-        "config": getattr(block, "config", {}),
-        "enabled": getattr(block, "enabled", True),
-        "priority": getattr(block, "priority", 0),
-        "usage_examples": getattr(block, "usage_examples", []),
-        "related_blocks": getattr(block, "related_blocks", []),
-        "performance_notes": getattr(block, "performance_notes", ""),
-        "configuration_guide": getattr(block, "configuration_guide", ""),
-        "api_reference": getattr(block, "api_reference", {}),
-        "source": getattr(block, "source", "code"),
-        "is_overridden": getattr(block, "is_overridden", False),
-    }
-
-
 def _profile_to_dict(profile) -> dict:
     return {
         "id": profile.id,
@@ -798,6 +448,89 @@ def _item_to_dict(item) -> dict:
 # =============================================================================
 # Custom Block E2E Operations Endpoints & Models
 # =============================================================================
+
+
+class BlockConfigOverrideRequest(BaseModel):
+    config: dict
+    priority: Optional[int] = None
+
+
+@router.put("/blocks/{block_id}/config")
+async def save_block_config_override(
+    block_id: str,
+    request: BlockConfigOverrideRequest,
+    session: Session = Depends(get_session),
+):
+    """Save or update a memory block configuration override in the database."""
+    try:
+        from datetime import datetime, timezone
+
+        all_blocks = _get_all_blocks()
+        if not any(b.id == block_id for b in all_blocks):
+            raise HTTPException(
+                status_code=404, detail=f"Memory block {block_id} does not exist."
+            )
+
+        record = session.get(BlockOverrideRecord, block_id)
+        if not record:
+            record = BlockOverrideRecord(
+                block_id=block_id,
+                config=json.dumps(request.config),
+                priority=request.priority,
+            )
+        else:
+            record.config = json.dumps(request.config)
+            record.priority = request.priority
+            record.updated_at = datetime.now(timezone.utc).isoformat()
+
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+
+        base_block = next(b for b in all_blocks if b.id == block_id)
+        block_dict = _block_to_dict(base_block)
+        block_dict["config"] = request.config
+        if request.priority is not None:
+            block_dict["priority"] = request.priority
+        block_dict["is_overridden"] = True
+
+        return {"status": "ok", "block": block_dict}
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(
+            f"Failed to save block config override for {block_id}: {e}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/blocks/{block_id}/config")
+async def delete_block_config_override(
+    block_id: str, session: Session = Depends(get_session)
+):
+    """Delete a block configuration override to restore default settings."""
+    try:
+        record = session.get(BlockOverrideRecord, block_id)
+        if not record:
+            raise HTTPException(
+                status_code=404, detail=f"No config override found for block {block_id}"
+            )
+
+        session.delete(record)
+        session.commit()
+
+        all_blocks = _get_all_blocks()
+        base_block = next(b for b in all_blocks if b.id == block_id)
+        return {"status": "ok", "block": _block_to_dict(base_block)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(
+            f"Failed to delete block config override for {block_id}: {e}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class CustomBlockCreateRequest(BaseModel):
@@ -840,19 +573,15 @@ async def create_custom_block(
 ):
     """Create a new custom or cloned block definition in the database."""
     try:
-        import json
+        _ensure_schema_migrations(session)
 
-        ensure_schema_migrations(session)
-
-        # Check if exists in codebase static blocks
-        all_blocks = get_all_blocks()
+        all_blocks = _get_all_blocks()
         if any(b.id == request.id for b in all_blocks):
             raise HTTPException(
                 status_code=400,
                 detail=f"A built-in block with ID '{request.id}' already exists.",
             )
 
-        # Check if exists in db custom blocks
         existing = session.get(CustomBlockRecord, request.id)
         if existing:
             raise HTTPException(
@@ -896,17 +625,14 @@ async def update_block(
 ):
     """Update a custom block definition or set metadata/config overrides for a built-in block."""
     try:
-        import json
         from datetime import datetime, timezone
 
-        ensure_schema_migrations(session)
+        _ensure_schema_migrations(session)
 
-        # Check if it is a built-in codebase block
-        all_blocks = get_all_blocks()
+        all_blocks = _get_all_blocks()
         base_block = next((b for b in all_blocks if b.id == block_id), None)
 
         if base_block:
-            # Update or create override record
             record = session.get(BlockOverrideRecord, block_id)
             if not record:
                 record = BlockOverrideRecord(
@@ -925,7 +651,6 @@ async def update_block(
                 if request.priority is not None:
                     record.priority = request.priority
 
-            # Handle metadata overrides
             meta_override = {}
             if record.metadata_override:
                 try:
@@ -933,7 +658,6 @@ async def update_block(
                 except Exception:
                     pass
 
-            # Map request fields into metadata_override
             for field in [
                 "name",
                 "description",
@@ -956,7 +680,6 @@ async def update_block(
             session.commit()
             session.refresh(record)
 
-            # Return merged dictionary
             block_dict = _block_to_dict(base_block)
             block_dict["config"] = json.loads(record.config)
             block_dict["priority"] = record.priority
@@ -966,7 +689,6 @@ async def update_block(
             return {"status": "ok", "block": block_dict}
 
         else:
-            # Check if it is a custom block
             record = session.get(CustomBlockRecord, block_id)
             if not record:
                 raise HTTPException(
@@ -1014,14 +736,12 @@ async def update_block(
 async def delete_block(block_id: str, session: Session = Depends(get_session)):
     """Delete a custom block or reset a built-in block override."""
     try:
-        ensure_schema_migrations(session)
+        _ensure_schema_migrations(session)
 
-        # Check codebase blocks
-        all_blocks = get_all_blocks()
+        all_blocks = _get_all_blocks()
         base_block = next((b for b in all_blocks if b.id == block_id), None)
 
         if base_block:
-            # Delete override if it exists
             override = session.get(BlockOverrideRecord, block_id)
             if override:
                 session.delete(override)
@@ -1032,7 +752,6 @@ async def delete_block(block_id: str, session: Session = Depends(get_session)):
             }
 
         else:
-            # Delete custom block
             record = session.get(CustomBlockRecord, block_id)
             if not record:
                 raise HTTPException(
@@ -1040,7 +759,6 @@ async def delete_block(block_id: str, session: Session = Depends(get_session)):
                 )
             session.delete(record)
 
-            # Also clean up any overrides that might exist for this custom block ID
             override = session.get(BlockOverrideRecord, block_id)
             if override:
                 session.delete(override)
@@ -1064,13 +782,11 @@ async def summarize_block(
 ):
     """Generate an AI cognitive summary of a memory block's capabilities and config."""
     try:
-        ensure_schema_migrations(session)
+        _ensure_schema_migrations(session)
 
-        # Get the block dict
         res = await get_block(block_id, session)
         block_dict = res["block"]
 
-        # Generate summary using generator function
         summary = generate_block_summary(block_dict, request.level, request.tone)
         return {"status": "ok", "summary": summary}
     except Exception as e:
@@ -1092,13 +808,76 @@ def generate_block_summary(block_dict: dict, level: str, tone: str) -> str:
         return f"[AI Summary: {tone_label} detailed overview: Memory block '{name}' is categorized under '{cat}' and enables capabilities: [{caps}]. It has dependencies: [{deps}] and runs at priority {priority}. Fits enterprise agent context-management paradigms.]"
     elif level == "summaries":
         return f"[AI Summary: {tone_label} summary of summaries: Name: {name} | Category: {cat} | Capabilities: {caps} | Priority: {priority}. Collated from system schema blueprints.]"
-    else:  # 'all' or 'global'
+    else:
         return f"[AI Summary: {tone_label} global system summary: Represents structural memory layer configuration '{name}' under '{cat}'. Resolves core capabilities [{caps}] against dependencies [{deps}] with dynamic priority {priority} sorting.]"
 
 
-def _custom_block_to_dict(r: CustomBlockRecord) -> dict:
-    import json
+# =============================================================================
+# Internal helpers (kept for endpoints not yet migrated to service)
+# =============================================================================
 
+_migration_checked = False
+
+
+def _ensure_schema_migrations(session: Session):
+    global _migration_checked
+    if _migration_checked:
+        return
+    _migration_checked = True
+    try:
+        from sqlalchemy import text as _text
+
+        session.execute(
+            _text(
+                "ALTER TABLE memory_block_overrides ADD COLUMN metadata_override TEXT"
+            )
+        )
+        session.commit()
+        logger.info(
+            "Migrated memory_block_overrides table: added metadata_override column."
+        )
+    except Exception:
+        session.rollback()
+
+
+def _get_all_blocks():
+    from common_lib.modules.memory.memory_driver import (
+        ALL_BLOCKS,
+        ensure_registry_initialized,
+    )
+    import common_lib.modules.memory.memory_driver as md
+
+    ensure_registry_initialized()
+    if not md.ALL_BLOCKS:
+        md._registry_initialized = False
+        ensure_registry_initialized()
+    return md.ALL_BLOCKS
+
+
+def _block_to_dict(block) -> dict:
+    return {
+        "id": block.id,
+        "name": getattr(block, "name", ""),
+        "description": getattr(block, "description", ""),
+        "category": block.category.value
+        if hasattr(block.category, "value")
+        else str(block.category),
+        "capabilities": getattr(block, "capabilities", []),
+        "dependencies": getattr(block, "dependencies", []),
+        "config": getattr(block, "config", {}),
+        "enabled": getattr(block, "enabled", True),
+        "priority": getattr(block, "priority", 0),
+        "usage_examples": getattr(block, "usage_examples", []),
+        "related_blocks": getattr(block, "related_blocks", []),
+        "performance_notes": getattr(block, "performance_notes", ""),
+        "configuration_guide": getattr(block, "configuration_guide", ""),
+        "api_reference": getattr(block, "api_reference", {}),
+        "source": getattr(block, "source", "code"),
+        "is_overridden": getattr(block, "is_overridden", False),
+    }
+
+
+def _custom_block_to_dict(r: CustomBlockRecord) -> dict:
     return {
         "id": r.id,
         "name": r.name,

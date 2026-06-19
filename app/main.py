@@ -44,6 +44,7 @@ from app.modules.agents.routes.index import router as agents_router
 from app.modules.agents.runtime.pipeline_routes import router as pipeline_router
 from app.modules.agents.runtime.policy_routes import router as policy_router
 from app.modules.entities.routes.registry import router as entities_router
+from app.modules.entities.instance_routes import router as entity_instances_router
 from app.modules.workflows.routes.index import router as workflows_router
 from app.modules.workflows.routes.observability import router as observability_router
 from app.modules.workflows.routes.configs import router as workflow_configs_router
@@ -60,6 +61,8 @@ from app.modules.grid.routes import router as grid_router
 from app.modules.plugins.routes.router import router as plugins_router
 from app.modules.daw.routes import router as daw_router
 from app.modules.hooks.routes import router as hooks_router
+from app.modules.webhooks import router as webhooks_router
+from app.modules.connection_health import router as connection_health_router
 from app.modules.dashboard.routes import router as dashboard_router
 from app.modules.system.routes import router as system_router
 from app.modules.settings.routes import router as settings_router
@@ -83,7 +86,7 @@ from app.modules.connectors.routes import connector_router, connection_router
 from app.modules.connectors.mcp.server import router as connectors_mcp_router
 from app.modules.plugins.routes import plugin_router
 from fastapi import Depends
-from app.modules.auth.dependencies.index import get_current_active_user
+from app.modules.auth.dependencies import get_current_active_user
 
 settings = get_settings()
 
@@ -1075,6 +1078,12 @@ def create_app() -> FastAPI:
         app.add_middleware(ResponseCacheMiddleware)
         print("Startup: Response Cache Middleware enabled")
 
+    # Authz Middleware — extracts subject identity from JWT/headers for every request
+    from app.modules.auth.middleware.authz import AuthzMiddleware
+
+    app.add_middleware(AuthzMiddleware)
+    print("Startup: Authz Middleware enabled")
+
     # Register Custom OpenAPI
     app.openapi = lambda: custom_openapi(app)
 
@@ -1144,6 +1153,26 @@ def create_app() -> FastAPI:
         dependencies=global_deps,
     )
 
+    print(
+        f"Startup: Including Webhooks router with prefix: {settings.API_V1_STR}/webhooks"
+    )
+    app.include_router(
+        webhooks_router,
+        prefix=f"{settings.API_V1_STR}/webhooks",
+        tags=["Webhook Manager"],
+        dependencies=global_deps,
+    )
+
+    print(
+        f"Startup: Including Connection Health router with prefix: {settings.API_V1_STR}/connection-health"
+    )
+    app.include_router(
+        connection_health_router,
+        prefix=f"{settings.API_V1_STR}",
+        tags=["Connection Health"],
+        dependencies=global_deps,
+    )
+
     # Entities & Orchestration
     print(
         f"Startup: Including Entities Registry router with prefix: {settings.API_V1_STR}/entities/registry"
@@ -1152,6 +1181,15 @@ def create_app() -> FastAPI:
         entities_router,
         prefix=f"{settings.API_V1_STR}/entities/registry",
         tags=["Entities Registry"],
+        dependencies=global_deps,
+    )
+    print(
+        f"Startup: Including Entity Instances router with prefix: {settings.API_V1_STR}/instances"
+    )
+    app.include_router(
+        entity_instances_router,
+        prefix=f"{settings.API_V1_STR}/instances",
+        tags=["Entity Instances"],
         dependencies=global_deps,
     )
     print(f"Startup: Including Agents router with prefix: {settings.API_V1_STR}/agents")
@@ -1496,6 +1534,19 @@ def create_app() -> FastAPI:
         dependencies=global_deps,
     )
 
+    # Schema Builder API (tables, relationships, migrations, DDL, models)
+    from app.modules.schema.routes import router as schema_router
+
+    print(
+        f"Startup: Including Schema Builder router with prefix: {settings.API_V1_STR}/schema"
+    )
+    app.include_router(
+        schema_router,
+        prefix=f"{settings.API_V1_STR}/schema",
+        tags=["Schema Builder"],
+        dependencies=global_deps,
+    )
+
     # Sync API
     print(f"Startup: Including Sync router with prefix: {settings.API_V1_STR}/sync")
     from app.modules.sync.routes.index import router as sync_router
@@ -1515,6 +1566,7 @@ def create_app() -> FastAPI:
         dip_ingestion_router,
         prefix=settings.API_V1_STR,
         tags=["dip/ingestion"],
+        dependencies=global_deps,
     )
 
     # DIP Pipeline API
@@ -1525,6 +1577,7 @@ def create_app() -> FastAPI:
         dip_pipeline_router,
         prefix=settings.API_V1_STR,
         tags=["dip/pipeline"],
+        dependencies=global_deps,
     )
 
     # DIP RAG API (legacy — delegates to KnowledgeEngine)
@@ -1535,6 +1588,7 @@ def create_app() -> FastAPI:
         dip_rag_router,
         prefix=settings.API_V1_STR,
         tags=["dip/rag"],
+        dependencies=global_deps,
     )
 
     # DIP Knowledge Graph API
@@ -1543,6 +1597,7 @@ def create_app() -> FastAPI:
         dip_kg_router,
         prefix=settings.API_V1_STR,
         tags=["dip/kg"],
+        dependencies=global_deps,
     )
 
     # DIP Storage API
@@ -1553,6 +1608,7 @@ def create_app() -> FastAPI:
         dip_storage_router,
         prefix=settings.API_V1_STR,
         tags=["dip/storage"],
+        dependencies=global_deps,
     )
 
     # DIP Embeddings API (legacy — delegates to KnowledgeEngine)
@@ -1563,6 +1619,7 @@ def create_app() -> FastAPI:
         dip_embeddings_router,
         prefix=settings.API_V1_STR,
         tags=["dip/embeddings"],
+        dependencies=global_deps,
     )
 
     # Notification SSE API
@@ -1573,6 +1630,7 @@ def create_app() -> FastAPI:
         notification_router,
         prefix=settings.API_V1_STR,
         tags=["notifications"],
+        dependencies=global_deps,
     )
 
     # Integration API (cross-module triggers, hooks, rules, observability)
@@ -1585,6 +1643,7 @@ def create_app() -> FastAPI:
         integration_router,
         prefix=settings.API_V1_STR,
         tags=["integration"],
+        dependencies=global_deps,
     )
 
     # Ext-Apps API
@@ -1595,6 +1654,7 @@ def create_app() -> FastAPI:
         ext_apps_router,
         prefix=settings.API_V1_STR,
         tags=["Ext-Apps"],
+        dependencies=global_deps,
     )
 
     # Connectors API (tool registry, form schemas)
@@ -1603,11 +1663,13 @@ def create_app() -> FastAPI:
         connector_router,
         prefix=settings.API_V1_STR,
         tags=["Connectors"],
+        dependencies=global_deps,
     )
     app.include_router(
         connection_router,
         prefix=settings.API_V1_STR,
         tags=["Connections"],
+        dependencies=global_deps,
     )
 
     # Connectors MCP (AI agent tool discovery)
@@ -1618,6 +1680,7 @@ def create_app() -> FastAPI:
         connectors_mcp_router,
         prefix=settings.API_V1_STR,
         tags=["MCP-Connectors"],
+        dependencies=global_deps,
     )
 
     # Plugins API (plugin instances + module linker)
@@ -1628,6 +1691,7 @@ def create_app() -> FastAPI:
         plugin_router,
         prefix=settings.API_V1_STR,
         tags=["Plugins"],
+        dependencies=global_deps,
     )
 
     # Scheduler API (cron jobs, scheduled workflows)
@@ -1644,6 +1708,7 @@ def create_app() -> FastAPI:
         scheduler_router,
         prefix=settings.API_V1_STR,
         tags=["scheduler"],
+        dependencies=global_deps,
     )
 
     # SD News API (article archive and browsing)
@@ -1656,6 +1721,7 @@ def create_app() -> FastAPI:
         sd_news_router,
         prefix=settings.API_V1_STR,
         tags=["sd-news"],
+        dependencies=global_deps,
     )
 
     # Dashboard API
@@ -1666,36 +1732,6 @@ def create_app() -> FastAPI:
         dashboard_router,
         prefix=f"{settings.API_V1_STR}/dashboard",
         tags=["dashboard"],
-    )
-
-    # System API
-    print(f"Startup: Including System router with prefix: {settings.API_V1_STR}/system")
-    app.include_router(
-        system_router,
-        prefix=f"{settings.API_V1_STR}/system",
-        tags=["System"],
-        dependencies=global_deps,
-    )
-
-    # Keys Management API
-    print(
-        f"Startup: Including Keys Management router with prefix: {settings.API_V1_STR}/keys"
-    )
-    app.include_router(
-        keys_router,
-        prefix=f"{settings.API_V1_STR}/keys",
-        tags=["Keys Management"],
-        dependencies=global_deps,
-    )
-
-    # Proxy Routing API (v1 proxy + fallback chain)
-    print(
-        f"Startup: Including Proxy Routing router with prefix: {settings.API_V1_STR}/proxy"
-    )
-    app.include_router(
-        proxy_router,
-        prefix=f"{settings.API_V1_STR}/proxy",
-        tags=["Proxy Routing"],
         dependencies=global_deps,
     )
 
@@ -1737,6 +1773,7 @@ def create_app() -> FastAPI:
         file_browser_router,
         prefix=settings.API_V1_STR,
         tags=["file-browser"],
+        dependencies=global_deps,
     )
 
     print(
@@ -1746,6 +1783,7 @@ def create_app() -> FastAPI:
         macro_router,
         prefix=settings.API_V1_STR + "/file-browser",
         tags=["macros"],
+        dependencies=global_deps,
     )
 
     print(
@@ -1798,6 +1836,7 @@ def create_app() -> FastAPI:
         sqlalchemy_exception_handler,
         generic_exception_handler,
         http_exception_handler,
+        service_error_handler,
     )
 
     app.add_exception_handler(NexusException, nexus_exception_handler)
@@ -1805,6 +1844,9 @@ def create_app() -> FastAPI:
     from app.core.exceptions import model_not_found_exception_handler
 
     app.add_exception_handler(ModelNotFoundError, model_not_found_exception_handler)
+    from common_lib.modules.exceptions import ServiceError
+
+    app.add_exception_handler(ServiceError, service_error_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     from pydantic import ValidationError
 
@@ -1860,8 +1902,8 @@ def create_app() -> FastAPI:
         dependencies=global_deps,
     )
 
-    # Observability admin API (SLOs, lineage, compliance) — routed via common_lib
-    from common_lib.modules.observability.admin_routes import router as obs_admin_router
+    # Observability admin API (SLOs, lineage, compliance) — routed via app/modules
+    from app.modules.observability.routes import router as obs_admin_router
 
     print(
         f"Startup: Including Observability Admin router with prefix: {settings.API_V1_STR}"
@@ -1869,6 +1911,18 @@ def create_app() -> FastAPI:
     app.include_router(
         obs_admin_router,
         prefix=f"{settings.API_V1_STR}",
+        dependencies=global_deps,
+    )
+
+    # Generic Documentation API (serves docs from common_lib/docs/<module>/)
+    from app.modules.docs.routes import router as docs_module_router
+
+    print(f"Startup: Including Generic Docs router with prefix: {settings.API_V1_STR}")
+    app.include_router(
+        docs_module_router,
+        prefix=settings.API_V1_STR,
+        tags=["Documentation"],
+        dependencies=global_deps,
     )
 
     # ── Knowledge Sources Hub API ─────────────────────────────
@@ -1911,6 +1965,30 @@ def create_app() -> FastAPI:
         streaming_router,
         prefix=settings.API_V1_STR,
         tags=["Knowledge Hub — Streaming"],
+        dependencies=global_deps,
+    )
+
+    # ── Agentic RBAC Authorization ──────────────────────────────
+    from app.modules.authorization.routes.authz_router import (
+        router as authz_full_router,
+    )
+
+    print(f"Startup: Including AuthZ router with prefix: {settings.API_V1_STR}/authz")
+    app.include_router(
+        authz_full_router,
+        prefix=f"{settings.API_V1_STR}/authz",
+        tags=["Authorization — Agentic RBAC"],
+        dependencies=global_deps,
+    )
+
+    # ── Team ────────────────────────────────────────────────────
+    from app.modules.team.routes import router as team_router
+
+    print(f"Startup: Including Team router with prefix: {settings.API_V1_STR}")
+    app.include_router(
+        team_router,
+        prefix=f"{settings.API_V1_STR}",
+        tags=["Team"],
         dependencies=global_deps,
     )
 

@@ -1,0 +1,92 @@
+{
+    "platform": {
+        "appName": "Antigravity Orchestration Hub",
+        "themeId": "nord",
+        "accentColor": "orange",
+        "defaultEngine": "openai",
+        "defaultModel": "gpt-4o",
+        "temperature": 0.7,
+        "maxTokens": 4096,
+        "streamResponses": true,
+        "debugMode": false,
+        "autoSaveLogs": true,
+        "systemPrompt": "You are Antigravity, an advanced developer agent built on state-of-the-art ReAct orchestration graph architectures.",
+        "telemetryEnabled": false,
+        "liveReloadEnabled": true,
+        "soundCuesEnabled": true,
+        "embeddingsEngine": "minio",
+        "semanticCachePolicy": "optimistic",
+        "parallelConcurrency": 4,
+        "maxOrchestrationSteps": 20
+    },
+    "connections": {
+        "openai": "sk-proj-\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u20223A1B",
+        "anthropic": "sk-ant-\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u20228C9D",
+        "huggingface": "",
+        "vllm": "http://localhost:8001/v1",
+        "gemini": "",
+        "postgres": "postgresql://postgres:\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022@localhost:5432/platform_db"
+    },
+    "navigation": {
+        "hidden_items": []
+    },
+    "security": {
+        "jwtLifetime": "24h",
+        "mfaEnabled": false,
+        "ssoEnabled": false,
+        "ipAllowlistEnabled": false,
+        "ipAllowlist": "192.168.1.0/24\n10.0.0.0/8",
+        "rateLimitEnabled": true,
+        "rbacStrict": true,
+        "auditLogRetention": "90d",
+        "defaultRole": "developer",
+        "sessionConcurrency": 5
+    },
+    "workspace": {
+        "name": "Antigravity Platform",
+        "slug": "antigravity-platform",
+        "visibility": "private",
+        "quotaLimit": 50
+    },
+    "invites": [
+        {
+            "id": "invite_1",
+            "email": "devbot@antigravity.dev",
+            "role": "developer",
+            "status": "pending",
+            "created_at": "2026-05-29T18:00:00Z"
+        }
+    ],
+    "audit_logs": [
+        {
+            "event": "API key created",
+            "user": "sid@antigravity.dev",
+            "time": "2 min ago",
+            "severity": "info"
+        },
+        {
+            "event": "Login from new IP: 45.33.32.156",
+            "user": "sid@antigravity.dev",
+            "time": "1h ago",
+            "severity": "warning"
+        },
+        {
+            "event": "Settings updated (MFA enabled)",
+            "user": "sid@antigravity.dev",
+            "time": "3h ago",
+            "severity": "success"
+        },
+        {
+            "event": "Failed login attempt (\u00d73)",
+            "user": "unknown@external.io",
+            "time": "6h ago",
+            "severity": "error"
+        },
+        {
+            "event": "Model downloaded: llama-3-70b",
+            "user": "system@antigravity.dev",
+            "time": "1d ago",
+            "severity": "info"
+        }
+    ]
+}

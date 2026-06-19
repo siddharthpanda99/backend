@@ -34,10 +34,17 @@ def login_for_access_token(
         verify_password,
         create_access_token,
     )
+    from app.core.settings import get_settings
 
+    settings = get_settings()
     login_data = LoginRequest(email=form_data.username, password=form_data.password)
     token = auth_service.authenticate_user(
-        session, login_data, get_password_hash, verify_password, create_access_token
+        session,
+        login_data,
+        get_password_hash,
+        verify_password,
+        create_access_token,
+        refresh_expire_days=settings.REFRESH_TOKEN_EXPIRE_DAYS,
     )
     return token
 
@@ -49,9 +56,16 @@ def login(data: LoginRequest, session: Annotated[Session, Depends(get_session)])
         verify_password,
         create_access_token,
     )
+    from app.core.settings import get_settings
 
+    settings = get_settings()
     token = auth_service.authenticate_user(
-        session, data, get_password_hash, verify_password, create_access_token
+        session,
+        data,
+        get_password_hash,
+        verify_password,
+        create_access_token,
+        refresh_expire_days=settings.REFRESH_TOKEN_EXPIRE_DAYS,
     )
     return APIResponse(data=token, message="Login successful")
 
@@ -69,29 +83,51 @@ def register(data: RegisterRequest, session: Annotated[Session, Depends(get_sess
 @router.post("/refresh-token", response_model=APIResponse[TokenResponse])
 def refresh_token(
     data: RefreshTokenRequest,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[Session, Depends(get_session)],
 ):
-    token = auth_service.refresh_access_token(data.refresh_token)
+    from app.core.security import create_access_token
+    from app.core.settings import get_settings
+
+    settings = get_settings()
+    token = auth_service.refresh_access_token(
+        session,
+        data.refresh_token,
+        create_access_token,
+        refresh_expire_days=settings.REFRESH_TOKEN_EXPIRE_DAYS,
+    )
     return APIResponse(data=token, message="Token refreshed")
 
 
 @router.post("/forgot-password", response_model=APIResponse[dict])
-def forgot_password(data: ForgotPasswordRequest):
-    result = auth_service.forgot_password(data.email)
+def forgot_password(
+    data: ForgotPasswordRequest,
+    session: Annotated[Session, Depends(get_session)],
+):
+    result = auth_service.forgot_password(session, data.email)
     return APIResponse(data=result, message="Password reset initiated")
 
 
 @router.post("/reset-password", response_model=APIResponse[dict])
-def reset_password(data: ResetPasswordRequest):
+def reset_password(
+    data: ResetPasswordRequest,
+    session: Annotated[Session, Depends(get_session)],
+):
     if data.new_password != data.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match")
-    result = auth_service.reset_password(data.token, data.new_password)
+    from app.core.security import get_password_hash
+
+    result = auth_service.reset_password(
+        session, data.token, data.new_password, get_password_hash
+    )
     return APIResponse(data=result, message="Password reset complete")
 
 
 @router.post("/logout", response_model=APIResponse[dict])
-def logout(current_user: Annotated[User, Depends(get_current_active_user)]):
-    auth_service.logout(str(current_user.id))
+def logout(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[Session, Depends(get_session)],
+):
+    auth_service.logout(session, current_user.id)
     return APIResponse(message="Logged out successfully")
 
 
@@ -132,14 +168,20 @@ def change_password(
 
 
 @router.post("/verify-email", response_model=APIResponse[dict])
-def verify_email(data: VerifyEmailRequest):
-    result = auth_service.verify_email(data.token)
+def verify_email(
+    data: VerifyEmailRequest,
+    session: Annotated[Session, Depends(get_session)],
+):
+    result = auth_service.verify_email(session, data.token)
     return APIResponse(data=result, message="Email verified")
 
 
 @router.post("/resend-verification", response_model=APIResponse[dict])
-def resend_verification(data: ResendVerificationRequest):
-    result = auth_service.resend_verification(data.email)
+def resend_verification(
+    data: ResendVerificationRequest,
+    session: Annotated[Session, Depends(get_session)],
+):
+    result = auth_service.resend_verification(session, data.email)
     return APIResponse(data=result, message="Verification sent")
 
 
