@@ -5,7 +5,6 @@ import pytest
 import requests
 import tempfile
 import zipfile
-from conftest import cleanup_file
 
 
 api_base = "http://localhost:8000/api/v1/file-browser"

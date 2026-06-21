@@ -26,7 +26,7 @@ async def get_current_active_user(
         )
     token = auth_header[7:]
     try:
-        from app.core.security import decode_access_token
+        from common_lib.modules.auth.security import decode_access_token
 
         payload = decode_access_token(token)
         user_id = payload.get("sub") or payload.get("user_id")

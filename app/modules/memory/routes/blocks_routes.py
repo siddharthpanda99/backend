@@ -1,0 +1,879 @@
+"""Memory Blocks & Marketplace API Routes.
+
+Provides REST endpoints for browsing memory blocks and marketplace items.
+"""
+
+import json
+import logging
+from typing import Optional, List
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlmodel import Session, select
+
+from common_lib.modules.data_storage.database.connection import get_session
+from common_lib.modules.data_storage.database.repository import NotFoundError
+from common_lib.modules.memory.services import block_service
+from common_lib.modules.memory.blueprint_models import (
+    BlockOverrideRecord,
+    CustomBlockRecord,
+)
+
+router = APIRouter(tags=["memory-blocks"])
+
+logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Memory Blocks Endpoints
+# =============================================================================
+
+
+@router.get("/blocks")
+async def list_blocks(
+    category: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    session: Session = Depends(get_session),
+):
+    """List all memory blocks, optionally filtered by category, with database overrides merged."""
+    try:
+        result = block_service.list_blocks(
+            session, category=category, search=search, offset=offset, limit=limit
+        )
+        return {"status": "ok", **result}
+    except Exception as e:
+        logger.error(f"Failed to list blocks: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/blocks/categories")
+async def list_block_categories(session: Session = Depends(get_session)):
+    """List all block categories with counts."""
+    try:
+        result = block_service.list_block_categories(session)
+        return {"status": "ok", **result}
+    except Exception as e:
+        logger.error(f"Failed to list categories: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@router.get("/blocks/{block_id}")
+async def get_block(block_id: str, session: Session = Depends(get_session)):
+    """Get a specific memory block by ID, merging DB overrides if present."""
+    try:
+        block_dict = block_service.get_block(session, block_id)
+        return {"status": "ok", "block": block_dict}
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to get block: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/profiles")
+async def list_profiles():
+    """List all pre-built memory profiles."""
+    try:
+        from common_lib.modules.memory.memory_driver import MEMORY_PROFILES
+
+        return {
+            "status": "ok",
+            "profiles": [_profile_to_dict(p) for p in MEMORY_PROFILES],
+            "count": len(MEMORY_PROFILES),
+        }
+    except Exception as e:
+        logger.error(f"Failed to list profiles: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/profiles/{profile_id}")
+async def get_profile(profile_id: str):
+    """Get a specific memory profile by ID."""
+    try:
+        from common_lib.modules.memory.memory_driver import MEMORY_PROFILES
+
+        profile = next((p for p in MEMORY_PROFILES if p.id == profile_id), None)
+        if not profile:
+            raise HTTPException(
+                status_code=404, detail=f"Profile not found: {profile_id}"
+            )
+
+        return {"status": "ok", "profile": _profile_to_dict(profile)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/profiles/compose")
+async def compose_profile(request: dict):
+    """Compose a custom profile from blocks."""
+    try:
+        from common_lib.modules.memory.memory_driver import MemoryDriver
+
+        block_ids = request.get("block_ids", [])
+        driver = MemoryDriver()
+        result = driver.compose_profile("custom", block_ids)
+
+        return {
+            "status": "ok",
+            "profile": {
+                "blocks": result,
+                "block_count": len(result),
+            },
+        }
+    except Exception as e:
+        logger.error(f"Failed to compose profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Compositions Endpoints
+# =============================================================================
+
+
+class CompositionRequest(BaseModel):
+    name: str
+    description: str = ""
+    block_ids: list
+
+
+@router.get("/compositions")
+async def list_compositions(session: Session = Depends(get_session)):
+    """List all memory compositions (seeded from YAML templates + user-created)."""
+    try:
+        result = block_service.list_compositions(session)
+        return {"status": "ok", **result}
+    except Exception as e:
+        logger.error(f"Failed to list compositions: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/compositions/{composition_id}")
+async def get_composition(composition_id: str, session: Session = Depends(get_session)):
+    """Get a specific composition by ID."""
+    try:
+        comp = block_service.get_composition(session, composition_id)
+        return {"status": "ok", "composition": comp}
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to get composition: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/compositions")
+async def create_composition(
+    request: CompositionRequest, session: Session = Depends(get_session)
+):
+    """Create a new user composition."""
+    try:
+        comp = block_service.create_composition(session, request.model_dump())
+        return {"status": "ok", "composition": comp}
+    except Exception as e:
+        logger.error(f"Failed to create composition: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/compositions/{composition_id}")
+async def update_composition(
+    composition_id: str,
+    request: CompositionRequest,
+    session: Session = Depends(get_session),
+):
+    """Update an existing composition."""
+    try:
+        comp = block_service.update_composition(
+            session, composition_id, request.model_dump()
+        )
+        return {"status": "ok", "composition": comp}
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to update composition: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/compositions/{composition_id}")
+async def delete_composition(
+    composition_id: str, session: Session = Depends(get_session)
+):
+    """Delete a composition."""
+    try:
+        block_service.delete_composition(session, composition_id)
+        return {"status": "ok", "message": f"Composition {composition_id} deleted"}
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to delete composition: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Marketplace Endpoints
+# =============================================================================
+
+
+@router.get("/marketplace")
+async def list_marketplace(
+    category: Optional[str] = Query(None),
+    query: Optional[str] = Query(None),
+    platform: Optional[str] = Query("all"),
+    agent: Optional[str] = Query("all"),
+    harness: Optional[str] = Query("all"),
+):
+    """List marketplace items with optional filters."""
+    try:
+        from common_lib.modules.memory.memory_marketplace import (
+            MarketplaceRegistry,
+            MarketplaceCategory,
+        )
+
+        registry = MarketplaceRegistry()
+
+        if query:
+            cat = MarketplaceCategory(category.lower()) if category else None
+            items = registry.search(query, cat)
+        elif category:
+            cat = MarketplaceCategory(category.lower())
+            items = registry.list_items(cat)
+        else:
+            items = registry.get_compatible(platform, agent, harness)
+
+        return {
+            "status": "ok",
+            "items": [_item_to_dict(i) for i in items],
+            "count": len(items),
+        }
+    except Exception as e:
+        logger.error(f"Failed to list marketplace: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/marketplace/categories")
+async def list_marketplace_categories():
+    """List marketplace categories with counts."""
+    try:
+        from common_lib.modules.memory.memory_marketplace import (
+            MarketplaceRegistry,
+            MarketplaceCategory,
+        )
+
+        registry = MarketplaceRegistry()
+        categories = {}
+        for cat in MarketplaceCategory:
+            items = registry.list_items(cat)
+            categories[cat.value] = {
+                "label": cat.value.title(),
+                "count": len(items),
+            }
+
+        return {"status": "ok", "categories": categories}
+    except Exception as e:
+        logger.error(f"Failed to list marketplace categories: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/marketplace/{item_id}")
+async def get_marketplace_item(item_id: str):
+    """Get a specific marketplace item by ID."""
+    try:
+        from common_lib.modules.memory.memory_marketplace import MarketplaceRegistry
+
+        registry = MarketplaceRegistry()
+        item = registry.get_item(item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail=f"Item not found: {item_id}")
+
+        return {"status": "ok", "item": _item_to_dict(item)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get marketplace item: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/marketplace/hardware")
+async def list_hardware():
+    """List memory hardware adapters."""
+    try:
+        from common_lib.modules.memory.memory_marketplace import (
+            MarketplaceRegistry,
+            MarketplaceCategory,
+        )
+
+        registry = MarketplaceRegistry()
+        items = registry.list_items(MarketplaceCategory.HARDWARE)
+        return {"status": "ok", "hardware": [_item_to_dict(i) for i in items]}
+    except Exception as e:
+        logger.error(f"Failed to list hardware: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/marketplace/algorithms")
+async def list_algorithms():
+    """List memory algorithms."""
+    try:
+        from common_lib.modules.memory.memory_marketplace import (
+            MarketplaceRegistry,
+            MarketplaceCategory,
+        )
+
+        registry = MarketplaceRegistry()
+        items = registry.list_items(MarketplaceCategory.ALGORITHM)
+        return {"status": "ok", "algorithms": [_item_to_dict(i) for i in items]}
+    except Exception as e:
+        logger.error(f"Failed to list algorithms: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/marketplace/optimizers")
+async def list_optimizers():
+    """List memory optimizers."""
+    try:
+        from common_lib.modules.memory.memory_marketplace import (
+            MarketplaceRegistry,
+            MarketplaceCategory,
+        )
+
+        registry = MarketplaceRegistry()
+        items = registry.list_items(MarketplaceCategory.OPTIMIZATION)
+        return {"status": "ok", "optimizers": [_item_to_dict(i) for i in items]}
+    except Exception as e:
+        logger.error(f"Failed to list optimizers: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/marketplace/utilities")
+async def list_utilities():
+    """List memory utilities."""
+    try:
+        from common_lib.modules.memory.memory_marketplace import (
+            MarketplaceRegistry,
+            MarketplaceCategory,
+        )
+
+        registry = MarketplaceRegistry()
+        items = registry.list_items(MarketplaceCategory.UTILITY)
+        return {"status": "ok", "utilities": [_item_to_dict(i) for i in items]}
+    except Exception as e:
+        logger.error(f"Failed to list utilities: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/marketplace/connectors")
+async def list_connectors():
+    """List memory connectors."""
+    try:
+        from common_lib.modules.memory.memory_marketplace import (
+            MarketplaceRegistry,
+            MarketplaceCategory,
+        )
+
+        registry = MarketplaceRegistry()
+        items = registry.list_items(MarketplaceCategory.CONNECTOR)
+        return {"status": "ok", "connectors": [_item_to_dict(i) for i in items]}
+    except Exception as e:
+        logger.error(f"Failed to list connectors: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Helpers
+# =============================================================================
+
+
+def _profile_to_dict(profile) -> dict:
+    return {
+        "id": profile.id,
+        "name": profile.name,
+        "description": profile.description,
+        "blocks": profile.blocks,
+        "block_ids": profile.blocks,
+        "agent_type": profile.agent_type,
+        "use_cases": profile.use_cases,
+        "recommended": profile.recommended,
+    }
+
+
+def _item_to_dict(item) -> dict:
+    return {
+        "id": item.id,
+        "name": item.name,
+        "description": item.description,
+        "category": item.category.value,
+        "version": item.version,
+        "author": item.author,
+        "license": item.license,
+        "tags": item.tags,
+        "config": item.config,
+        "dependencies": item.dependencies,
+        "compatible_platforms": item.compatible_platforms,
+        "compatible_agents": item.compatible_agents,
+        "compatible_harnesses": item.compatible_harnesses,
+        "rating": item.rating,
+        "downloads": item.downloads,
+        "metadata": item.metadata,
+    }
+
+
+# =============================================================================
+# Custom Block E2E Operations Endpoints & Models
+# =============================================================================
+
+
+class BlockConfigOverrideRequest(BaseModel):
+    config: dict
+    priority: Optional[int] = None
+
+
+@router.put("/blocks/{block_id}/config")
+async def save_block_config_override(
+    block_id: str,
+    request: BlockConfigOverrideRequest,
+    session: Session = Depends(get_session),
+):
+    """Save or update a memory block configuration override in the database."""
+    try:
+        from datetime import datetime, timezone
+
+        all_blocks = _get_all_blocks()
+        if not any(b.id == block_id for b in all_blocks):
+            raise HTTPException(
+                status_code=404, detail=f"Memory block {block_id} does not exist."
+            )
+
+        record = session.get(BlockOverrideRecord, block_id)
+        if not record:
+            record = BlockOverrideRecord(
+                block_id=block_id,
+                config=json.dumps(request.config),
+                priority=request.priority,
+            )
+        else:
+            record.config = json.dumps(request.config)
+            record.priority = request.priority
+            record.updated_at = datetime.now(timezone.utc).isoformat()
+
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+
+        base_block = next(b for b in all_blocks if b.id == block_id)
+        block_dict = _block_to_dict(base_block)
+        block_dict["config"] = request.config
+        if request.priority is not None:
+            block_dict["priority"] = request.priority
+        block_dict["is_overridden"] = True
+
+        return {"status": "ok", "block": block_dict}
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(
+            f"Failed to save block config override for {block_id}: {e}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/blocks/{block_id}/config")
+async def delete_block_config_override(
+    block_id: str, session: Session = Depends(get_session)
+):
+    """Delete a block configuration override to restore default settings."""
+    try:
+        record = session.get(BlockOverrideRecord, block_id)
+        if not record:
+            raise HTTPException(
+                status_code=404, detail=f"No config override found for block {block_id}"
+            )
+
+        session.delete(record)
+        session.commit()
+
+        all_blocks = _get_all_blocks()
+        base_block = next(b for b in all_blocks if b.id == block_id)
+        return {"status": "ok", "block": _block_to_dict(base_block)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(
+            f"Failed to delete block config override for {block_id}: {e}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CustomBlockCreateRequest(BaseModel):
+    id: str
+    name: str
+    description: str
+    category: str
+    capabilities: List[str] = []
+    dependencies: List[str] = []
+    related_blocks: List[str] = []
+    config: dict = {}
+    priority: int = 0
+    performance_notes: str = ""
+    configuration_guide: str = ""
+    source: str = "user"
+
+
+class CustomBlockUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    capabilities: Optional[List[str]] = None
+    dependencies: Optional[List[str]] = None
+    related_blocks: Optional[List[str]] = None
+    config: Optional[dict] = None
+    priority: Optional[int] = None
+    performance_notes: Optional[str] = None
+    configuration_guide: Optional[str] = None
+    source: Optional[str] = None
+
+
+class BlockSummarizeRequest(BaseModel):
+    level: str = "short"
+    tone: str = "professional"
+
+
+@router.post("/blocks")
+async def create_custom_block(
+    request: CustomBlockCreateRequest, session: Session = Depends(get_session)
+):
+    """Create a new custom or cloned block definition in the database."""
+    try:
+        _ensure_schema_migrations(session)
+
+        all_blocks = _get_all_blocks()
+        if any(b.id == request.id for b in all_blocks):
+            raise HTTPException(
+                status_code=400,
+                detail=f"A built-in block with ID '{request.id}' already exists.",
+            )
+
+        existing = session.get(CustomBlockRecord, request.id)
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"A custom block with ID '{request.id}' already exists.",
+            )
+
+        record = CustomBlockRecord(
+            id=request.id,
+            name=request.name,
+            description=request.description,
+            category=request.category,
+            capabilities=json.dumps(request.capabilities),
+            dependencies=json.dumps(request.dependencies),
+            related_blocks=json.dumps(request.related_blocks),
+            config=json.dumps(request.config),
+            enabled=True,
+            priority=request.priority,
+            performance_notes=request.performance_notes,
+            configuration_guide=request.configuration_guide,
+            source=request.source,
+        )
+
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+        return {"status": "ok", "block": _custom_block_to_dict(record)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to create custom block: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/blocks/{block_id}")
+async def update_block(
+    block_id: str,
+    request: CustomBlockUpdateRequest,
+    session: Session = Depends(get_session),
+):
+    """Update a custom block definition or set metadata/config overrides for a built-in block."""
+    try:
+        from datetime import datetime, timezone
+
+        _ensure_schema_migrations(session)
+
+        all_blocks = _get_all_blocks()
+        base_block = next((b for b in all_blocks if b.id == block_id), None)
+
+        if base_block:
+            record = session.get(BlockOverrideRecord, block_id)
+            if not record:
+                record = BlockOverrideRecord(
+                    block_id=block_id,
+                    config=json.dumps(request.config)
+                    if request.config is not None
+                    else json.dumps(base_block.config),
+                    priority=request.priority
+                    if request.priority is not None
+                    else base_block.priority,
+                    metadata_override="{}",
+                )
+            else:
+                if request.config is not None:
+                    record.config = json.dumps(request.config)
+                if request.priority is not None:
+                    record.priority = request.priority
+
+            meta_override = {}
+            if record.metadata_override:
+                try:
+                    meta_override = json.loads(record.metadata_override)
+                except Exception:
+                    pass
+
+            for field in [
+                "name",
+                "description",
+                "category",
+                "capabilities",
+                "dependencies",
+                "related_blocks",
+                "performance_notes",
+                "configuration_guide",
+                "source",
+            ]:
+                val = getattr(request, field)
+                if val is not None:
+                    meta_override[field] = val
+
+            record.metadata_override = json.dumps(meta_override)
+            record.updated_at = datetime.now(timezone.utc).isoformat()
+
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+
+            block_dict = _block_to_dict(base_block)
+            block_dict["config"] = json.loads(record.config)
+            block_dict["priority"] = record.priority
+            for k, v in meta_override.items():
+                block_dict[k] = v
+            block_dict["is_overridden"] = True
+            return {"status": "ok", "block": block_dict}
+
+        else:
+            record = session.get(CustomBlockRecord, block_id)
+            if not record:
+                raise HTTPException(
+                    status_code=404, detail=f"Memory block '{block_id}' not found."
+                )
+
+            if request.name is not None:
+                record.name = request.name
+            if request.description is not None:
+                record.description = request.description
+            if request.category is not None:
+                record.category = request.category
+            if request.capabilities is not None:
+                record.capabilities = json.dumps(request.capabilities)
+            if request.dependencies is not None:
+                record.dependencies = json.dumps(request.dependencies)
+            if request.related_blocks is not None:
+                record.related_blocks = json.dumps(request.related_blocks)
+            if request.config is not None:
+                record.config = json.dumps(request.config)
+            if request.priority is not None:
+                record.priority = request.priority
+            if request.performance_notes is not None:
+                record.performance_notes = request.performance_notes
+            if request.configuration_guide is not None:
+                record.configuration_guide = request.configuration_guide
+            if request.source is not None:
+                record.source = request.source
+
+            record.updated_at = datetime.now(timezone.utc).isoformat()
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+            return {"status": "ok", "block": _custom_block_to_dict(record)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to update block {block_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/blocks/{block_id}")
+async def delete_block(block_id: str, session: Session = Depends(get_session)):
+    """Delete a custom block or reset a built-in block override."""
+    try:
+        _ensure_schema_migrations(session)
+
+        all_blocks = _get_all_blocks()
+        base_block = next((b for b in all_blocks if b.id == block_id), None)
+
+        if base_block:
+            override = session.get(BlockOverrideRecord, block_id)
+            if override:
+                session.delete(override)
+                session.commit()
+            return {
+                "status": "ok",
+                "message": f"Built-in block '{block_id}' reset to system defaults.",
+            }
+
+        else:
+            record = session.get(CustomBlockRecord, block_id)
+            if not record:
+                raise HTTPException(
+                    status_code=404, detail=f"Memory block '{block_id}' not found."
+                )
+            session.delete(record)
+
+            override = session.get(BlockOverrideRecord, block_id)
+            if override:
+                session.delete(override)
+
+            session.commit()
+            return {"status": "ok", "message": f"Custom block '{block_id}' deleted."}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to delete block {block_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/blocks/{block_id}/summarize")
+async def summarize_block(
+    block_id: str,
+    request: BlockSummarizeRequest,
+    session: Session = Depends(get_session),
+):
+    """Generate an AI cognitive summary of a memory block's capabilities and config."""
+    try:
+        _ensure_schema_migrations(session)
+
+        res = await get_block(block_id, session)
+        block_dict = res["block"]
+
+        summary = generate_block_summary(block_dict, request.level, request.tone)
+        return {"status": "ok", "summary": summary}
+    except Exception as e:
+        logger.error(f"Summarize block {block_id} failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def generate_block_summary(block_dict: dict, level: str, tone: str) -> str:
+    tone_label = tone.title()
+    name = block_dict.get("name", "Unknown")
+    cat = block_dict.get("category", "Unknown")
+    caps = ", ".join(block_dict.get("capabilities", [])) or "none"
+    deps = ", ".join(block_dict.get("dependencies", [])) or "none"
+    priority = block_dict.get("priority", 0)
+
+    if level == "short":
+        return f"[AI Summary: {tone_label} synopsis: Defines cognitive capability parameters for memory block '{name}' in category '{cat}' with priority {priority}.]"
+    elif level == "detailed":
+        return f"[AI Summary: {tone_label} detailed overview: Memory block '{name}' is categorized under '{cat}' and enables capabilities: [{caps}]. It has dependencies: [{deps}] and runs at priority {priority}. Fits enterprise agent context-management paradigms.]"
+    elif level == "summaries":
+        return f"[AI Summary: {tone_label} summary of summaries: Name: {name} | Category: {cat} | Capabilities: {caps} | Priority: {priority}. Collated from system schema blueprints.]"
+    else:
+        return f"[AI Summary: {tone_label} global system summary: Represents structural memory layer configuration '{name}' under '{cat}'. Resolves core capabilities [{caps}] against dependencies [{deps}] with dynamic priority {priority} sorting.]"
+
+
+# =============================================================================
+# Internal helpers (kept for endpoints not yet migrated to service)
+# =============================================================================
+
+_migration_checked = False
+
+
+def _ensure_schema_migrations(session: Session):
+    global _migration_checked
+    if _migration_checked:
+        return
+    _migration_checked = True
+    try:
+        from sqlalchemy import text as _text
+
+        session.execute(
+            _text(
+                "ALTER TABLE memory_block_overrides ADD COLUMN metadata_override TEXT"
+            )
+        )
+        session.commit()
+        logger.info(
+            "Migrated memory_block_overrides table: added metadata_override column."
+        )
+    except Exception:
+        session.rollback()
+
+
+def _get_all_blocks():
+    from common_lib.modules.memory.memory_driver import (
+        ALL_BLOCKS,
+        ensure_registry_initialized,
+    )
+    import common_lib.modules.memory.memory_driver as md
+
+    ensure_registry_initialized()
+    if not md.ALL_BLOCKS:
+        md._registry_initialized = False
+        ensure_registry_initialized()
+    return md.ALL_BLOCKS
+
+
+def _block_to_dict(block) -> dict:
+    return {
+        "id": block.id,
+        "name": getattr(block, "name", ""),
+        "description": getattr(block, "description", ""),
+        "category": block.category.value
+        if hasattr(block.category, "value")
+        else str(block.category),
+        "capabilities": getattr(block, "capabilities", []),
+        "dependencies": getattr(block, "dependencies", []),
+        "config": getattr(block, "config", {}),
+        "enabled": getattr(block, "enabled", True),
+        "priority": getattr(block, "priority", 0),
+        "usage_examples": getattr(block, "usage_examples", []),
+        "related_blocks": getattr(block, "related_blocks", []),
+        "performance_notes": getattr(block, "performance_notes", ""),
+        "configuration_guide": getattr(block, "configuration_guide", ""),
+        "api_reference": getattr(block, "api_reference", {}),
+        "source": getattr(block, "source", "code"),
+        "is_overridden": getattr(block, "is_overridden", False),
+    }
+
+
+def _custom_block_to_dict(r: CustomBlockRecord) -> dict:
+    return {
+        "id": r.id,
+        "name": r.name,
+        "description": r.description,
+        "category": r.category,
+        "capabilities": json.loads(r.capabilities)
+        if isinstance(r.capabilities, str)
+        else r.capabilities,
+        "dependencies": json.loads(r.dependencies)
+        if isinstance(r.dependencies, str)
+        else r.dependencies,
+        "related_blocks": json.loads(r.related_blocks)
+        if isinstance(r.related_blocks, str)
+        else r.related_blocks,
+        "config": json.loads(r.config) if isinstance(r.config, str) else r.config,
+        "enabled": r.enabled,
+        "priority": r.priority,
+        "usage_examples": [],
+        "performance_notes": r.performance_notes,
+        "configuration_guide": r.configuration_guide,
+        "api_reference": {},
+        "source": r.source,
+        "is_overridden": True,
+    }

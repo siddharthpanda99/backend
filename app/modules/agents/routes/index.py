@@ -5,10 +5,10 @@ from common_lib.modules.agents.service import agent_service, NotFoundError
 from app.modules.common.types.index import APIResponse
 from app.modules.auth.dependencies.index import get_current_active_user
 from app.modules.agents.routes.registry import router as registry_router
-from app.modules.agents.runtime.routes import router as runtime_router
-from app.modules.agents.runtime.session_routes import router as session_router
-from app.modules.agents.runtime.pipeline_routes import router as pipeline_router
-from app.modules.agents.runtime.tracing_routes import router as tracing_router
+from app.modules.agents.routes.runtime_routes import router as runtime_router
+from app.modules.agents.routes.session_routes import router as session_router
+from app.modules.agents.routes.pipeline_routes import router as pipeline_router
+from app.modules.agents.routes.tracing_routes import router as tracing_router
 
 router = APIRouter()
 router.include_router(registry_router, prefix="/registry", tags=["Registry"])

@@ -17,7 +17,7 @@ from common_lib.modules.auth.schemas import (
     ResendVerificationRequest,
 )
 from common_lib.modules.auth.service import auth_service
-from app.modules.auth.dependencies.index import get_current_active_user, RoleChecker
+from app.modules.auth.dependencies import get_current_active_user, RoleChecker
 from common_lib.modules.users.models import User
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -29,11 +29,6 @@ def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     session: Annotated[Session, Depends(get_session)],
 ):
-    from app.core.security import (
-        get_password_hash,
-        verify_password,
-        create_access_token,
-    )
     from app.core.settings import get_settings
 
     settings = get_settings()
@@ -41,9 +36,6 @@ def login_for_access_token(
     token = auth_service.authenticate_user(
         session,
         login_data,
-        get_password_hash,
-        verify_password,
-        create_access_token,
         refresh_expire_days=settings.REFRESH_TOKEN_EXPIRE_DAYS,
     )
     return token
@@ -51,20 +43,12 @@ def login_for_access_token(
 
 @router.post("/login", response_model=APIResponse[TokenResponse])
 def login(data: LoginRequest, session: Annotated[Session, Depends(get_session)]):
-    from app.core.security import (
-        get_password_hash,
-        verify_password,
-        create_access_token,
-    )
     from app.core.settings import get_settings
 
     settings = get_settings()
     token = auth_service.authenticate_user(
         session,
         data,
-        get_password_hash,
-        verify_password,
-        create_access_token,
         refresh_expire_days=settings.REFRESH_TOKEN_EXPIRE_DAYS,
     )
     return APIResponse(data=token, message="Login successful")
@@ -74,9 +58,8 @@ def login(data: LoginRequest, session: Annotated[Session, Depends(get_session)])
 def register(data: RegisterRequest, session: Annotated[Session, Depends(get_session)]):
     if data.password != data.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match")
-    from app.core.security import get_password_hash
 
-    user = auth_service.register_user(session, data, get_password_hash)
+    user = auth_service.register_user(session, data)
     return APIResponse(data=user, message="Registration successful")
 
 
@@ -85,14 +68,12 @@ def refresh_token(
     data: RefreshTokenRequest,
     session: Annotated[Session, Depends(get_session)],
 ):
-    from app.core.security import create_access_token
     from app.core.settings import get_settings
 
     settings = get_settings()
     token = auth_service.refresh_access_token(
         session,
         data.refresh_token,
-        create_access_token,
         refresh_expire_days=settings.REFRESH_TOKEN_EXPIRE_DAYS,
     )
     return APIResponse(data=token, message="Token refreshed")
@@ -114,10 +95,9 @@ def reset_password(
 ):
     if data.new_password != data.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match")
-    from app.core.security import get_password_hash
 
     result = auth_service.reset_password(
-        session, data.token, data.new_password, get_password_hash
+        session, data.token, data.new_password
     )
     return APIResponse(data=result, message="Password reset complete")
 
@@ -154,15 +134,12 @@ def change_password(
 ):
     if data.new_password != data.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match")
-    from app.core.security import get_password_hash, verify_password
 
     result = auth_service.change_password(
         session,
         current_user.id,
         data.old_password,
         data.new_password,
-        get_password_hash,
-        verify_password,
     )
     return APIResponse(data=result, message="Password updated")
 
@@ -188,3 +165,4 @@ def resend_verification(
 @router.get("/admin-only", dependencies=[Depends(RoleChecker(["admin"]))])
 def admin_only_route():
     return APIResponse(data={"message": "You are an admin!"})
+

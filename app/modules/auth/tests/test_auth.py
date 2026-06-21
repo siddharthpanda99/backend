@@ -61,38 +61,54 @@ class TestAuthService:
         assert callable(auth_service.resend_verification)
 
     def test_forgot_password_returns_message(self):
+        from unittest.mock import MagicMock
         from common_lib.modules.auth.service import auth_service
 
-        result = auth_service.forgot_password("test@example.com")
+        session = MagicMock()
+        session.exec.return_value.first.return_value = None
+        result = auth_service.forgot_password(session, "test@example.com")
         assert isinstance(result, dict)
         assert "message" in result
         assert "test@example.com" in result["message"]
 
-    def test_reset_password_returns_message(self):
+    def test_reset_password_raises_on_invalid_token(self):
+        from unittest.mock import MagicMock
         from common_lib.modules.auth.service import auth_service
+        from common_lib.modules.exceptions import BadRequestError
 
-        result = auth_service.reset_password("token123", "newpassword")
-        assert isinstance(result, dict)
-        assert "message" in result
+        session = MagicMock()
+        session.exec.return_value.first.return_value = None
+        with pytest.raises(BadRequestError):
+            auth_service.reset_password(
+                session, "token123", "newpassword", get_password_hash=lambda p: p
+            )
 
     def test_logout_returns_message(self):
+        from unittest.mock import MagicMock
         from common_lib.modules.auth.service import auth_service
 
-        result = auth_service.logout("user-123")
+        session = MagicMock()
+        session.exec.return_value.all.return_value = []
+        result = auth_service.logout(session, 1)
         assert isinstance(result, dict)
         assert "message" in result
 
     def test_verify_email_returns_message(self):
+        from unittest.mock import MagicMock
         from common_lib.modules.auth.service import auth_service
 
-        result = auth_service.verify_email("token123")
-        assert isinstance(result, dict)
-        assert "message" in result
+        session = MagicMock()
+        session.exec.return_value.first.return_value = None
+        with pytest.raises(Exception):
+            auth_service.verify_email(session, "token123")
 
     def test_resend_verification_returns_message(self):
+        from unittest.mock import MagicMock
         from common_lib.modules.auth.service import auth_service
 
-        result = auth_service.resend_verification("test@example.com")
+        session = MagicMock()
+        session.exec.return_value.first.return_value = None
+        result = auth_service.resend_verification(session, "test@example.com")
         assert isinstance(result, dict)
         assert "message" in result
 
@@ -160,10 +176,136 @@ class TestAuthSchemasFields:
 class TestAuthServiceErrors:
     """Tests for error handling in auth service"""
 
-    def test_refresh_access_token_raises_not_implemented(self):
+    def test_refresh_access_token_raises_error(self):
+        from unittest.mock import MagicMock
         from common_lib.modules.auth.service import auth_service
-        from fastapi import HTTPException
 
-        with pytest.raises(HTTPException) as exc_info:
-            auth_service.refresh_access_token("refresh_token")
-        assert exc_info.value.status_code == 501
+        session = MagicMock()
+        session.exec.return_value.first.return_value = None
+        with pytest.raises(Exception):
+            auth_service.refresh_access_token(
+                session, "refresh_token", lambda **kw: "token"
+            )
+
+
+from unittest.mock import patch
+
+class TestAuthRoutes:
+    """E2E/Integration tests for auth routes using TestClient."""
+
+    @pytest.fixture(autouse=True)
+    def setup_client(self):
+        from fastapi.testclient import TestClient
+        from app.main import app
+        self.client = TestClient(app)
+
+    @patch("common_lib.modules.auth.service.auth_service.authenticate_user")
+    def test_login_route_success(self, mock_auth):
+        from common_lib.modules.auth.schemas import TokenResponse
+        mock_auth.return_value = TokenResponse(
+            access_token="mock_access", refresh_token="mock_refresh", expires_in=1800
+        )
+        resp = self.client.post("/api/v1/auth/login", json={"email": "t@example.com", "password": "password"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        assert data["data"]["access_token"] == "mock_access"
+
+    @patch("common_lib.modules.auth.service.auth_service.register_user")
+    def test_register_route_success(self, mock_register):
+        from common_lib.modules.auth.schemas import UserResponse
+        mock_register.return_value = UserResponse(
+            id="1", email="t@example.com", username="t", full_name="T", is_active=True
+        )
+        resp = self.client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "t@example.com",
+                "username": "t",
+                "password": "password",
+                "confirm_password": "password",
+                "full_name": "T",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        assert data["data"]["email"] == "t@example.com"
+
+    def test_register_password_mismatch(self):
+        resp = self.client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "t@example.com",
+                "username": "t",
+                "password": "password",
+                "confirm_password": "mismatch",
+                "full_name": "T",
+            },
+        )
+        assert resp.status_code == 400
+        assert "Passwords do not match" in (resp.json().get("detail") or resp.json().get("message") or "")
+
+    @patch("common_lib.modules.auth.service.auth_service.refresh_access_token")
+    def test_refresh_token_route(self, mock_refresh):
+        from common_lib.modules.auth.schemas import TokenResponse
+        mock_refresh.return_value = TokenResponse(
+            access_token="new_access", refresh_token="new_refresh", expires_in=1800
+        )
+        resp = self.client.post("/api/v1/auth/refresh-token", json={"refresh_token": "old_refresh"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["data"]["access_token"] == "new_access"
+
+    @patch("common_lib.modules.auth.service.auth_service.forgot_password")
+    def test_forgot_password_route(self, mock_forgot):
+        mock_forgot.return_value = {"message": "sent"}
+        resp = self.client.post("/api/v1/auth/forgot-password", json={"email": "t@example.com"})
+        assert resp.status_code == 200
+        assert resp.json()["data"]["message"] == "sent"
+
+    @patch("common_lib.modules.auth.service.auth_service.reset_password")
+    def test_reset_password_route(self, mock_reset):
+        mock_reset.return_value = {"message": "reset"}
+        resp = self.client.post(
+            "/api/v1/auth/reset-password",
+            json={"token": "tok", "new_password": "pass", "confirm_password": "pass"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["message"] == "reset"
+
+    @patch("common_lib.modules.auth.service.auth_service.verify_email")
+    def test_verify_email_route(self, mock_verify):
+        mock_verify.return_value = {"message": "verified"}
+        resp = self.client.post("/api/v1/auth/verify-email", json={"token": "tok"})
+        assert resp.status_code == 200
+        assert resp.json()["data"]["message"] == "verified"
+
+    @patch("common_lib.modules.auth.service.auth_service.resend_verification")
+    def test_resend_verification_route(self, mock_resend):
+        mock_resend.return_value = {"message": "resent"}
+        resp = self.client.post("/api/v1/auth/resend-verification", json={"email": "t@example.com"})
+        assert resp.status_code == 200
+        assert resp.json()["data"]["message"] == "resent"
+
+    def test_me_route_authenticated(self):
+        from common_lib.modules.users.models import User
+        from app.main import app
+        from app.modules.auth.dependencies import get_current_active_user
+
+        mock_user = User(
+            id=42,
+            email="me@example.com",
+            username="me",
+            full_name="Me",
+            is_active=True,
+        )
+        app.dependency_overrides[get_current_active_user] = lambda: mock_user
+        try:
+            resp = self.client.get("/api/v1/auth/me")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["data"]["email"] == "me@example.com"
+        finally:
+            app.dependency_overrides.clear()
+

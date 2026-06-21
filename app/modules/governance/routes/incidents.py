@@ -1,6 +1,10 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from common_lib.modules.governance.incidents.service import get_incident_service
+from datetime import datetime
+from sqlmodel import Session, select
+from common_lib.modules.data_storage.database.connection import get_session
+from common_lib.modules.governance.db_models import GovernanceIncident
+import json
 
 router = APIRouter(prefix="/incidents", tags=["Governance - Incidents"])
 
@@ -12,74 +16,70 @@ class IncidentCreate(BaseModel):
     description: str = ""
 
 
+def _incident_to_dict(i: GovernanceIncident) -> dict:
+    return {
+        "incident_id": i.id,
+        "title": i.title,
+        "description": i.description,
+        "severity": i.severity,
+        "incident_type": i.incident_type,
+        "status": i.status,
+        "agent_id": i.reported_by,
+        "reported_by": i.reported_by,
+        "assigned_to": i.assigned_to,
+        "detected_at": i.created_at.isoformat() if i.created_at else None,
+        "remediated_at": i.resolved_at.isoformat() if i.resolved_at else None,
+        "created_at": i.created_at.isoformat() if i.created_at else None,
+        "updated_at": i.updated_at.isoformat() if i.updated_at else None,
+    }
+
+
 @router.get("")
-def list_incidents():
-    svc = get_incident_service()
-    items = svc.list_incidents()
-    result = []
-    for item in items:
-        d = {"incident_id": getattr(item, "incident_id", "")}
-        for attr in [
-            "incident_type",
-            "severity",
-            "agent_id",
-            "description",
-            "status",
-            "containment_action",
-            "detected_at",
-            "remediated_at",
-        ]:
-            if hasattr(item, attr):
-                d[attr] = getattr(item, attr)
-        result.append(d)
-    return result
+def list_incidents(session: Session = Depends(get_session)):
+    items = session.exec(select(GovernanceIncident)).all()
+    return [_incident_to_dict(i) for i in items]
 
 
 @router.post("")
-def create_incident(body: IncidentCreate):
-    svc = get_incident_service()
-    item = svc.create(
-        body.incident_type, body.severity, body.agent_id, body.description
+def create_incident(body: IncidentCreate, session: Session = Depends(get_session)):
+    incident = GovernanceIncident(
+        title=f"{body.incident_type} - {body.agent_id}",
+        description=body.description,
+        severity=body.severity,
+        incident_type=body.incident_type,
+        status="open",
+        reported_by=body.agent_id,
     )
-    d = {"incident_id": getattr(item, "incident_id", "")}
-    for attr in [
-        "incident_type",
-        "severity",
-        "agent_id",
-        "description",
-        "status",
-        "containment_action",
-        "detected_at",
-        "remediaton_at",
-    ]:
-        if hasattr(item, attr):
-            d[attr] = getattr(item, attr)
-    return d
+    session.add(incident)
+    session.commit()
+    session.refresh(incident)
+    return _incident_to_dict(incident)
 
 
 @router.post("/{incident_id}/{status}")
-def update_incident_status(incident_id: str, status: str):
-    svc = get_incident_service()
-    if status in ("contain", "contained"):
-        svc.contain(incident_id)
-    elif status == "remediated":
-        svc.remediate(incident_id)
-    elif status == "recovered":
-        svc.recover(incident_id)
-    elif status == "closed":
-        svc.close(incident_id)
-    item = svc.get(incident_id)
-    d = {"incident_id": incident_id, "status": status}
-    if item:
-        for attr in [
-            "incident_type",
-            "severity",
-            "agent_id",
-            "description",
-            "containment_action",
-            "detected_at",
-            "remediaton_at",
-        ]:
-            if hasattr(item, attr):
-                d[attr] = getattr(item, attr)
-    return d
+def update_incident_status(
+    incident_id: int, status: str, session: Session = Depends(get_session)
+):
+    incident = session.exec(
+        select(GovernanceIncident).where(GovernanceIncident.id == incident_id)
+    ).first()
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    valid_transitions = {"contain", "contained", "remediated", "recovered", "closed"}
+    if status in valid_transitions:
+        if status in ("contain", "contained"):
+            incident.status = "contained"
+        elif status == "remediated":
+            incident.status = "remediated"
+            incident.resolved_at = datetime.utcnow()
+        elif status == "recovered":
+            incident.status = "recovered"
+        elif status == "closed":
+            incident.status = "closed"
+        incident.updated_at = datetime.utcnow()
+        session.add(incident)
+        session.commit()
+        session.refresh(incident)
+
+    return _incident_to_dict(incident)

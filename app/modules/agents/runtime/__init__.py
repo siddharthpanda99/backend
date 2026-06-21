@@ -1,6 +1,6 @@
 """
 agents/runtime/__init__.py
-"""
-from app.modules.agents.runtime.routes import router
 
-__all__ = ["router"]
+Route files moved to agents/routes/.
+Re-export removed to avoid circular import.
+"""

@@ -1,7 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from common_lib.modules.governance.tools.service import get_tool_service
-from common_lib.modules.governance.models.tools import ToolDefinition
+from datetime import datetime
+from sqlmodel import Session, select
+from common_lib.modules.data_storage.database.connection import get_session
+from common_lib.modules.governance.db_models import GovernanceTool
+import json
 
 router = APIRouter(prefix="/tools", tags=["Governance - Tools"])
 
@@ -40,79 +43,104 @@ class ToolUpdate(BaseModel):
     status: str = ""
 
 
-class ValidateInvocationRequest(BaseModel):
-    agent_id: str
-    parameters: dict = {}
-    environment: str = "development"
+def _tool_to_dict(t: GovernanceTool) -> dict:
+    extras = (
+        json.loads(t.extras_json) if hasattr(t, "extras_json") and t.extras_json else {}
+    )
+    allowed = json.loads(t.allowed_roles_json) if t.allowed_roles_json else ["admin"]
+    return {
+        "tool_id": t.tool_id,
+        "name": t.name,
+        "description": t.description or "",
+        "risk_level": t.risk_level,
+        "enabled": t.enabled,
+        "allowed_agents": allowed,
+        "owner": extras.get("owner", ""),
+        "version": extras.get("version", "1.0.0"),
+        "category": extras.get("category", "general"),
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+        "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+    }
 
 
 @router.get("")
-def list_tools():
-    svc = get_tool_service()
-    return [t.to_dict() for t in svc.list_tools()]
+def list_tools(session: Session = Depends(get_session)):
+    items = session.exec(select(GovernanceTool)).all()
+    return [_tool_to_dict(t) for t in items]
 
 
 @router.post("")
-def register_tool(body: ToolCreate):
-    svc = get_tool_service()
-    tool = ToolDefinition(
+def register_tool(body: ToolCreate, session: Session = Depends(get_session)):
+    existing = session.exec(
+        select(GovernanceTool).where(GovernanceTool.tool_id == body.tool_id)
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Tool already exists")
+    tool = GovernanceTool(
         tool_id=body.tool_id,
-        name=body.name,
+        name=body.name or body.tool_id,
         description=body.description,
-        owner=body.owner,
-        version=body.version,
         risk_level=body.risk_level,
-        category=body.category,
-        resource_type=body.resource_type,
-        side_effects=body.side_effects,
-        reversible=body.reversible,
-        idempotent=body.idempotent,
-        data_classification=body.data_classification,
-        rate_limits=body.rate_limits,
-        parameter_rules=body.parameter_rules,
-        audit_level=body.audit_level,
-        approved_for_agents=body.approved_for_agents,
-        status=body.status,
+        allowed_roles_json=json.dumps(body.approved_for_agents),
+        enabled=(body.status == "active"),
     )
-    result = svc.register(tool)
-    return result.to_dict()
+    session.add(tool)
+    session.commit()
+    session.refresh(tool)
+    return _tool_to_dict(tool)
 
 
 @router.get("/{tool_id}")
-def get_tool(tool_id: str):
-    svc = get_tool_service()
-    result = svc.get(tool_id)
-    if not result:
+def get_tool(tool_id: str, session: Session = Depends(get_session)):
+    tool = session.exec(
+        select(GovernanceTool).where(GovernanceTool.tool_id == tool_id)
+    ).first()
+    if not tool:
         raise HTTPException(status_code=404, detail="Tool not found")
-    return result.to_dict()
+    return _tool_to_dict(tool)
 
 
 @router.put("/{tool_id}")
-def update_tool(tool_id: str, body: ToolUpdate):
-    svc = get_tool_service()
-    existing = svc.get(tool_id)
-    if not existing:
+def update_tool(
+    tool_id: str, body: ToolUpdate, session: Session = Depends(get_session)
+):
+    tool = session.exec(
+        select(GovernanceTool).where(GovernanceTool.tool_id == tool_id)
+    ).first()
+    if not tool:
         raise HTTPException(status_code=404, detail="Tool not found")
-    for field, val in body.model_dump(exclude_unset=True).items():
-        if val is not None and hasattr(existing, field):
-            setattr(existing, field, val)
-    svc.update(existing)
-    return existing.to_dict()
+    if body.name:
+        tool.name = body.name
+    if body.description:
+        tool.description = body.description
+    if body.risk_level:
+        tool.risk_level = body.risk_level
+    if body.status:
+        tool.enabled = body.status == "active"
+    tool.updated_at = datetime.utcnow()
+    session.add(tool)
+    session.commit()
+    session.refresh(tool)
+    return _tool_to_dict(tool)
 
 
 @router.post("/{tool_id}/validate")
-def validate_invocation(tool_id: str, body: ValidateInvocationRequest):
-    svc = get_tool_service()
-    result = svc.validate_invocation(
-        body.agent_id,
-        tool_id,
-        body.parameters,
-        body.environment,
-    )
-    return result
+def validate_invocation(
+    tool_id: str, body: dict, session: Session = Depends(get_session)
+):
+    tool = session.exec(
+        select(GovernanceTool).where(GovernanceTool.tool_id == tool_id)
+    ).first()
+    if not tool:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    return {"tool_id": tool_id, "valid": tool.enabled, "risk_level": tool.risk_level}
 
 
 @router.get("/{tool_id}/risk")
-def get_tool_risk(tool_id: str):
-    svc = get_tool_service()
-    return svc.get_risk_classification(tool_id)
+def get_tool_risk(tool_id: str, session: Session = Depends(get_session)):
+    tool = session.exec(
+        select(GovernanceTool).where(GovernanceTool.tool_id == tool_id)
+    ).first()
+    if not tool:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    return {"tool_id": tool_id, "risk_level": tool.risk_level, "enabled": tool.enabled}

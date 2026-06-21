@@ -77,12 +77,15 @@ async def stream_agent_generator(
     current_provider = active_session.get("provider")
     current_model = active_session.get("model")
 
-    if (req_provider and req_provider != current_provider) or (req_model and req_model != current_model):
+    if (req_provider and req_provider != current_provider) or (
+        req_model and req_model != current_model
+    ):
         logger.info(
             f"[Streaming] Hot-swapping agent model/provider: "
             f"Current: {current_provider}/{current_model} -> Requested: {req_provider}/{req_model}"
         )
         from app.modules.agents.runtime.core.agent_loader import load_agent
+
         load_agent(
             model_path=req_model,
             provider=req_provider or "vllm",
@@ -97,7 +100,9 @@ async def stream_agent_generator(
         )
         active_session = get_active_session()
         # Keep agent_id in active_session
-        active_session["agent_id"] = agent_id or active_session.get("agent_id", "master_agent")
+        active_session["agent_id"] = agent_id or active_session.get(
+            "agent_id", "master_agent"
+        )
 
     agent = get_master_agent()
     trace_recorder = TraceRecorder(common_memory)
@@ -257,7 +262,7 @@ async def stream_agent_generator(
 
             # ── DB SYNC: Hydrate AgentSession & SessionState ──────────────────
             try:
-                from app.modules.agents.runtime.session_routes import get_db_session
+                from app.modules.agents.routes.session_routes import get_db_session
                 from app.modules.agents.runtime.session_models import (
                     AgentSession,
                     SessionState,

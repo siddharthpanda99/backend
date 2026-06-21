@@ -46,11 +46,20 @@ async def list_connections(
     search: Optional[str] = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
+    app_id: Optional[str] = Query(None),
 ):
-    return ConnectionService.list_connections(
+    res = ConnectionService.list_connections(
         user_id=user_id, connector_id=connector_id, status=status,
         search=search, offset=offset, limit=limit,
     )
+    if app_id:
+        filtered = [
+            item for item in res.items
+            if item.metadata_json and item.metadata_json.get("app_id") == app_id
+        ]
+        res.items = filtered
+        res.total = len(filtered)
+    return res
 
 
 @router.get("/{connection_id}", response_model=ConnectionResponse)

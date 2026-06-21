@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from common_lib.modules.governance.rbac.service import get_rbac_service
-from common_lib.modules.governance.models.permissions import Delegation
+from datetime import datetime
+from sqlmodel import Session, select
+from common_lib.modules.data_storage.database.connection import get_session
+from common_lib.modules.governance.db_models import GovernanceDelegation
 
 router = APIRouter(prefix="/delegations", tags=["Governance - Delegation"])
 
@@ -17,97 +19,69 @@ class DelegationCreate(BaseModel):
     max_invocations: int = 0
 
 
+def _delegation_to_dict(d: GovernanceDelegation) -> dict:
+    return {
+        "delegation_id": d.id,
+        "delegating_agent": d.delegator_id,
+        "delegatee_agent": d.delegate_id,
+        "task_id": d.role_name,
+        "permissions_granted": [d.role_name],
+        "constraints": {},
+        "created_at": d.created_at.isoformat() if d.created_at else None,
+        "expires_at": d.expires_at.isoformat() if d.expires_at else None,
+        "max_invocations": 0,
+        "invocation_count": 0,
+        "revoked": not d.is_active,
+    }
+
+
 @router.get("")
-def list_delegations():
-    svc = get_rbac_service()
-    items = []
-    if hasattr(svc, "_delegations"):
-        items = list(svc._delegations.values())
-    result = []
-    for d in items:
-        entry = {}
-        for attr in [
-            "delegation_id",
-            "delegating_agent",
-            "delegatee_agent",
-            "task_id",
-            "permissions_granted",
-            "constraints",
-            "created_at",
-            "expires_at",
-            "max_invocations",
-            "invocation_count",
-            "revoked",
-        ]:
-            if hasattr(d, attr):
-                entry[attr] = getattr(d, attr)
-        result.append(entry)
-    return result
+def list_delegations(session: Session = Depends(get_session)):
+    items = session.exec(select(GovernanceDelegation)).all()
+    return [_delegation_to_dict(d) for d in items]
 
 
 @router.post("")
-def create_delegation(body: DelegationCreate):
-    svc = get_rbac_service()
-    delegation = Delegation(
-        delegation_id=body.delegation_id,
-        delegating_agent=body.delegating_agent,
-        delegatee_agent=body.delegatee_agent,
-        task_id=body.task_id,
-        permissions_granted=body.permissions_granted,
-        constraints=body.constraints,
-        expires_at=body.expires_at,
-        max_invocations=body.max_invocations,
+def create_delegation(body: DelegationCreate, session: Session = Depends(get_session)):
+    delegation = GovernanceDelegation(
+        delegator_id=body.delegating_agent,
+        delegate_id=body.delegatee_agent,
+        role_name=body.task_id or "default",
+        is_active=True,
     )
-    result = svc.create_delegation(delegation)
-    d = {}
-    for attr in [
-        "delegation_id",
-        "delegating_agent",
-        "delegatee_agent",
-        "task_id",
-        "permissions_granted",
-        "constraints",
-        "created_at",
-        "expires_at",
-        "max_invocations",
-        "invocation_count",
-        "revoked",
-    ]:
-        if hasattr(result, attr):
-            d[attr] = getattr(result, attr)
-    return d
+    if body.expires_at:
+        try:
+            delegation.expires_at = datetime.fromisoformat(body.expires_at)
+        except (ValueError, TypeError):
+            pass
+    session.add(delegation)
+    session.commit()
+    session.refresh(delegation)
+    return _delegation_to_dict(delegation)
 
 
 @router.post("/{delegation_id}/revoke")
-def revoke_delegation(delegation_id: str):
-    svc = get_rbac_service()
-    success = svc.revoke_delegation(delegation_id)
-    if not success:
+def revoke_delegation(delegation_id: int, session: Session = Depends(get_session)):
+    delegation = session.exec(
+        select(GovernanceDelegation).where(GovernanceDelegation.id == delegation_id)
+    ).first()
+    if not delegation:
         raise HTTPException(status_code=404, detail="Delegation not found")
+    delegation.is_active = False
+    session.add(delegation)
+    session.commit()
     return {"success": True}
 
 
 @router.get("/check")
-def check_delegation(agent_id: str, task_id: str):
-    svc = get_rbac_service()
-    result = svc.check_delegation(agent_id, task_id)
-    if not result:
-        return {"active": False}
-    d = {
-        "active": not result.revoked
-        and not result.is_expired()
-        and not result.is_exhausted()
-    }
-    for attr in [
-        "delegation_id",
-        "delegating_agent",
-        "delegatee_agent",
-        "task_id",
-        "permissions_granted",
-        "expires_at",
-        "max_invocations",
-        "invocation_count",
-    ]:
-        if hasattr(result, attr):
-            d[attr] = getattr(result, attr)
-    return d
+def check_delegation(
+    agent_id: str, task_id: str, session: Session = Depends(get_session)
+):
+    items = session.exec(
+        select(GovernanceDelegation).where(
+            GovernanceDelegation.delegate_id == agent_id,
+            GovernanceDelegation.role_name == task_id,
+            GovernanceDelegation.is_active == True,
+        )
+    ).all()
+    return {"active": len(items) > 0, "delegations": len(items)}

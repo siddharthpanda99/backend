@@ -1,9 +1,12 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from common_lib.modules.governance.memory_gov.service import (
-    get_memory_governance_service,
+from sqlmodel import Session, select
+from common_lib.modules.data_storage.database.connection import get_session
+from common_lib.modules.governance.db_models import (
+    GovernanceMemoryNamespace,
+    GovernanceMemoryRecord,
 )
-from common_lib.modules.governance.models.memory import MemoryNamespace, MemoryRecord
+import json
 
 router = APIRouter(prefix="/memory-gov", tags=["Governance - Memory Governance"])
 
@@ -32,167 +35,150 @@ class WriteRecordRequest(BaseModel):
     provenance: dict = {}
 
 
+def _ns_to_dict(ns: GovernanceMemoryNamespace) -> dict:
+    return {
+        "id": ns.namespace_id,
+        "name": ns.name,
+        "owner": ns.owner,
+        "classification": ns.classification,
+        "allowed_agents": json.loads(ns.allowed_agents) if ns.allowed_agents else {},
+        "retention_policy": json.loads(ns.retention_policy)
+        if ns.retention_policy
+        else {},
+    }
+
+
+def _rec_to_dict(r: GovernanceMemoryRecord) -> dict:
+    return {
+        "memory_id": r.memory_id,
+        "namespace": r.namespace,
+        "memory_type": r.memory_type,
+        "key": r.key,
+        "content_hash": r.content_hash,
+        "data_classification": r.data_classification,
+        "provenance": json.loads(r.provenance) if r.provenance else {},
+        "quarantined": r.quarantined,
+    }
+
+
 @router.get("/namespaces")
-def list_namespaces():
-    svc = get_memory_governance_service()
-    items = svc.list_namespaces()
-    result = []
-    for ns in items:
-        d = {}
-        for attr in [
-            "id",
-            "name",
-            "owner",
-            "classification",
-            "allowed_agents",
-            "retention_policy",
-        ]:
-            if hasattr(ns, attr):
-                d[attr] = (
-                    getattr(ns, attr)
-                    if not isinstance(getattr(ns, attr), (MemoryNamespace,))
-                    else str(getattr(ns, attr))
-                )
-        result.append(d)
-    return result
+def list_namespaces(session: Session = Depends(get_session)):
+    items = session.exec(select(GovernanceMemoryNamespace)).all()
+    return [_ns_to_dict(ns) for ns in items]
 
 
 @router.post("/namespaces")
-def create_namespace(body: NamespaceCreate):
-    svc = get_memory_governance_service()
-    ns = MemoryNamespace(
-        id=body.id,
+def create_namespace(body: NamespaceCreate, session: Session = Depends(get_session)):
+    existing = session.exec(
+        select(GovernanceMemoryNamespace).where(
+            GovernanceMemoryNamespace.namespace_id == body.id
+        )
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Namespace already exists")
+    ns = GovernanceMemoryNamespace(
+        namespace_id=body.id,
         name=body.name,
         owner=body.owner,
         classification=body.classification,
-        allowed_agents=body.allowed_agents,
-        retention_policy=body.retention_policy,
+        allowed_agents=json.dumps(body.allowed_agents),
+        retention_policy=json.dumps(body.retention_policy),
     )
-    result = svc.define_namespace(ns)
-    d = {}
-    for attr in [
-        "id",
-        "name",
-        "owner",
-        "classification",
-        "allowed_agents",
-        "retention_policy",
-    ]:
-        if hasattr(result, attr):
-            d[attr] = getattr(result, attr)
-    return d
+    session.add(ns)
+    session.commit()
+    session.refresh(ns)
+    return _ns_to_dict(ns)
 
 
 @router.get("/namespaces/{ns_id}")
-def get_namespace(ns_id: str):
-    svc = get_memory_governance_service()
-    result = svc.get_namespace(ns_id)
-    if not result:
+def get_namespace(ns_id: str, session: Session = Depends(get_session)):
+    ns = session.exec(
+        select(GovernanceMemoryNamespace).where(
+            GovernanceMemoryNamespace.namespace_id == ns_id
+        )
+    ).first()
+    if not ns:
         raise HTTPException(status_code=404, detail="Namespace not found")
-    d = {}
-    for attr in [
-        "id",
-        "name",
-        "owner",
-        "classification",
-        "allowed_agents",
-        "retention_policy",
-    ]:
-        if hasattr(result, attr):
-            d[attr] = getattr(result, attr)
-    return d
+    return _ns_to_dict(ns)
 
 
 @router.post("/namespaces/{ns_id}/check")
-def check_namespace_access(ns_id: str, body: CheckAccessRequest):
-    svc = get_memory_governance_service()
-    return svc.check_access(body.agent_id, ns_id, body.access_type)
+def check_namespace_access(
+    ns_id: str, body: CheckAccessRequest, session: Session = Depends(get_session)
+):
+    ns = session.exec(
+        select(GovernanceMemoryNamespace).where(
+            GovernanceMemoryNamespace.namespace_id == ns_id
+        )
+    ).first()
+    if not ns:
+        raise HTTPException(status_code=404, detail="Namespace not found")
+    allowed = json.loads(ns.allowed_agents) if ns.allowed_agents else {}
+    has_access = body.agent_id in allowed.get(
+        "readers", []
+    ) or body.agent_id in allowed.get("writers", [])
+    return {"access": has_access}
 
 
 @router.get("/namespaces/{ns_id}/records")
-def query_namespace_records(ns_id: str):
-    svc = get_memory_governance_service()
-    items = svc.query_namespace(ns_id)
-    result = []
-    for r in items:
-        d = {}
-        for attr in [
-            "memory_id",
-            "namespace",
-            "memory_type",
-            "key",
-            "content_hash",
-            "data_classification",
-            "provenance",
-            "quarantined",
-        ]:
-            if hasattr(r, attr):
-                d[attr] = getattr(r, attr)
-        result.append(d)
-    return result
+def query_namespace_records(ns_id: str, session: Session = Depends(get_session)):
+    items = session.exec(
+        select(GovernanceMemoryRecord).where(GovernanceMemoryRecord.namespace == ns_id)
+    ).all()
+    return [_rec_to_dict(r) for r in items]
 
 
 @router.post("/namespaces/{ns_id}/records")
-def write_namespace_record(ns_id: str, body: WriteRecordRequest):
-    svc = get_memory_governance_service()
-    record = MemoryRecord(
-        memory_id=body.memory_id,
+def write_namespace_record(
+    ns_id: str, body: WriteRecordRequest, session: Session = Depends(get_session)
+):
+    ns = session.exec(
+        select(GovernanceMemoryNamespace).where(
+            GovernanceMemoryNamespace.namespace_id == ns_id
+        )
+    ).first()
+    if not ns:
+        raise HTTPException(status_code=404, detail="Namespace not found")
+    if body.memory_id:
+        existing = session.exec(
+            select(GovernanceMemoryRecord).where(
+                GovernanceMemoryRecord.memory_id == body.memory_id
+            )
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Record already exists")
+    record = GovernanceMemoryRecord(
+        memory_id=body.memory_id or f"rec_{ns_id}_{body.key}",
         namespace=body.namespace,
         memory_type=body.memory_type,
         key=body.key,
         content_hash=body.content_hash,
         data_classification=body.data_classification,
-        provenance=body.provenance,
+        provenance=json.dumps(body.provenance),
     )
-    result = svc.write_record(record)
-    d = {}
-    for attr in [
-        "memory_id",
-        "namespace",
-        "memory_type",
-        "key",
-        "content_hash",
-        "data_classification",
-        "provenance",
-        "quarantined",
-    ]:
-        if hasattr(result, attr):
-            d[attr] = getattr(result, attr)
-    return d
+    session.add(record)
+    session.commit()
+    session.refresh(record)
+    return _rec_to_dict(record)
 
 
 @router.get("/namespaces/{ns_id}/records/{key}")
-def read_namespace_record(ns_id: str, key: str):
-    svc = get_memory_governance_service()
-    result = svc.read_record(ns_id, key)
-    if not result:
+def read_namespace_record(
+    ns_id: str, key: str, session: Session = Depends(get_session)
+):
+    r = session.exec(
+        select(GovernanceMemoryRecord).where(
+            GovernanceMemoryRecord.namespace == ns_id,
+            GovernanceMemoryRecord.key == key,
+        )
+    ).first()
+    if not r:
         raise HTTPException(status_code=404, detail="Record not found")
-    d = {}
-    for attr in [
-        "memory_id",
-        "namespace",
-        "memory_type",
-        "key",
-        "content_hash",
-        "data_classification",
-        "provenance",
-        "quarantined",
-    ]:
-        if hasattr(result, attr):
-            d[attr] = getattr(result, attr)
-    return d
+    return _rec_to_dict(r)
 
 
 @router.post("/validate-provenance")
-def validate_provenance(body: WriteRecordRequest):
-    svc = get_memory_governance_service()
-    record = MemoryRecord(
-        memory_id=body.memory_id,
-        namespace=body.namespace,
-        memory_type=body.memory_type,
-        key=body.key,
-        content_hash=body.content_hash,
-        data_classification=body.data_classification,
-        provenance=body.provenance,
-    )
-    return svc.validate_provenance(record)
+def validate_provenance(
+    body: WriteRecordRequest, session: Session = Depends(get_session)
+):
+    return {"valid": bool(body.provenance.get("source"))}

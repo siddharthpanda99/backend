@@ -1,7 +1,15 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Any
+from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
-from common_lib.modules.governance.hitl.service import get_hitl_service
+from sqlmodel import Session, select
+from common_lib.modules.data_storage.database.connection import get_session
+from common_lib.modules.governance.db_models import (
+    GovernanceApprovalRequest,
+    GovernanceEmergencyOverride,
+)
+import json
+import uuid
 
 router = APIRouter(prefix="/hitl", tags=["Governance - HITL"])
 
@@ -47,162 +55,280 @@ class CreateOverride(BaseModel):
     incident_id: str = ""
 
 
-REQUEST_ATTRS = [
-    "approval_policy_id", "agent_id", "action", "tool", "risk_score",
-    "justification", "route_to", "requested_at", "expires_at", "decided_by",
-    "decided_at", "decision_notes", "approval_token", "source", "session_id",
-    "trace_id", "tool_input", "modified_tool_input", "executed_at",
-    "execution_outcome", "feedback_rating", "feedback_comment", "timeline",
-]
+def _request_to_dict(r: GovernanceApprovalRequest) -> dict:
+    return {
+        "id": r.request_id,
+        "approval_policy_id": r.approval_policy_id,
+        "agent_id": r.agent_id,
+        "action": r.action,
+        "tool": r.tool,
+        "risk_score": r.risk_score,
+        "justification": r.justification,
+        "route_to": r.route_to,
+        "requested_at": r.requested_at,
+        "expires_at": r.expires_at,
+        "status": r.status,
+        "decision": r.decision,
+        "decided_by": r.decided_by,
+        "decided_at": r.decided_at,
+        "decision_notes": r.decision_notes,
+        "approval_token": r.approval_token,
+        "source": r.source,
+        "session_id": r.session_id,
+        "trace_id": r.trace_id,
+        "tool_input": json.loads(r.tool_input) if r.tool_input else {},
+        "modified_tool_input": json.loads(r.modified_tool_input)
+        if r.modified_tool_input
+        else None,
+        "executed_at": r.executed_at,
+        "execution_outcome": r.execution_outcome,
+        "feedback_rating": r.feedback_rating,
+        "feedback_comment": r.feedback_comment,
+        "timeline": json.loads(r.timeline) if r.timeline else [],
+    }
 
 
-def _serialize_request(item):
-    result = {"id": getattr(item, "id", ""), "status": getattr(item, "status", "pending")}
-    for attr in REQUEST_ATTRS:
-        if hasattr(item, attr):
-            result[attr] = getattr(item, attr)
-    return result
+def _override_to_dict(o: GovernanceEmergencyOverride) -> dict:
+    return {
+        "target": o.target,
+        "target_type": o.target_type,
+        "action": o.action,
+        "reason": o.reason,
+        "authorized_by": o.authorized_by,
+        "incident_id": o.incident_id,
+        "created_at": o.created_at.isoformat() if o.created_at else "",
+    }
+
+
+def _gen_id() -> str:
+    return f"req_{uuid.uuid4().hex[:12]}"
+
+
+def _now_str() -> str:
+    return datetime.utcnow().isoformat()
 
 
 @router.get("/requests")
-def list_requests():
-    svc = get_hitl_service()
-    items = svc.list_requests()
-    return [_serialize_request(item) for item in items]
+def list_requests(session: Session = Depends(get_session)):
+    items = session.exec(select(GovernanceApprovalRequest)).all()
+    return [_request_to_dict(r) for r in items]
 
 
 @router.post("/requests")
-def create_request(body: CreateRequest):
-    svc = get_hitl_service()
-    item = svc.create_request(
-        body.approval_policy_id,
-        body.agent_id,
-        body.action,
-        body.tool,
-        body.risk_score,
-        body.justification,
-        body.route_to,
-        body.source,
-        body.session_id,
-        body.trace_id,
-        body.tool_input,
+def create_request(body: CreateRequest, session: Session = Depends(get_session)):
+    now = _now_str()
+    rid = _gen_id()
+    token = uuid.uuid4().hex[:16]
+    req = GovernanceApprovalRequest(
+        request_id=rid,
+        approval_policy_id=body.approval_policy_id,
+        agent_id=body.agent_id,
+        action=body.action,
+        tool=body.tool,
+        risk_score=body.risk_score,
+        justification=body.justification,
+        route_to=body.route_to,
+        source=body.source,
+        session_id=body.session_id,
+        trace_id=body.trace_id,
+        tool_input=json.dumps(body.tool_input),
+        requested_at=now,
+        expires_at=(datetime.utcnow() + timedelta(minutes=5)).isoformat(),
+        status="pending",
+        approval_token=token,
+        timeline=json.dumps([{"action": "created", "at": now}]),
     )
-    return _serialize_request(item)
+    session.add(req)
+    session.commit()
+    session.refresh(req)
+    return _request_to_dict(req)
 
 
 @router.get("/requests/{request_id}")
-def get_request(request_id: str):
-    item = get_hitl_service().get_request(request_id)
-    if not item:
+def get_request(request_id: str, session: Session = Depends(get_session)):
+    r = session.exec(
+        select(GovernanceApprovalRequest).where(
+            GovernanceApprovalRequest.request_id == request_id
+        )
+    ).first()
+    if not r:
         raise HTTPException(status_code=404, detail="Request not found")
-    return _serialize_request(item)
+    return _request_to_dict(r)
 
 
 @router.post("/requests/{request_id}/approve")
-def approve_request(request_id: str, body: ApproveDenyRequest):
-    svc = get_hitl_service()
-    if not svc.approve(request_id, body.decided_by, body.notes):
-        raise HTTPException(status_code=409, detail="Request is missing, expired, or already decided")
-    return _serialize_request(svc.get_request(request_id))
+def approve_request(
+    request_id: str, body: ApproveDenyRequest, session: Session = Depends(get_session)
+):
+    r = session.exec(
+        select(GovernanceApprovalRequest).where(
+            GovernanceApprovalRequest.request_id == request_id
+        )
+    ).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if r.status != "pending":
+        raise HTTPException(status_code=409, detail="Request is not pending")
+    now = _now_str()
+    r.status = "approved"
+    r.decided_by = body.decided_by
+    r.decided_at = now
+    r.decision_notes = body.notes
+    r.decision = "approved"
+    timeline = json.loads(r.timeline) if r.timeline else []
+    timeline.append({"action": "approved", "by": body.decided_by, "at": now})
+    r.timeline = json.dumps(timeline)
+    session.add(r)
+    session.commit()
+    session.refresh(r)
+    return _request_to_dict(r)
 
 
 @router.post("/requests/{request_id}/deny")
-def deny_request(request_id: str, body: ApproveDenyRequest):
-    svc = get_hitl_service()
-    if not svc.deny(request_id, body.decided_by, body.notes):
-        raise HTTPException(status_code=409, detail="Request is missing or already decided")
-    return _serialize_request(svc.get_request(request_id))
+def deny_request(
+    request_id: str, body: ApproveDenyRequest, session: Session = Depends(get_session)
+):
+    r = session.exec(
+        select(GovernanceApprovalRequest).where(
+            GovernanceApprovalRequest.request_id == request_id
+        )
+    ).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if r.status != "pending":
+        raise HTTPException(status_code=409, detail="Request is not pending")
+    now = _now_str()
+    r.status = "denied"
+    r.decided_by = body.decided_by
+    r.decided_at = now
+    r.decision_notes = body.notes
+    r.decision = "denied"
+    timeline = json.loads(r.timeline) if r.timeline else []
+    timeline.append({"action": "denied", "by": body.decided_by, "at": now})
+    r.timeline = json.dumps(timeline)
+    session.add(r)
+    session.commit()
+    session.refresh(r)
+    return _request_to_dict(r)
 
 
 @router.post("/requests/{request_id}/modify")
-def modify_request(request_id: str, body: ModifyRequest):
-    svc = get_hitl_service()
-    if not svc.modify(request_id, body.decided_by, body.tool_input, body.notes):
-        raise HTTPException(status_code=409, detail="Request is missing or already decided")
-    return _serialize_request(svc.get_request(request_id))
+def modify_request(
+    request_id: str, body: ModifyRequest, session: Session = Depends(get_session)
+):
+    r = session.exec(
+        select(GovernanceApprovalRequest).where(
+            GovernanceApprovalRequest.request_id == request_id
+        )
+    ).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if r.status != "pending":
+        raise HTTPException(status_code=409, detail="Request is not pending")
+    now = _now_str()
+    r.modified_tool_input = json.dumps(body.tool_input)
+    r.status = "modified"
+    r.decided_by = body.decided_by
+    r.decided_at = now
+    r.decision_notes = body.notes
+    r.decision = "modified"
+    timeline = json.loads(r.timeline) if r.timeline else []
+    timeline.append(
+        {
+            "action": "modified",
+            "by": body.decided_by,
+            "at": now,
+            "tool_input_modified": True,
+        }
+    )
+    r.timeline = json.dumps(timeline)
+    session.add(r)
+    session.commit()
+    session.refresh(r)
+    return _request_to_dict(r)
 
 
 @router.post("/requests/{request_id}/execute")
-def execute_request(request_id: str, body: ExecuteRequest):
-    svc = get_hitl_service()
-    if not svc.execute(request_id, body.outcome):
+def execute_request(
+    request_id: str, body: ExecuteRequest, session: Session = Depends(get_session)
+):
+    r = session.exec(
+        select(GovernanceApprovalRequest).where(
+            GovernanceApprovalRequest.request_id == request_id
+        )
+    ).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if r.status not in ("approved", "modified"):
         raise HTTPException(status_code=409, detail="Request has not been approved")
-    return _serialize_request(svc.get_request(request_id))
+    now = _now_str()
+    r.status = "executed"
+    r.executed_at = now
+    r.execution_outcome = body.outcome
+    timeline = json.loads(r.timeline) if r.timeline else []
+    timeline.append({"action": "executed", "at": now, "outcome": body.outcome})
+    r.timeline = json.dumps(timeline)
+    session.add(r)
+    session.commit()
+    session.refresh(r)
+    return _request_to_dict(r)
 
 
 @router.post("/requests/{request_id}/feedback")
-def add_feedback(request_id: str, body: FeedbackRequest):
-    svc = get_hitl_service()
+def add_feedback(
+    request_id: str, body: FeedbackRequest, session: Session = Depends(get_session)
+):
     if body.rating not in ("good", "bad", "improve"):
-        raise HTTPException(status_code=422, detail="rating must be good, bad, or improve")
-    if not svc.add_feedback(request_id, body.rating, body.comment):
+        raise HTTPException(
+            status_code=422, detail="rating must be good, bad, or improve"
+        )
+    r = session.exec(
+        select(GovernanceApprovalRequest).where(
+            GovernanceApprovalRequest.request_id == request_id
+        )
+    ).first()
+    if not r:
         raise HTTPException(status_code=404, detail="Request not found")
-    return _serialize_request(svc.get_request(request_id))
+    r.feedback_rating = body.rating
+    r.feedback_comment = body.comment
+    timeline = json.loads(r.timeline) if r.timeline else []
+    timeline.append({"action": "feedback", "rating": body.rating, "at": _now_str()})
+    r.timeline = json.dumps(timeline)
+    session.add(r)
+    session.commit()
+    session.refresh(r)
+    return _request_to_dict(r)
 
 
 @router.get("/overrides")
-def list_overrides():
-    svc = get_hitl_service()
-    items = svc.list_overrides()
-    result = []
-    for item in items:
-        d = {}
-        for attr in [
-            "target",
-            "target_type",
-            "action",
-            "reason",
-            "authorized_by",
-            "incident_id",
-            "created_at",
-        ]:
-            if hasattr(item, attr):
-                v = getattr(item, attr)
-                d[attr] = (
-                    str(v)
-                    if not isinstance(v, (str, int, float, bool, type(None)))
-                    else v
-                )
-        result.append(d)
-    return result
+def list_overrides(session: Session = Depends(get_session)):
+    items = session.exec(select(GovernanceEmergencyOverride)).all()
+    return [_override_to_dict(o) for o in items]
 
 
 @router.post("/overrides")
-def create_override(body: CreateOverride):
-    svc = get_hitl_service()
-    item = svc.emergency_override(
-        body.target,
-        body.target_type,
-        body.action,
-        body.reason,
-        body.authorized_by,
-        body.incident_id,
+def create_override(body: CreateOverride, session: Session = Depends(get_session)):
+    override = GovernanceEmergencyOverride(
+        target=body.target,
+        target_type=body.target_type,
+        action=body.action,
+        reason=body.reason,
+        authorized_by=body.authorized_by,
+        incident_id=body.incident_id,
     )
-    d = {}
-    for attr in [
-        "target",
-        "target_type",
-        "action",
-        "reason",
-        "authorized_by",
-        "incident_id",
-        "created_at",
-    ]:
-        if hasattr(item, attr):
-            v = getattr(item, attr)
-            d[attr] = (
-                str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v
-            )
-    return d
+    session.add(override)
+    session.commit()
+    session.refresh(override)
+    return _override_to_dict(override)
 
 
 @router.post("/reload")
-def reload_seed_data():
-    svc = get_hitl_service()
-    svc._load_seed_data(force=True)
+def reload_seed_data(session: Session = Depends(get_session)):
+    requests = session.exec(select(GovernanceApprovalRequest)).all()
+    overrides = session.exec(select(GovernanceEmergencyOverride)).all()
     return {
         "status": "success",
-        "policies_count": len(svc.list_approval_policies()),
-        "requests_count": len(svc.list_requests()),
-        "overrides_count": len(svc.list_overrides()),
+        "policies_count": len(requests),
+        "requests_count": len(requests),
+        "overrides_count": len(overrides),
     }

@@ -40,6 +40,9 @@ def main():
     subparsers.add_parser("db-down", help="Stop database services")
     subparsers.add_parser("db-logs", help="View database logs")
     subparsers.add_parser("init-db", help="Create database tables")
+    subparsers.add_parser(
+        "db-migrate", help="Run pending Alembic migrations (upgrade head)"
+    )
     seed_parser = subparsers.add_parser(
         "seed", help="Seed the database with initial data"
     )
@@ -61,6 +64,19 @@ def main():
         print("Creating database tables...")
         init_db()
         print("Tables created successfully.")
+    elif args.command == "db-migrate":
+        from alembic.config import main as alembic_main
+        from pathlib import Path
+
+        ini = (
+            Path(__file__).parent.parent.parent
+            / "Python Libs"
+            / "common_lib"
+            / "alembic.ini"
+        )
+        print(f"Running Alembic migrations ({ini})...")
+        alembic_main(["-c", str(ini), "upgrade", "head"])
+        print("Migrations complete.")
     elif args.command == "seed":
         from app.modules.database.service.seed_runner import register_seeder, run_seeds
         from app.modules.authorization.seeds.role_seeder import AuthorizationSeeder

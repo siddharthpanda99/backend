@@ -34,7 +34,7 @@ def list_executions(
     data: List[Dict[str, Any]] = [r.model_dump() for r in results]
 
     try:
-        from app.modules.workflows.routes.combinatorial import _execution_store
+        from common_lib.modules.workflows.combinatorial_service import _execution_store
 
         for eid, record in _execution_store.items():
             data.append(

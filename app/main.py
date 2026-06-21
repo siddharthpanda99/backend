@@ -41,8 +41,8 @@ from app.modules.authorization.routes.permissions import router as permissions_r
 from app.modules.users.routes.users import router as users_router
 from app.modules.projects.routes.projects import router as projects_router
 from app.modules.agents.routes.index import router as agents_router
-from app.modules.agents.runtime.pipeline_routes import router as pipeline_router
-from app.modules.agents.runtime.policy_routes import router as policy_router
+from app.modules.agents.routes.pipeline_routes import router as pipeline_router
+from app.modules.agents.routes.policy_routes import router as policy_router
 from app.modules.entities.routes.registry import router as entities_router
 from app.modules.entities.instance_routes import router as entity_instances_router
 from app.modules.workflows.routes.index import router as workflows_router
@@ -62,7 +62,11 @@ from app.modules.plugins.routes.router import router as plugins_router
 from app.modules.daw.routes import router as daw_router
 from app.modules.hooks.routes import router as hooks_router
 from app.modules.webhooks import router as webhooks_router
+from app.modules.app_builder.forms import router as forms_router
+from app.modules.app_builder.features import router as features_router
 from app.modules.connection_health import router as connection_health_router
+from app.modules.app_builder.ecosystem import router as ecosystem_router
+from app.modules.app_builder import router as builder_router
 from app.modules.dashboard.routes import router as dashboard_router
 from app.modules.system.routes import router as system_router
 from app.modules.settings.routes import router as settings_router
@@ -1164,12 +1168,52 @@ def create_app() -> FastAPI:
     )
 
     print(
+        f"Startup: Including Form Builder router with prefix: {settings.API_V1_STR}/forms"
+    )
+    app.include_router(
+        forms_router,
+        prefix=f"{settings.API_V1_STR}/forms",
+        tags=["Form Builder"],
+        dependencies=global_deps,
+    )
+
+    print(
+        f"Startup: Including Feature Picker router with prefix: {settings.API_V1_STR}/features"
+    )
+    app.include_router(
+        features_router,
+        prefix=f"{settings.API_V1_STR}/features",
+        tags=["Feature Picker"],
+        dependencies=global_deps,
+    )
+
+    print(
         f"Startup: Including Connection Health router with prefix: {settings.API_V1_STR}/connection-health"
     )
     app.include_router(
         connection_health_router,
         prefix=f"{settings.API_V1_STR}",
         tags=["Connection Health"],
+        dependencies=global_deps,
+    )
+
+    print(
+        f"Startup: Including Ecosystem router with prefix: {settings.API_V1_STR}/ecosystem"
+    )
+    app.include_router(
+        ecosystem_router,
+        prefix=f"{settings.API_V1_STR}/ecosystem",
+        tags=["App Ecosystem"],
+        dependencies=global_deps,
+    )
+
+    print(
+        f"Startup: Including Builder router with prefix: {settings.API_V1_STR}/builder"
+    )
+    app.include_router(
+        builder_router,
+        prefix=f"{settings.API_V1_STR}",
+        tags=["UI Builder"],
         dependencies=global_deps,
     )
 
@@ -1535,7 +1579,7 @@ def create_app() -> FastAPI:
     )
 
     # Schema Builder API (tables, relationships, migrations, DDL, models)
-    from app.modules.schema.routes import router as schema_router
+    from app.modules.app_builder.schema import router as schema_router
 
     print(
         f"Startup: Including Schema Builder router with prefix: {settings.API_V1_STR}/schema"
@@ -1712,7 +1756,7 @@ def create_app() -> FastAPI:
     )
 
     # SD News API (article archive and browsing)
-    from app.modules.scheduler.news_routes import router as sd_news_router
+    from app.modules.scheduler.routes.news_routes import router as sd_news_router
 
     print(
         f"Startup: Including SD News router with prefix: {settings.API_V1_STR}/sd-news"

@@ -228,7 +228,10 @@ async def query_nodes(
 
             # Capability filter
             if capability:
-                caps = [str(c).lower() for c in node.get("capabilities", node.get("tags", []))]
+                caps = [
+                    str(c).lower()
+                    for c in node.get("capabilities", node.get("tags", []))
+                ]
                 cap_lower = capability.lower()
                 if (
                     cap_lower not in caps
@@ -325,7 +328,7 @@ async def get_filtered_catalog(
     include_versions: bool = Query(False, description="Include version info"),
 ):
     """Filtered feature catalog with server-side search and pagination."""
-    from app.modules.agents.runtime.routes import available_workflows
+    from app.modules.agents.routes.runtime_routes import available_workflows
 
     try:
         svc = _get_registry_svc()
@@ -382,9 +385,7 @@ async def get_features_catalog(
     capability: Optional[str] = Query(
         None, description="Filter by capability keyword across all entity types"
     ),
-    version: Optional[str] = Query(
-        None, description="Filter by exact version string"
-    ),
+    version: Optional[str] = Query(None, description="Filter by exact version string"),
     access: Optional[str] = Query(
         None, description="Filter by access level: agent, human, both"
     ),
@@ -396,7 +397,7 @@ async def get_features_catalog(
     - version: exact version match
     - access: filter by access level (agent, human, both)
     """
-    from app.modules.agents.runtime.routes import available_workflows
+    from app.modules.agents.routes.runtime_routes import available_workflows
 
     try:
         svc = _get_registry_svc()
@@ -414,13 +415,9 @@ async def get_features_catalog(
                     if capability:
                         cap_lower = capability.lower()
                         item_caps = [
-                            str(c).lower()
-                            for c in item.get("capabilities", [])
+                            str(c).lower() for c in item.get("capabilities", [])
                         ]
-                        item_tags = [
-                            str(t).lower()
-                            for t in item.get("tags", [])
-                        ]
+                        item_tags = [str(t).lower() for t in item.get("tags", [])]
                         if (
                             cap_lower not in item_caps
                             and cap_lower not in item_tags
@@ -446,7 +443,11 @@ async def get_features_catalog(
                     filtered_items[etype] = filtered
 
             catalog = {
-                **{k: v for k, v in catalog.items() if k not in ("total", "by_type", "items")},
+                **{
+                    k: v
+                    for k, v in catalog.items()
+                    if k not in ("total", "by_type", "items")
+                },
                 "total": sum(len(v) for v in filtered_items.values()),
                 "by_type": {k: len(v) for k, v in filtered_items.items()},
                 "items": filtered_items,
@@ -562,7 +563,7 @@ async def list_entities(
         description="Filter by entity type: tools, workflows, agents, skills, etc.",
     ),
 ):
-    from app.modules.agents.runtime.routes import available_workflows
+    from app.modules.agents.routes.runtime_routes import available_workflows
 
     try:
         svc = _get_registry_svc()
@@ -636,7 +637,7 @@ async def validate_port_type(port_data: dict):
 
 @router.get("/stats", response_model=APIResponse[Dict[str, Any]])
 async def get_registry_stats():
-    from app.modules.agents.runtime.routes import available_workflows
+    from app.modules.agents.routes.runtime_routes import available_workflows
 
     try:
         svc = _get_registry_svc()

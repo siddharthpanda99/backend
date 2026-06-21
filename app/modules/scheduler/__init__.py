@@ -1,6 +1,4 @@
-"""Scheduler module - Cron job management for scheduled workflows."""
-
-from app.modules.scheduler.service import (
+from common_lib.modules.scheduler.service import (
     SchedulerService,
     CronJobConfig,
     CronJobStatus,
@@ -8,7 +6,7 @@ from app.modules.scheduler.service import (
     CronJobRunner,
     get_scheduler_service,
 )
-from app.modules.scheduler.workflow_registry import (
+from common_lib.modules.scheduler.workflow_registry import (
     register_workflow,
     get_workflow,
     list_workflows,
@@ -27,3 +25,4 @@ __all__ = [
     "list_workflows",
     "execute_workflow",
 ]
+

@@ -46,6 +46,7 @@ def _get_or_create_settings(db: Session) -> ConnectionHealthConfig:
 
 @router.get("/", response_model=HealthSummaryResponse)
 async def get_health_summary(
+    app_id: Optional[str] = Query(None),
     db: Session = Depends(get_session),
 ):
     """
@@ -61,7 +62,14 @@ async def get_health_summary(
         select(ConnectionRecord).order_by(ConnectionRecord.updated_at.desc())
     ).scalars().all()
 
+    if app_id:
+        connections = [
+            conn for conn in connections
+            if conn.metadata_json and conn.metadata_json.get("app_id") == app_id
+        ]
+
     health_connections = []
+
     total = len(connections)
     healthy_count = 0
     degraded_count = 0
@@ -213,6 +221,7 @@ async def get_connection_health(
 
 @router.post("/refresh", response_model=RefreshResponse)
 async def refresh_all_health(
+    app_id: Optional[str] = Query(None),
     db: Session = Depends(get_session),
 ):
     """
@@ -223,6 +232,13 @@ async def refresh_all_health(
     connections = db.execute(
         select(ConnectionRecord).order_by(ConnectionRecord.updated_at.desc())
     ).scalars().all()
+
+    if app_id:
+        connections = [
+            conn for conn in connections
+            if conn.metadata_json and conn.metadata_json.get("app_id") == app_id
+        ]
+
 
     results = []
     tested = 0
