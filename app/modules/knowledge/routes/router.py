@@ -113,7 +113,41 @@ class ConfigUpdateRequest(BaseModel):
     updates: dict[str, Any] = Field(..., description="Config fields to update")
 
 
+class RIPToggleRequest(BaseModel):
+    enabled: bool = Field(
+        ..., description="True to enable RIP-based advanced retrieval"
+    )
+
+
 # ── Endpoints ─────────────────────────────────────────────────
+
+
+@router.post("/retrieval/rip-toggle")
+async def rip_toggle(
+    request: RIPToggleRequest,
+    service: KnowledgeEngineService = Depends(get_knowledge_engine_service),
+) -> dict[str, Any]:
+    """Toggle RIP-based advanced retrieval on/off at runtime.
+
+    When enabled, ``KnowledgeEngine.retrieve()`` delegates core
+    retrieval to RIP's ``RetrievalRouter`` → ``hybrid_search``
+    → optional ``GraphRAG`` pipeline.
+
+    When disabled, the native KnowledgeEngine retrieval path is used.
+    """
+    try:
+        config = service.enable_rip_retrieval(enabled=request.enabled)
+        status = "enabled" if request.enabled else "disabled"
+        return {
+            "success": True,
+            "data": {"retrieval": config, "use_rip_retrieval": request.enabled},
+            "message": f"RIP-based retrieval {status}",
+        }
+    except Exception as e:
+        logger.exception("Failed to toggle RIP retrieval")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to toggle RIP retrieval: {str(e)}"
+        )
 
 
 @router.post("/retrieve")

@@ -32,15 +32,21 @@ STREAMING_PATHS: Set[str] = {
     "/fleet/status/stream",
     "/tasks",
 }
+# P0-2 FIX: Exclusions now use full /api/v1/* prefixes so they actually match.
+# Previously "/auth" failed to match "/api/v1/auth/login".
 EXCLUDED_PREFIXES: Set[str] = {
-    "/auth",
+    "/api/v1/auth",
     "/docs",
     "/redoc",
     "/openapi.json",
     "/api/v1/entities/registry",
+    "/api/v1/memories",
+    "/api/v1/agents",
 }
 CACHEABLE_METHODS: Set[str] = {"GET", "HEAD"}
-RESPONSE_CACHE_ENABLED: bool = True
+# P0-2 FIX: Disabled by default. Enable explicitly via RESPONSE_CACHE_ENABLED=true env var
+# ONLY after identity-aware cache isolation has been verified with integration tests.
+RESPONSE_CACHE_ENABLED: bool = False
 
 
 class _SizeAwareTTLCache(TTLCache):
@@ -85,7 +91,21 @@ def _get_cache() -> _SizeAwareTTLCache:
 
 
 def _cache_key(request: Request) -> str:
-    raw = f"{request.method}:{request.url.path}:{request.url.query}"
+    """Build a cache key that includes tenant and auth identity partitions.
+
+    P0-2 FIX: Previously only method+path+query were hashed, making it
+    possible for user-A's response to be served to user-B.  Now we hash:
+    - HTTP method, path, query string  (request identity)
+    - Hashed Authorization header      (user/session partition)
+    - X-Tenant-Id header               (tenant partition)
+    - Accept header                    (representation partition)
+    """
+    auth_raw = request.headers.get("authorization", "")
+    # Hash the token so we don't store credentials in the cache key.
+    auth_hash = hashlib.sha256(auth_raw.encode()).hexdigest()[:16]
+    tenant = request.headers.get("x-tenant-id", "default")
+    accept = request.headers.get("accept", "*/*")
+    raw = f"{request.method}:{request.url.path}:{request.url.query}:{auth_hash}:{tenant}:{accept}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -103,6 +123,24 @@ def _should_cache(request: Request) -> bool:
             return False
     cache_control = request.headers.get("cache-control", "")
     if "no-cache" in cache_control or "no-store" in cache_control:
+        return False
+    return True
+
+
+def _is_response_cacheable(response: Response) -> bool:
+    """P0-2 FIX: Only cache safe, non-sensitive 2xx responses.
+
+    Rules:
+    - Only 200 and 206 are cached (not 4xx/5xx).
+    - Responses carrying Set-Cookie are never stored (session / auth cookies).
+    - Responses with Cache-Control: private or no-store are excluded.
+    """
+    if response.status_code not in (200, 206):
+        return False
+    if "set-cookie" in response.headers:
+        return False
+    cc = response.headers.get("cache-control", "")
+    if "private" in cc or "no-store" in cc:
         return False
     return True
 
@@ -143,7 +181,7 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
-        if response.status_code < 500:
+        if _is_response_cacheable(response):
             body = b""
             async for chunk in response.body_iterator:
                 body += chunk
@@ -164,6 +202,17 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
                 media_type=response.media_type,
             )
             response.headers["X-Cache"] = "MISS"
+        else:
+            # Drain the body so the connection is properly closed even when we skip caching.
+            body = b""
+            async for chunk in response.body_iterator:
+                body += chunk
+            response = Response(
+                content=body,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                media_type=response.media_type,
+            )
 
         return response
 

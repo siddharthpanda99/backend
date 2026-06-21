@@ -31,64 +31,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.settings import get_settings
 from app.core.openapi import custom_openapi
 
-# Import Routers
-# Import Routers
-from app.modules.common.routes.index import router as common_router
-from app.modules.auth.routes.index import router as auth_router
-from app.modules.sessions.routes.index import router as sessions_router
-from app.modules.authorization.routes.roles import router as roles_router
-from app.modules.authorization.routes.permissions import router as permissions_router
-from app.modules.users.routes.users import router as users_router
-from app.modules.projects.routes.projects import router as projects_router
-from app.modules.agents.routes.index import router as agents_router
-from app.modules.agents.routes.pipeline_routes import router as pipeline_router
-from app.modules.agents.routes.policy_routes import router as policy_router
-from app.modules.entities.routes.registry import router as entities_router
-from app.modules.entities.instance_routes import router as entity_instances_router
-from app.modules.workflows.routes.index import router as workflows_router
-from app.modules.workflows.routes.observability import router as observability_router
-from app.modules.workflows.routes.configs import router as workflow_configs_router
-from app.modules.workflows.routes.collaboration import router as collaboration_router
-from app.modules.workflows.routes.combinatorial import router as combinatorial_router
-from app.modules.tools.routes.index import router as tools_router
-from app.modules.memory.routes import router as cognitive_memory_router
-from app.modules.memories.routes.index import router as memories_router
-from app.modules.vectorstores.routes import router as vectorstores_router
-from app.modules.models.routes import router as models_router
-from app.modules.models.external_routes import router as external_models_router
-from app.modules.data_forge.routes import router as data_forge_router
-from app.modules.grid.routes import router as grid_router
-from app.modules.plugins.routes.router import router as plugins_router
-from app.modules.daw.routes import router as daw_router
-from app.modules.hooks.routes import router as hooks_router
-from app.modules.webhooks import router as webhooks_router
-from app.modules.app_builder.forms import router as forms_router
-from app.modules.app_builder.features import router as features_router
-from app.modules.connection_health import router as connection_health_router
-from app.modules.app_builder.ecosystem import router as ecosystem_router
-from app.modules.app_builder import router as builder_router
-from app.modules.dashboard.routes import router as dashboard_router
-from app.modules.system.routes import router as system_router
-from app.modules.settings.routes import router as settings_router
-from app.modules.dip.routes.ingestion import router as dip_ingestion_router
-from app.modules.dip.routes.pipeline import pipeline_router as dip_pipeline_router
-from app.modules.dip.routes.rag import router as dip_rag_router
-from app.modules.dip.routes.kg import router as dip_kg_router
-from app.modules.dip.routes.storage import router as dip_storage_router
-from app.modules.dip.routes.embeddings import router as dip_embeddings_router
-from app.modules.file_browser import router as file_browser_router
-from app.modules.file_browser.macro_routes import router as macro_router
-from app.modules.notification.routes import router as notification_router
-from app.modules.wildcards.routes import router as wildcards_router
-from app.modules.sam3.routes import router as sam3_router
-from app.modules.keys_management import router as keys_router
-from app.modules.proxy_routing import router as proxy_router
-from app.modules.collage.routes import router as collage_router
-from app.modules.experiments.routes import router as experiments_router
-from app.modules.ext_apps import router as ext_apps_router
-from app.modules.connectors.routes import connector_router, connection_router
-from app.modules.connectors.mcp.server import router as connectors_mcp_router
-from app.modules.plugins.routes import plugin_router
+# Router imports moved to app/core/routers.py (P2-1 — declarative registry)
 from fastapi import Depends
 from app.modules.auth.dependencies import get_current_active_user
 
@@ -271,6 +214,86 @@ async def lifespan(app: FastAPI):
                     )
             except Exception as kh_se:
                 print(f"Warning: Knowledge Hub seeding failed: {kh_se}")
+
+            # --- SEED: Integration module configs ---
+            try:
+                from common_lib.modules.integration.services.config_service import (
+                    get_integration_config_service,
+                )
+                from sqlmodel import Session as SQLSession
+
+                with SQLSession(engine) as seed_ic_session:
+                    svc = get_integration_config_service()
+                    count = svc.seed_default_modules(
+                        session=seed_ic_session
+                    )
+                    if count:
+                        print(f"Startup: Seeded {count} integration module configs")
+                    else:
+                        print("Startup: Integration module configs already seeded")
+
+                    # --- SEED: Integration sample pipelines ---
+                    pipeline_count = svc.seed_default_pipelines(
+                        session=seed_ic_session
+                    )
+                    if pipeline_count:
+                        print(
+                            f"Startup: Seeded {pipeline_count} integration sample pipelines"
+                        )
+                    else:
+                        print(
+                            "Startup: Integration sample pipelines already seeded"
+                        )
+
+                    # --- AUTO-ACTIVATE: Minimal Pipeline ---
+                    # Only activate if no pipeline is currently active
+                    active_pipeline = svc.get_active_pipeline(
+                        session=seed_ic_session
+                    )
+                    if active_pipeline is None:
+                        minimal = svc.list_pipelines(
+                            session=seed_ic_session
+                        )
+                        if minimal:
+                            # Find the Minimal Pipeline (first seeded)
+                            minimal_pipeline = next(
+                                (p for p in minimal if p.name == "Minimal Pipeline"),
+                                None,
+                            )
+                            if minimal_pipeline:
+                                result = svc.apply_pipeline(
+                                    minimal_pipeline.id,
+                                    session=seed_ic_session,
+                                )
+                                if result.get("success"):
+                                    print(
+                                        "Startup: Auto-activated Minimal Pipeline "
+                                        f"({result.get('modules_updated', 0)} modules updated)"
+                                    )
+                                else:
+                                    print(
+                                        "Startup: Failed to auto-activate Minimal "
+                                        f"Pipeline: {result.get('error')}"
+                                    )
+            except Exception as ic_se:
+                print(f"Warning: Integration module config seeding failed: {ic_se}")
+
+            # --- REGISTER: RIP Tools ---
+            try:
+                from common_lib.modules.integration.adapters.tools import \
+                    RIPToolsAdapter
+
+                adapter = RIPToolsAdapter()
+                registered = await adapter.register_rip_tools()
+                if registered:
+                    print(
+                        f"Startup: Registered {len(registered)} RIP tools: "
+                        f"{[t['name'] for t in registered]}"
+                    )
+                else:
+                    print("Startup: RIP tools already registered")
+            except Exception as rip_se:
+                print(f"Warning: RIP tool registration failed: {rip_se}")
 
             break
         except Exception as e:
@@ -1042,9 +1065,13 @@ def create_app() -> FastAPI:
             RequestLoggingMiddleware,
         )
 
-        # app.add_middleware(CorrelationMiddleware)
-        # app.add_middleware(RequestLoggingMiddleware)
+        # P1-5 FIX: Activate middleware — previously commented out while the startup
+        # message claimed they were enabled. Both are now actually registered.
+        app.add_middleware(CorrelationMiddleware)
+        app.add_middleware(RequestLoggingMiddleware)
         print("Startup: Correlation and Request Logging middleware enabled")
+    else:
+        print("Startup: Observability extensions disabled (ENABLE_OBSERVABILITY_EXTENSIONS=False)")
 
     # Register all events in the observability catalog
     from common_lib.modules.observability.events import register_all_events
@@ -1064,19 +1091,39 @@ def create_app() -> FastAPI:
     SLOManager.register_defaults()
     print("Startup: SLO defaults registered")
 
-    # Set all CORS enabled origins
-    # Set all CORS enabled origins
-    # Using allow_origin_regex to allow any origin with credentials (safe for dev, restrict in prod if needed)
+    # P0-3 FIX: CORS now uses the explicit allowlist from settings.BACKEND_CORS_ORIGINS.
+    # Previously allow_origin_regex="https?://.*" allowed ANY website to make credentialed
+    # requests to the API — a high-risk cross-origin attack surface.
+    #
+    # - Dev: defaults to ["http://localhost:3000", "http://localhost:5173"]
+    # - Prod/staging: set BACKEND_CORS_ORIGINS in config.ini or env to the real frontend URL(s)
     app.add_middleware(
         CORSMiddleware,
-        allow_origin_regex="https?://.*",
+        allow_origins=settings.BACKEND_CORS_ORIGINS,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "X-Tenant-Id",
+            "X-Subject-Id",
+            "X-Subject-Type",
+            "Accept",
+            "Cache-Control",
+        ],
     )
 
-    # Response Caching Middleware (Phase 1 — centralized HTTP response cache)
-    if os.environ.get("RESPONSE_CACHE_ENABLED", "true").lower() == "true":
+    # P1-3: Global ingress rate limiter — sliding window keyed by tenant+subject.
+    # Limits per group: auth=10, generation=20, download=5, streaming=10, default=120 (per minute).
+    # Configure via RATE_LIMIT_* env vars; disable with RATE_LIMIT_ENABLED=false.
+    from app.middleware.rate_limit import RateLimitMiddleware
+
+    app.add_middleware(RateLimitMiddleware)
+    print("Startup: Rate Limit Middleware enabled")
+
+    # Response Caching Middleware — disabled by default (P0-2 fix).
+    # Enable only after identity-aware isolation tests pass.
+    if os.environ.get("RESPONSE_CACHE_ENABLED", "false").lower() == "true":
         from app.middleware.response_cache import ResponseCacheMiddleware
 
         app.add_middleware(ResponseCacheMiddleware)
@@ -1088,6 +1135,7 @@ def create_app() -> FastAPI:
     app.add_middleware(AuthzMiddleware)
     print("Startup: Authz Middleware enabled")
 
+
     # Register Custom OpenAPI
     app.openapi = lambda: custom_openapi(app)
 
@@ -1096,749 +1144,11 @@ def create_app() -> FastAPI:
     # When DEV_MODE=False, every request must be authenticated.
     global_deps = [Depends(get_current_active_user)] if not settings.DEV_MODE else []
 
-    # Include Routers
-    print(f"Startup: Including Common router with prefix: {settings.API_V1_STR}")
-    app.include_router(
-        common_router, prefix=settings.API_V1_STR, dependencies=global_deps
-    )
-    print(f"Startup: Including Auth router with prefix: {settings.API_V1_STR}/auth")
-    app.include_router(
-        auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"]
-    )  # Auth handles its own security
-    print(
-        f"Startup: Including Sessions router with prefix: {settings.API_V1_STR}/sessions"
-    )
-    app.include_router(
-        sessions_router,
-        prefix=f"{settings.API_V1_STR}/sessions",
-        tags=["Sessions"],
-        dependencies=global_deps,
-    )
-
-    # Module Routers
-    print(f"Startup: Including Roles router with prefix: {settings.API_V1_STR}/roles")
-    app.include_router(
-        roles_router,
-        prefix=f"{settings.API_V1_STR}/roles",
-        tags=["Roles"],
-        dependencies=global_deps,
-    )
-    print(
-        f"Startup: Including Permissions router with prefix: {settings.API_V1_STR}/permissions"
-    )
-    app.include_router(
-        permissions_router,
-        prefix=f"{settings.API_V1_STR}/permissions",
-        tags=["Permissions"],
-        dependencies=global_deps,
-    )
-    print(f"Startup: Including Users router with prefix: {settings.API_V1_STR}/users")
-    app.include_router(
-        users_router,
-        prefix=f"{settings.API_V1_STR}/users",
-        tags=["Users"],
-        dependencies=global_deps,
-    )
-    print(
-        f"Startup: Including Projects router with prefix: {settings.API_V1_STR}/projects"
-    )
-    app.include_router(
-        projects_router,
-        prefix=f"{settings.API_V1_STR}/projects",
-        tags=["Projects"],
-        dependencies=global_deps,
-    )
-
-    print(f"Startup: Including Hooks router with prefix: {settings.API_V1_STR}/hooks")
-    app.include_router(
-        hooks_router,
-        prefix=f"{settings.API_V1_STR}/hooks",
-        tags=["Hooks"],
-        dependencies=global_deps,
-    )
-
-    print(
-        f"Startup: Including Webhooks router with prefix: {settings.API_V1_STR}/webhooks"
-    )
-    app.include_router(
-        webhooks_router,
-        prefix=f"{settings.API_V1_STR}/webhooks",
-        tags=["Webhook Manager"],
-        dependencies=global_deps,
-    )
-
-    print(
-        f"Startup: Including Form Builder router with prefix: {settings.API_V1_STR}/forms"
-    )
-    app.include_router(
-        forms_router,
-        prefix=f"{settings.API_V1_STR}/forms",
-        tags=["Form Builder"],
-        dependencies=global_deps,
-    )
-
-    print(
-        f"Startup: Including Feature Picker router with prefix: {settings.API_V1_STR}/features"
-    )
-    app.include_router(
-        features_router,
-        prefix=f"{settings.API_V1_STR}/features",
-        tags=["Feature Picker"],
-        dependencies=global_deps,
-    )
-
-    print(
-        f"Startup: Including Connection Health router with prefix: {settings.API_V1_STR}/connection-health"
-    )
-    app.include_router(
-        connection_health_router,
-        prefix=f"{settings.API_V1_STR}",
-        tags=["Connection Health"],
-        dependencies=global_deps,
-    )
-
-    print(
-        f"Startup: Including Ecosystem router with prefix: {settings.API_V1_STR}/ecosystem"
-    )
-    app.include_router(
-        ecosystem_router,
-        prefix=f"{settings.API_V1_STR}/ecosystem",
-        tags=["App Ecosystem"],
-        dependencies=global_deps,
-    )
-
-    print(
-        f"Startup: Including Builder router with prefix: {settings.API_V1_STR}/builder"
-    )
-    app.include_router(
-        builder_router,
-        prefix=f"{settings.API_V1_STR}",
-        tags=["UI Builder"],
-        dependencies=global_deps,
-    )
-
-    # Entities & Orchestration
-    print(
-        f"Startup: Including Entities Registry router with prefix: {settings.API_V1_STR}/entities/registry"
-    )
-    app.include_router(
-        entities_router,
-        prefix=f"{settings.API_V1_STR}/entities/registry",
-        tags=["Entities Registry"],
-        dependencies=global_deps,
-    )
-    print(
-        f"Startup: Including Entity Instances router with prefix: {settings.API_V1_STR}/instances"
-    )
-    app.include_router(
-        entity_instances_router,
-        prefix=f"{settings.API_V1_STR}/instances",
-        tags=["Entity Instances"],
-        dependencies=global_deps,
-    )
-    print(f"Startup: Including Agents router with prefix: {settings.API_V1_STR}/agents")
-    app.include_router(
-        agents_router,
-        prefix=f"{settings.API_V1_STR}/agents",
-        tags=["Agents (Management)"],
-        dependencies=global_deps,
-    )
-    print(
-        f"Startup: Including Pipelines router with prefix: {settings.API_V1_STR}/agents/pipelines"
-    )
-    app.include_router(
-        pipeline_router,
-        prefix=f"{settings.API_V1_STR}/agents/pipelines",
-        tags=["Pipelines"],
-        dependencies=global_deps,
-    )
-    print(f"Startup: Including Policy router with prefix: {settings.API_V1_STR}/agents")
-    app.include_router(
-        policy_router,
-        prefix=f"{settings.API_V1_STR}/agents",
-        tags=["Policy & Multi-Agent"],
-        dependencies=global_deps,
-    )
-    print(
-        f"Startup: Including Workflows router with prefix: {settings.API_V1_STR}/workflows"
-    )
-    app.include_router(
-        workflows_router,
-        prefix=f"{settings.API_V1_STR}/workflows",
-        tags=["Workflows"],
-        dependencies=global_deps,
-    )
-    print(
-        f"Startup: Including Workflow Collaboration router with prefix: {settings.API_V1_STR}/workflows"
-    )
-    app.include_router(
-        collaboration_router,
-        prefix=f"{settings.API_V1_STR}/workflows",
-        tags=["Workflow Collaboration"],
-        dependencies=global_deps,
-    )
-    print(
-        f"Startup: Including Workflow Observability router with prefix: {settings.API_V1_STR}/workflows/observability"
-    )
-    app.include_router(
-        observability_router,
-        prefix=f"{settings.API_V1_STR}/workflows/observability",
-        tags=["Workflow Observability"],
-        dependencies=global_deps,
-    )
-    print(
-        f"Startup: Including Workflow Configs router with prefix: {settings.API_V1_STR}/workflow-configs"
-    )
-    app.include_router(
-        workflow_configs_router,
-        prefix=f"{settings.API_V1_STR}/workflow-configs",
-        tags=["Workflow Configs"],
-        dependencies=global_deps,
-    )
-
-    # Failure Analysis API (Phase 1 — root cause analysis + pattern matching)
-    from app.modules.workflows.routes.failure_analysis import (
-        router as failure_analysis_router,
-    )
-
-    print(
-        f"Startup: Including Failure Analysis router with prefix: {settings.API_V1_STR}/workflows"
-    )
-    app.include_router(
-        failure_analysis_router,
-        prefix=f"{settings.API_V1_STR}/workflows",
-        tags=["Workflow Failure Analysis"],
-        dependencies=global_deps,
-    )
-    print(
-        f"Startup: Including Combinatorial router with prefix: {settings.API_V1_STR}/workflows/combinatorial"
-    )
-    app.include_router(
-        combinatorial_router,
-        prefix=f"{settings.API_V1_STR}/workflows/combinatorial",
-        tags=["Workflow Combinatorial"],
-        dependencies=global_deps,
-    )
-    print(f"Startup: Including Tools router with prefix: {settings.API_V1_STR}/tools")
-    app.include_router(
-        tools_router,
-        prefix=f"{settings.API_V1_STR}/tools",
-        tags=["Tools"],
-        dependencies=global_deps,
-    )
-    print(
-        f"Startup: Including Models Hub router with prefix: {settings.API_V1_STR}/models"
-    )
-    app.include_router(
-        models_router,
-        prefix=f"{settings.API_V1_STR}/models",
-        tags=["Models Hub"],
-        dependencies=global_deps,
-    )
-    print(
-        f"Startup: Including External Models router with prefix: {settings.API_V1_STR}/models/external"
-    )
-    app.include_router(
-        external_models_router,
-        prefix=f"{settings.API_V1_STR}/models/external",
-        tags=["External Models Discovery"],
-        dependencies=global_deps,
-    )
-
-    # SAM3 Segmentation
-    print(f"Startup: Including SAM3 router with prefix: {settings.API_V1_STR}/sam3")
-    app.include_router(
-        sam3_router,
-        prefix=f"{settings.API_V1_STR}/sam3",
-        tags=["SAM3 Segmentation"],
-        dependencies=global_deps,
-    )
-
-    # New Vision API
-    from app.modules.vision.routes import router as vision_router
-
-    print(f"Startup: Including Vision router with prefix: {settings.API_V1_STR}/vision")
-    app.include_router(
-        vision_router,
-        prefix=f"{settings.API_V1_STR}/vision",
-        tags=["Vision"],
-        dependencies=global_deps,
-    )
-
-    # New Collage & Sticker API
-    print(
-        f"Startup: Including Collage router with prefix: {settings.API_V1_STR}/collage"
-    )
-    app.include_router(
-        collage_router,
-        prefix=f"{settings.API_V1_STR}/collage",
-        tags=["Collage & Sticker"],
-        dependencies=global_deps,
-    )
-
-    # Filters API (Image filter CRUD, presets, pipeline execution)
-    from app.modules.filters.routes import router as filters_router
-
-    print(
-        f"Startup: Including Filters router with prefix: {settings.API_V1_STR}/filters"
-    )
-    app.include_router(
-        filters_router,
-        prefix=f"{settings.API_V1_STR}/filters",
-        tags=["Filters"],
-        dependencies=global_deps,
-    )
-
-    # Nodes Catalog API (Unified node definitions for Nodes Studio)
-    from app.modules.nodes.routes import router as nodes_router
-
-    print(f"Startup: Including Nodes router with prefix: {settings.API_V1_STR}/nodes")
-    app.include_router(
-        nodes_router,
-        prefix=f"{settings.API_V1_STR}",
-        tags=["Nodes"],
-        dependencies=global_deps,
-    )
-
-    # Wildcards API
-    print(
-        f"Startup: Including Wildcards router with prefix: {settings.API_V1_STR}/vision/wildcards"
-    )
-    app.include_router(
-        wildcards_router,
-        prefix=f"{settings.API_V1_STR}/vision",
-        tags=["Wildcards"],
-        dependencies=global_deps,
-    )
-
-    # Prompts Import API (PromptHero scraping + saving)
-    from app.modules.prompts.routes import router as prompts_router
-
-    print(
-        f"Startup: Including Prompts router with prefix: {settings.API_V1_STR}/prompts"
-    )
-    app.include_router(
-        prompts_router,
-        prefix=f"{settings.API_V1_STR}/prompts",
-        tags=["Prompts"],
-        dependencies=global_deps,
-    )
-
-    # Configs API (Industrialized Vision Presets)
-    from app.modules.configs.routes import router as configs_router
-
-    print(f"Startup: Including Configs router with prefix: {settings.API_V1_STR}")
-    app.include_router(
-        configs_router,
-        prefix=f"{settings.API_V1_STR}",
-        tags=["Configs"],
-        dependencies=global_deps,
-    )
-
-    print(f"Startup: Including Settings router with prefix: {settings.API_V1_STR}")
-    app.include_router(
-        settings_router,
-        prefix=f"{settings.API_V1_STR}",
-        dependencies=global_deps,
-    )
-
-    # SD Models Registry
-    from app.modules.sd_models.routes import router as sd_models_router
-
-    print(f"Startup: Including SD Models router with prefix: {settings.API_V1_STR}")
-    app.include_router(
-        sd_models_router,
-        prefix=f"{settings.API_V1_STR}",
-        tags=["SD Models"],
-        dependencies=global_deps,
-    )
-
-    # New Audio API
-    from app.modules.audio.routes import router as audio_router
-
-    print(f"Startup: Including Audio router with prefix: {settings.API_V1_STR}/audio")
-    app.include_router(
-        audio_router,
-        prefix=f"{settings.API_V1_STR}/audio",
-        tags=["Audio & TTS"],
-        dependencies=global_deps,
-    )
-
-    # MCP (Model Context Protocol)
-    from app.mcp.routes import router as mcp_router
-
-    print(f"Startup: Including MCP router with prefix: {settings.API_V1_STR}/mcp")
-    app.include_router(
-        mcp_router,
-        prefix=f"{settings.API_V1_STR}/mcp",
-        tags=["MCP Ecosystem"],
-        dependencies=global_deps,
-    )
-
-    # SOTA Debug (Simulating Parallel Spans)
-    from app.modules.debug.routes import router as debug_router
-
-    print(f"Startup: Including Debug router with prefix: {settings.API_V1_STR}/debug")
-    app.include_router(
-        debug_router,
-        prefix=f"{settings.API_V1_STR}/debug",
-        tags=["Debug Simulator"],
-        dependencies=global_deps,
-    )
-
-    # DataForge & Grid Persistence
-    print(
-        f"Startup: Including DataForge router with prefix: {settings.API_V1_STR}/data-forge"
-    )
-    app.include_router(
-        data_forge_router,
-        prefix=f"{settings.API_V1_STR}/data-forge",
-        tags=["DataForge Simulation"],
-        dependencies=global_deps,
-    )
-    print(f"Startup: Including Grid router with prefix: {settings.API_V1_STR}/grid")
-    app.include_router(
-        grid_router,
-        prefix=f"{settings.API_V1_STR}/grid",
-        tags=["Grid Customization Persistence"],
-        dependencies=global_deps,
-    )
-
-    # Plugin Management System
-    print(
-        f"Startup: Including Plugins router with prefix: {settings.API_V1_STR}/plugins"
-    )
-    app.include_router(
-        plugins_router,
-        prefix=f"{settings.API_V1_STR}/plugins",
-        tags=["Plugin Management"],
-        dependencies=global_deps,
-    )
-
-    # DAW - Digital Audio Workstation
-    print(f"Startup: Including DAW router with prefix: {settings.API_V1_STR}/daw")
-    app.include_router(
-        daw_router,
-        prefix=f"{settings.API_V1_STR}/daw",
-        tags=["DAW"],
-        dependencies=global_deps,
-    )
-
-    # Unified Memory API (blocks + marketplace + cognitive memory + all operations)
-    print(f"Startup: Including Memory router with prefix: {settings.API_V1_STR}/memory")
-    app.include_router(
-        cognitive_memory_router,
-        prefix=f"{settings.API_V1_STR}/memory",
-        tags=["Memory"],
-        dependencies=global_deps,
-    )
-
-    print(
-        f"Startup: Including Memories router with prefix: {settings.API_V1_STR}/memories"
-    )
-    app.include_router(
-        memories_router,
-        prefix=f"{settings.API_V1_STR}/memories",
-        tags=["Memories"],
-        dependencies=global_deps,
-    )
-
-    # Vector Stores (TurboVec management)
-    print(
-        f"Startup: Including VectorStores router with prefix: {settings.API_V1_STR}/vectorstores"
-    )
-    app.include_router(
-        vectorstores_router,
-        prefix=f"{settings.API_V1_STR}",
-        tags=["Vector Stores"],
-        dependencies=global_deps,
-    )
-
-    # Marketplace API (agents, skills, workflows, hardware, blocks)
-    print(
-        f"Startup: Including Marketplace router with prefix: {settings.API_V1_STR}/marketplace"
-    )
-    from app.modules.marketplace.routes import router as marketplace_router
-
-    app.include_router(
-        marketplace_router,
-        prefix=f"{settings.API_V1_STR}/marketplace",
-        tags=["Marketplace"],
-        dependencies=global_deps,
-    )
-
-    # Graph (AGE) API
-    print(f"Startup: Including Graph router with prefix: {settings.API_V1_STR}/graph")
-    from app.modules.graph.routes import router as graph_router
-
-    app.include_router(
-        graph_router,
-        prefix=f"{settings.API_V1_STR}/graph",
-        tags=["Graph"],
-        dependencies=global_deps,
-    )
-
-    # Schema Builder API (tables, relationships, migrations, DDL, models)
-    from app.modules.app_builder.schema import router as schema_router
-
-    print(
-        f"Startup: Including Schema Builder router with prefix: {settings.API_V1_STR}/schema"
-    )
-    app.include_router(
-        schema_router,
-        prefix=f"{settings.API_V1_STR}/schema",
-        tags=["Schema Builder"],
-        dependencies=global_deps,
-    )
-
-    # Sync API
-    print(f"Startup: Including Sync router with prefix: {settings.API_V1_STR}/sync")
-    from app.modules.sync.routes.index import router as sync_router
-
-    app.include_router(
-        sync_router,
-        prefix=f"{settings.API_V1_STR}/sync",
-        tags=["Sync"],
-        dependencies=global_deps,
-    )
-
-    # DIP Ingestion API
-    print(
-        f"Startup: Including DIP Ingestion router with prefix: {settings.API_V1_STR}/dip/ingestion"
-    )
-    app.include_router(
-        dip_ingestion_router,
-        prefix=settings.API_V1_STR,
-        tags=["dip/ingestion"],
-        dependencies=global_deps,
-    )
-
-    # DIP Pipeline API
-    print(
-        f"Startup: Including DIP Pipeline router with prefix: {settings.API_V1_STR}/dip/pipeline"
-    )
-    app.include_router(
-        dip_pipeline_router,
-        prefix=settings.API_V1_STR,
-        tags=["dip/pipeline"],
-        dependencies=global_deps,
-    )
-
-    # DIP RAG API (legacy — delegates to KnowledgeEngine)
-    print(
-        f"Startup: Including DIP RAG router with prefix: {settings.API_V1_STR}/dip/rag"
-    )
-    app.include_router(
-        dip_rag_router,
-        prefix=settings.API_V1_STR,
-        tags=["dip/rag"],
-        dependencies=global_deps,
-    )
-
-    # DIP Knowledge Graph API
-    print(f"Startup: Including DIP KG router with prefix: {settings.API_V1_STR}/dip/kg")
-    app.include_router(
-        dip_kg_router,
-        prefix=settings.API_V1_STR,
-        tags=["dip/kg"],
-        dependencies=global_deps,
-    )
-
-    # DIP Storage API
-    print(
-        f"Startup: Including DIP Storage router with prefix: {settings.API_V1_STR}/dip/storage"
-    )
-    app.include_router(
-        dip_storage_router,
-        prefix=settings.API_V1_STR,
-        tags=["dip/storage"],
-        dependencies=global_deps,
-    )
-
-    # DIP Embeddings API (legacy — delegates to KnowledgeEngine)
-    print(
-        f"Startup: Including DIP Embeddings router with prefix: {settings.API_V1_STR}/dip/embeddings"
-    )
-    app.include_router(
-        dip_embeddings_router,
-        prefix=settings.API_V1_STR,
-        tags=["dip/embeddings"],
-        dependencies=global_deps,
-    )
-
-    # Notification SSE API
-    print(
-        f"Startup: Including Notification router with prefix: {settings.API_V1_STR}/notifications"
-    )
-    app.include_router(
-        notification_router,
-        prefix=settings.API_V1_STR,
-        tags=["notifications"],
-        dependencies=global_deps,
-    )
-
-    # Integration API (cross-module triggers, hooks, rules, observability)
-    from app.modules.integration.routes import router as integration_router
-
-    print(
-        f"Startup: Including Integration router with prefix: {settings.API_V1_STR}/integration"
-    )
-    app.include_router(
-        integration_router,
-        prefix=settings.API_V1_STR,
-        tags=["integration"],
-        dependencies=global_deps,
-    )
-
-    # Ext-Apps API
-    print(
-        f"Startup: Including Ext-Apps router with prefix: {settings.API_V1_STR}/ext-apps"
-    )
-    app.include_router(
-        ext_apps_router,
-        prefix=settings.API_V1_STR,
-        tags=["Ext-Apps"],
-        dependencies=global_deps,
-    )
-
-    # Connectors API (tool registry, form schemas)
-    print(f"Startup: Including Connectors router with prefix: {settings.API_V1_STR}")
-    app.include_router(
-        connector_router,
-        prefix=settings.API_V1_STR,
-        tags=["Connectors"],
-        dependencies=global_deps,
-    )
-    app.include_router(
-        connection_router,
-        prefix=settings.API_V1_STR,
-        tags=["Connections"],
-        dependencies=global_deps,
-    )
-
-    # Connectors MCP (AI agent tool discovery)
-    print(
-        f"Startup: Including Connectors MCP router with prefix: {settings.API_V1_STR}"
-    )
-    app.include_router(
-        connectors_mcp_router,
-        prefix=settings.API_V1_STR,
-        tags=["MCP-Connectors"],
-        dependencies=global_deps,
-    )
-
-    # Plugins API (plugin instances + module linker)
-    print(
-        f"Startup: Including Plugin router with prefix: {settings.API_V1_STR}/plugins"
-    )
-    app.include_router(
-        plugin_router,
-        prefix=settings.API_V1_STR,
-        tags=["Plugins"],
-        dependencies=global_deps,
-    )
-
-    # Scheduler API (cron jobs, scheduled workflows)
-    from app.modules.scheduler.routes import router as scheduler_router
-    from app.modules.scheduler.workflows import register_all_workflows
-
-    register_all_workflows()
-    print("Startup: Registered scheduler workflow executors")
-
-    print(
-        f"Startup: Including Scheduler router with prefix: {settings.API_V1_STR}/scheduler"
-    )
-    app.include_router(
-        scheduler_router,
-        prefix=settings.API_V1_STR,
-        tags=["scheduler"],
-        dependencies=global_deps,
-    )
-
-    # SD News API (article archive and browsing)
-    from app.modules.scheduler.routes.news_routes import router as sd_news_router
-
-    print(
-        f"Startup: Including SD News router with prefix: {settings.API_V1_STR}/sd-news"
-    )
-    app.include_router(
-        sd_news_router,
-        prefix=settings.API_V1_STR,
-        tags=["sd-news"],
-        dependencies=global_deps,
-    )
-
-    # Dashboard API
-    print(
-        f"Startup: Including Dashboard router with prefix: {settings.API_V1_STR}/dashboard"
-    )
-    app.include_router(
-        dashboard_router,
-        prefix=f"{settings.API_V1_STR}/dashboard",
-        tags=["dashboard"],
-        dependencies=global_deps,
-    )
-
-    # Response Cache Admin API (Phase 1)
-    from fastapi import APIRouter, Depends
-    from app.modules.common.types.index import APIResponse
-
-    _cache_router = APIRouter()
-
-    @_cache_router.get("/cache/response/stats")
-    async def _get_response_cache_stats():
-        from app.middleware.response_cache import get_cache_stats
-
-        return APIResponse(
-            data=get_cache_stats(), message="Response cache stats retrieved"
-        )
-
-    @_cache_router.post("/cache/response/clear")
-    async def _clear_response_cache():
-        from app.middleware.response_cache import clear_response_cache
-
-        success = clear_response_cache()
-        return APIResponse(data={"success": success}, message="Response cache cleared")
-
-    print(
-        f"Startup: Including Response Cache admin router with prefix: {settings.API_V1_STR}/system"
-    )
-    app.include_router(
-        _cache_router,
-        prefix=f"{settings.API_V1_STR}/system",
-        tags=["System"],
-        dependencies=global_deps,
-    )
-
-    print(
-        f"Startup: Including File Browser router with prefix: {settings.API_V1_STR}/file-browser"
-    )
-    app.include_router(
-        file_browser_router,
-        prefix=settings.API_V1_STR,
-        tags=["file-browser"],
-        dependencies=global_deps,
-    )
-
-    print(
-        f"Startup: Including Macro router with prefix: {settings.API_V1_STR}/file-browser/macros"
-    )
-    app.include_router(
-        macro_router,
-        prefix=settings.API_V1_STR + "/file-browser",
-        tags=["macros"],
-        dependencies=global_deps,
-    )
-
-    print(
-        f"Startup: Including Experiments router with prefix: {settings.API_V1_STR}/experiments"
-    )
-    app.include_router(
-        experiments_router,
-        prefix=f"{settings.API_V1_STR}/experiments",
-        tags=["Experiments"],
-        dependencies=global_deps,
-    )
+    # P2-1: All routers registered via declarative registry.
+    # See app/core/routers.py for the full list.
+    from app.core.routers import register_routers
+
+    register_routers(app, settings.API_V1_STR, global_deps)
 
     # Serve generated images as static files
     from common_lib.paths import GENERATED_CONTENT
@@ -1920,121 +1230,9 @@ def create_app() -> FastAPI:
 
         register_metrics_endpoint(app)
 
-    # Knowledge Engine API
-    from app.modules.knowledge.routes import router as knowledge_router
-
-    print(
-        f"Startup: Including Knowledge Engine router with prefix: {settings.API_V1_STR}/knowledge"
-    )
-    app.include_router(
-        knowledge_router,
-        prefix=settings.API_V1_STR,
-        tags=["Knowledge Engine"],
-        dependencies=global_deps,
-    )
-
-    # Governance API
-    from app.modules.governance.routes import router as governance_router
-
-    print(
-        f"Startup: Including Governance router with prefix: {settings.API_V1_STR}/governance"
-    )
-    app.include_router(
-        governance_router,
-        prefix=f"{settings.API_V1_STR}/governance",
-        tags=["Agent Governance"],
-        dependencies=global_deps,
-    )
-
-    # Observability admin API (SLOs, lineage, compliance) — routed via app/modules
-    from app.modules.observability.routes import router as obs_admin_router
-
-    print(
-        f"Startup: Including Observability Admin router with prefix: {settings.API_V1_STR}"
-    )
-    app.include_router(
-        obs_admin_router,
-        prefix=f"{settings.API_V1_STR}",
-        dependencies=global_deps,
-    )
-
-    # Generic Documentation API (serves docs from common_lib/docs/<module>/)
-    from app.modules.docs.routes import router as docs_module_router
-
-    print(f"Startup: Including Generic Docs router with prefix: {settings.API_V1_STR}")
-    app.include_router(
-        docs_module_router,
-        prefix=settings.API_V1_STR,
-        tags=["Documentation"],
-        dependencies=global_deps,
-    )
-
-    # ── Knowledge Sources Hub API ─────────────────────────────
-    from app.modules.knowledge_hub import (
-        sources_router,
-        pipelines_router,
-        packets_router,
-        projects_router as kh_projects_router,
-        streaming_router,
-    )
-
-    print(
-        f"Startup: Including Knowledge Hub Sources router with prefix: {settings.API_V1_STR}/knowledge-hub"
-    )
-    app.include_router(
-        sources_router,
-        prefix=settings.API_V1_STR,
-        tags=["Knowledge Hub — Sources"],
-        dependencies=global_deps,
-    )
-    app.include_router(
-        pipelines_router,
-        prefix=settings.API_V1_STR,
-        tags=["Knowledge Hub — Ingestion"],
-        dependencies=global_deps,
-    )
-    app.include_router(
-        packets_router,
-        prefix=settings.API_V1_STR,
-        tags=["Knowledge Hub — Packets"],
-        dependencies=global_deps,
-    )
-    app.include_router(
-        kh_projects_router,
-        prefix=settings.API_V1_STR,
-        tags=["Knowledge Hub — Projects"],
-        dependencies=global_deps,
-    )
-    app.include_router(
-        streaming_router,
-        prefix=settings.API_V1_STR,
-        tags=["Knowledge Hub — Streaming"],
-        dependencies=global_deps,
-    )
-
-    # ── Agentic RBAC Authorization ──────────────────────────────
-    from app.modules.authorization.routes.authz_router import (
-        router as authz_full_router,
-    )
-
-    print(f"Startup: Including AuthZ router with prefix: {settings.API_V1_STR}/authz")
-    app.include_router(
-        authz_full_router,
-        prefix=f"{settings.API_V1_STR}/authz",
-        tags=["Authorization — Agentic RBAC"],
-        dependencies=global_deps,
-    )
-
-    # ── Team ────────────────────────────────────────────────────
-    from app.modules.team.routes import router as team_router
-
-    print(f"Startup: Including Team router with prefix: {settings.API_V1_STR}")
-    app.include_router(
-        team_router,
-        prefix=f"{settings.API_V1_STR}",
-        tags=["Team"],
-        dependencies=global_deps,
-    )
+    # NOTE: Knowledge Engine, Governance, Observability Admin, Docs,
+    # Knowledge Hub, AuthZ, and Team routers are all registered by
+    # register_routers() above via app/core/routers.py (P2-1).
 
     return app
 

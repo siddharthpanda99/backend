@@ -3,9 +3,15 @@ import subprocess
 import argparse
 
 
-def run_command(command):
+def run_command(command: str) -> None:
+    """Run a CLI command safely without shell=True.
+
+    P1-4: Using shell=False (list form) prevents shell injection.
+    Commands are split on whitespace; complex pipes/redirects must be
+    expressed as multiple run_command calls.
+    """
     try:
-        subprocess.run(command, check=True, shell=True)
+        subprocess.run(command.split(), check=True)
     except subprocess.CalledProcessError as e:
         print(f"Error executing command: {e}")
         sys.exit(1)

@@ -1,3 +1,4 @@
+import logging
 import traceback
 from typing import Any, Dict, Optional
 from fastapi import Request, status, HTTPException
@@ -9,6 +10,8 @@ from pydantic import ValidationError
 from common_lib.modules.ai_models.domain.exceptions import ModelNotFoundError
 from common_lib.modules.exceptions import ServiceError
 from app.core.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class NexusException(Exception):
@@ -51,7 +54,7 @@ def _build_error_response(
         "detail": detail,
     }
 
-    # Add stack trace if exception is provided
+    # P2-2: Stack traces only in development — never leak to production clients.
     if exc and get_settings().ENVIRONMENT == "development":
         content["stack_trace"] = traceback.format_exc().splitlines()
 
@@ -59,6 +62,14 @@ def _build_error_response(
 
 async def nexus_exception_handler(request: Request, exc: NexusException):
     module = exc.module or _get_module_from_request(str(request.url))
+    logger.error(
+        "NexusException [%s] %s — %s %s",
+        exc.code,
+        exc.message,
+        request.method,
+        request.url,
+        exc_info=False,  # NexusException is domain-level, not a crash
+    )
     return _build_error_response(
         status_code=exc.status_code,
         code=exc.code,
@@ -71,6 +82,12 @@ async def nexus_exception_handler(request: Request, exc: NexusException):
 
 async def model_not_found_exception_handler(request: Request, exc: ModelNotFoundError):
     module = _get_module_from_request(str(request.url))
+    logger.warning(
+        "ModelNotFound — %s %s: %s",
+        request.method,
+        request.url,
+        exc,
+    )
     return _build_error_response(
         status_code=status.HTTP_404_NOT_FOUND,
         code="MODEL_NOT_FOUND",
@@ -165,16 +182,36 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
 
 
 async def generic_exception_handler(request: Request, exc: Exception):
-    import traceback
-
+    """Last-resort handler — P2-2: log the full traceback server-side but
+    only return a safe message to clients in non-development environments."""
     module = _get_module_from_request(str(request.url))
     tb = traceback.format_exc()
+
+    # Always log the full trace server-side so it appears in the observability pipeline
+    logger.error(
+        "Unhandled exception [%s] — %s %s\n%s",
+        type(exc).__name__,
+        request.method,
+        request.url,
+        tb,
+    )
+
+    settings = get_settings()
+    if settings.ENVIRONMENT == "development":
+        # In dev, expose detail to aid debugging
+        message = f"Error: {str(exc)} | Trace: {tb[:500]}"
+        detail = str(exc)
+    else:
+        # P2-2: Do NOT leak internal details / stack traces to production clients
+        message = "An internal server error occurred. Please try again later."
+        detail = None
+
     return _build_error_response(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         code="INTERNAL_SERVER_ERROR",
-        message=f"Error: {str(exc)} | Trace: {tb[:500]}",
+        message=message,
         module=module,
-        detail=str(exc),
+        detail=detail,
         exc=exc,
     )
 
@@ -189,6 +226,13 @@ async def service_error_handler(request: Request, exc: ServiceError):
     """
     module = _get_module_from_request(str(request.url))
     headers = getattr(exc, "headers", None) if hasattr(exc, "headers") else None
+    logger.error(
+        "ServiceError [%s] %s — %s %s",
+        exc.code,
+        exc.message,
+        request.method,
+        request.url,
+    )
     return _build_error_response(
         status_code=exc.status_code,
         code=exc.code,
