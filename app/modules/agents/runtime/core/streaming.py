@@ -352,6 +352,17 @@ async def stream_agent_generator(
         llm_call_count = (
             0  # hard kill guard: abort after too many LLM turns with no answer
         )
+        # Doom loop detection: track tool call history for signature-based detection
+        _doom_loop_tool_history: list[dict] = []
+        _doom_loop_svc = None
+        try:
+            from common_lib.modules.agents.services.doom_loop_service import (
+                DoomLoopService,
+            )
+
+            _doom_loop_svc = DoomLoopService()
+        except Exception:
+            pass
 
         def ts() -> str:
             return datetime.now().strftime("%H:%M:%S.%f")[:-3]
@@ -551,6 +562,48 @@ async def stream_agent_generator(
                     agent_id=agent_id,
                 )
 
+                # Doom loop detection via signature-based scanning
+                _doom_loop_tool_history.append(
+                    {"tool_name": name, "arguments": inp[:500]}
+                )
+                if _doom_loop_svc and len(_doom_loop_tool_history) >= 3:
+                    try:
+                        from common_lib.modules.data_storage.database.connection import (
+                            get_session as _get_db,
+                        )
+
+                        with next(_get_db()) as _db:
+                            detection = _doom_loop_svc.check_loop(
+                                _db, session_id, _doom_loop_tool_history
+                            )
+                            if detection:
+                                summary_msg = (
+                                    f"Doom loop detected: {detection['pattern']} "
+                                    f"(period {detection['period']}, "
+                                    f"{detection['occurrences']} occurrences)"
+                                )
+                                yield trace(
+                                    "error",
+                                    f"🛑 {summary_msg}",
+                                    json.dumps(
+                                        {
+                                            "signatures": detection["signatures"][-3:],
+                                            "action": "terminate",
+                                        }
+                                    ),
+                                )
+                                yield _enc(
+                                    {
+                                        "event_type": "error",
+                                        "content": summary_msg,
+                                    }
+                                )
+                                return
+                    except Exception as _dl_err:
+                        logger.warning(
+                            "[Streaming] Doom loop check failed: %s", _dl_err
+                        )
+
                 # Hard kill: if any single tool is called 8+ times, abort
                 if tool_call_counts[name] > 8:
                     yield trace(
@@ -588,6 +641,31 @@ async def stream_agent_generator(
                 yield trace(
                     "tool_result", f"📥 Result: {name}", str(out), {"tool_name": name}
                 )
+                # Archive large tool outputs (>15KB) to DB, send truncated to model
+                try:
+                    from common_lib.modules.agents.services.tool_artifact_service import (
+                        ToolArtifactService,
+                    )
+
+                    _artifact_svc = ToolArtifactService()
+                    from common_lib.modules.data_storage.database.connection import (
+                        get_session as _get_db,
+                    )
+
+                    with next(_get_db()) as _db:
+                        archive_result = _artifact_svc.archive_output(
+                            _db, session_id=session_id, tool_name=name, output=out
+                        )
+                        if archive_result and archive_result.get("truncated"):
+                            logger.info(
+                                "[Streaming] Archived tool output: %s (%d bytes -> pointer)",
+                                name,
+                                len(out),
+                            )
+                except Exception as _arch_err:
+                    logger.warning(
+                        "[Streaming] Tool output archiving failed: %s", _arch_err
+                    )
                 # Record tool end trace event
                 tool_duration = 0.0
                 if name in tool_start_times:

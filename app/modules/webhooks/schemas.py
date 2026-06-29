@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 # ─── Endpoint Schemas ───────────────────────────────────────────────
 
+
 class RetryConfig(BaseModel):
     max_retries: int = 3
     interval_seconds: int = 60
@@ -68,6 +69,7 @@ class EndpointListResponse(BaseModel):
 
 # ─── Delivery Schemas ───────────────────────────────────────────────
 
+
 class DeliveryCreate(BaseModel):
     endpoint_id: str
     endpoint_name: str
@@ -123,6 +125,7 @@ class DeliveryListResponse(BaseModel):
 
 # ─── Test Send Schemas ───────────────────────────────────────────────
 
+
 class TestSendRequest(BaseModel):
     event_type: str = "test.event"
     payload: Optional[Dict[str, Any]] = None
@@ -135,7 +138,98 @@ class TestSendResponse(BaseModel):
     duration_ms: Optional[float] = None
 
 
+# ─── Event-Workflow Mapping Schemas ─────────────────────────────────
+
+
+class EventWorkflowMappingCreate(BaseModel):
+    event_type: str = Field(..., max_length=256)
+    workflow_id: str = Field(..., max_length=256)
+    workflow_inputs: Optional[Dict[str, Any]] = None
+    enabled: bool = True
+    description: Optional[str] = None
+
+
+class EventWorkflowMappingUpdate(BaseModel):
+    event_type: Optional[str] = None
+    workflow_id: Optional[str] = None
+    workflow_inputs: Optional[Dict[str, Any]] = None
+    enabled: Optional[bool] = None
+    description: Optional[str] = None
+
+
+class EventWorkflowMappingResponse(BaseModel):
+    id: str
+    event_type: str
+    workflow_id: str
+    workflow_inputs: Optional[Dict[str, Any]] = None
+    enabled: bool = True
+    description: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class EventWorkflowMappingListResponse(BaseModel):
+    items: List[EventWorkflowMappingResponse]
+    total: int = 0
+
+
+# ─── Webhook Callback Schemas ───────────────────────────────────────
+
+
+class CallbackCreate(BaseModel):
+    callback_url: str = Field(..., max_length=1024)
+    status_url: Optional[str] = None
+    secret: Optional[str] = None
+    max_retries: int = 3
+    ttl_seconds: Optional[int] = None
+
+
+class CallbackUpdate(BaseModel):
+    status: Optional[str] = None
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class CallbackResponse(BaseModel):
+    id: str
+    callback_url: str
+    status_url: Optional[str] = None
+    status: str = "pending"
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    retry_count: int = 0
+    max_retries: int = 3
+
+    class Config:
+        from_attributes = True
+
+
+# ─── Inbound Event Schemas ──────────────────────────────────────────
+
+
+class InboundEventRequest(BaseModel):
+    event_type: str = Field(..., max_length=256)
+    payload: Dict[str, Any] = Field(default_factory=dict)
+    headers: Optional[Dict[str, str]] = None
+    timestamp: Optional[str] = None
+
+
+class InboundEventResponse(BaseModel):
+    success: bool = True
+    event_id: str
+    workflows_triggered: int = 0
+    message: str = "Event received"
+    error: Optional[str] = None
+
+
 # ─── Common ─────────────────────────────────────────────────────────
+
 
 class APIResponse(BaseModel):
     success: bool = True

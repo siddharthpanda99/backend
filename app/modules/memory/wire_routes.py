@@ -32,6 +32,9 @@ from app.modules.memory.routes.docs_routes import router as docs_router
 from app.modules.memory.routes.compaction_routes import router as compaction_router
 from app.modules.memory.routes.conflict_routes import router as conflict_router
 from app.modules.memory.routes.instances_routes import router as instances_router
+from app.modules.memory.routes.summaries_routes import router as summaries_router
+from app.modules.memory.routes.knowledge_routes import router as knowledge_router
+from app.modules.memory.routes.enrichment_routes import router as enrichment_router
 
 # Include all sub-routers under the main router
 # All sub-routers have their own prefixes (e.g., /core, /context)
@@ -65,6 +68,9 @@ router.include_router(stores_router)
 router.include_router(compaction_router)
 router.include_router(conflict_router)
 router.include_router(instances_router)
+router.include_router(summaries_router)
+router.include_router(knowledge_router)
+router.include_router(enrichment_router)
 
 # Reorder routes so that wildcard/parameterized routes at the root level (like /{memory_id})
 # are evaluated last, preventing them from hijacking static sub-router paths (like /blocks).

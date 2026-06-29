@@ -6,7 +6,10 @@ import os
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
+import io
+import pytesseract
+from PIL import Image
 
 from common_lib.modules.vision.schemas import (
     VisionGenerateRequest,
@@ -67,7 +70,7 @@ async def preview_prompts(request: VisionPromptPreviewRequest):
 @router.post("/generate", response_model=VisionGenerateResponse)
 async def generate(request: VisionGenerateRequest):
     try:
-        response = controller.generate_sd15_high_res(
+        response = controller.generate_image_via_runtime(
             prompt=request.prompt,
             negative_prompt=request.negative_prompt,
             model_name=request.model_name,
@@ -231,6 +234,17 @@ async def execute_workflow(request: VisionWorkflowRequest):
     except Exception as e:
         logger.exception(f"Error executing vision workflow: {e}")
         return VisionWorkflowResponse(status="error", message=str(e))
+
+@router.post("/ocr")
+async def perform_ocr(file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        image = Image.open(io.BytesIO(content))
+        text = pytesseract.image_to_string(image)
+        return {"status": "success", "text": text.strip()}
+    except Exception as e:
+        logger.exception(f"OCR Error: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 @router.get("/gallery", response_model=VisionGalleryResponse)

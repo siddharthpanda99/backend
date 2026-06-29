@@ -1,14 +1,15 @@
-from fastapi import Depends
-from common_lib.modules.users.models import User
+"""Re-export auth dependencies from the real implementation.
 
+All consumers should import from this module for backward compatibility.
+The actual implementations live in authz.py.
+"""
 
-async def get_current_active_user():
-    raise NotImplementedError("Dependency not implemented")
-
-
-class RoleChecker:
-    def __init__(self, roles):
-        self.roles = roles
-
-    def __call__(self):
-        raise NotImplementedError("Dependency not implemented")
+from app.modules.auth.dependencies.authz import (  # noqa: F401
+    get_current_active_user,
+    get_current_identity,
+    get_tenant_id,
+    get_authz_checker,
+    require_permission,
+    require_tenant,
+    RoleChecker,
+)

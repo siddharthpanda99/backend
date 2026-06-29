@@ -144,7 +144,7 @@ def mock_quality_service() -> MagicMock:
 class TestBulkArchiveStaleEndpoint:
     """POST /api/v1/knowledge/quality/archive-stale — bulk archive stale chunks."""
 
-    MODULE_PATH = "app.modules.knowledge.routes._get_quality_service"
+    MODULE_PATH = "app.modules.knowledge.routes.quality._get_quality_service"
 
     def test_archive_stale_defaults(
         self, client: TestClient, mock_quality_service: MagicMock
@@ -248,7 +248,7 @@ class TestBulkArchiveStaleEndpoint:
 class TestBulkReembedEndpoint:
     """POST /api/v1/knowledge/quality/reembed — bulk re-embed low-confidence chunks."""
 
-    MODULE_PATH = "app.modules.knowledge.routes._get_quality_service"
+    MODULE_PATH = "app.modules.knowledge.routes.quality._get_quality_service"
 
     def test_reembed_defaults(
         self, client: TestClient, mock_quality_service: MagicMock
@@ -357,7 +357,7 @@ class TestBulkReembedEndpoint:
 class TestGenerateRecommendationsEndpoint:
     """GET /api/v1/knowledge/quality/recommendations — quality improvement recommendations."""
 
-    MODULE_PATH = "app.modules.knowledge.routes._get_quality_service"
+    MODULE_PATH = "app.modules.knowledge.routes.quality._get_quality_service"
 
     def test_recommendations_returns_list(
         self, client: TestClient, mock_quality_service: MagicMock
@@ -427,7 +427,7 @@ class TestGenerateRecommendationsEndpoint:
 class TestRunValidationJobEndpoint:
     """POST /api/v1/knowledge/quality/run-validation — run validation scan as tracked job."""
 
-    MODULE_PATH = "app.modules.knowledge.routes._get_quality_service"
+    MODULE_PATH = "app.modules.knowledge.routes.quality._get_quality_service"
 
     def test_validation_returns_job_result(
         self, client: TestClient, mock_quality_service: MagicMock

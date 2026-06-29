@@ -2,6 +2,8 @@
 
 import logging
 import uuid
+import re
+from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -143,15 +145,25 @@ async def list_prompts_by_source(source: str):
 
 class ComposeBlockItem(BaseModel):
     id: Optional[str] = None
+    name: Optional[str] = None
     type: str
     content: str
     active: bool = True
     weight: float = 1.0
 
 
+class VariableDeclarationItem(BaseModel):
+    key: str
+    type: str = "text"
+    label: Optional[str] = None
+    value: str = ""
+    defaultValue: Optional[Any] = None
+
+
 class ComposePromptRequest(BaseModel):
     blocks: List[ComposeBlockItem]
     variables: Dict[str, str] = {}
+    variable_definitions: Optional[Dict[str, VariableDeclarationItem]] = None
 
 
 class GeneratePromptRequest(BaseModel):
@@ -185,24 +197,101 @@ async def list_prompt_blocks():
 async def compose_prompt(request: ComposePromptRequest):
     try:
         compiled_parts = []
+        segments = []
+        block_entries = []
+        variable_map: Dict[str, Dict[str, Any]] = {}
+
+        # Build variable map from explicit definitions + value overrides
+        if request.variable_definitions:
+            for key, decl in request.variable_definitions.items():
+                variable_map[key] = {
+                    "key": decl.key,
+                    "type": decl.type,
+                    "label": decl.label,
+                    "value": request.variables.get(key, decl.value),
+                    "defaultValue": decl.defaultValue,
+                }
+        else:
+            for k, v in request.variables.items():
+                variable_map[k] = {"key": k, "type": "text", "value": v}
+
         for item in request.blocks:
             if not item.active:
                 continue
             content = item.content
             interpolated = content
+
+            # Build segments for structured output
+            seg_re = re.compile(r"\{\{([^}]+)\}\}|\$\{([^}]+)\}")
+            last_idx = 0
+            block_segments = []
+
+            for m in seg_re.finditer(content):
+                key = (
+                    (m.group(1) or m.group(2))
+                    .strip()
+                    .split(":")[0]
+                    .split("|")[0]
+                    .strip()
+                )
+                val = request.variables.get(key, "")
+
+                if m.start() > last_idx:
+                    block_segments.append(
+                        {"type": "text", "value": content[last_idx : m.start()]}
+                    )
+                block_segments.append(
+                    {
+                        "type": "variable",
+                        "value": val or f"[{key}]",
+                        "key": key,
+                        "declaredType": variable_map.get(key, {}).get("type"),
+                    }
+                )
+                last_idx = m.end()
+
+            if last_idx < len(content):
+                block_segments.append({"type": "text", "value": content[last_idx:]})
+
+            # Interpolate for flat output
             for k, v in request.variables.items():
                 interpolated = interpolated.replace(f"{{{{{k}}}}}", v)
                 interpolated = interpolated.replace(f"${{{k}}}", v)
+
             if item.weight != 1.0:
                 part = f"({interpolated.strip()}:{item.weight})"
             else:
                 part = interpolated.strip()
+
             compiled_parts.append(part)
+            segments.extend(block_segments)
+
+            block_entries.append(
+                {
+                    "id": item.id,
+                    "name": item.name or item.id or item.type,
+                    "content": item.content,
+                    "active": item.active,
+                    "weight": item.weight,
+                }
+            )
+
         compiled_prompt = "\n\n".join(compiled_parts)
+
         return APIResponse(
             data={
                 "compiled_prompt": compiled_prompt,
                 "block_count": len(compiled_parts),
+                "structured": {
+                    "blocks": block_entries,
+                    "variables": variable_map,
+                    "segments": segments,
+                    "resolved_text": compiled_prompt,
+                    "metadata": {
+                        "compiled_at": datetime.utcnow().isoformat(),
+                        "version": 1,
+                    },
+                },
             },
             message="Prompt composed successfully",
         )

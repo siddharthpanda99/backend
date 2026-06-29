@@ -1,7 +1,8 @@
 """Workflow management API — thin router delegating to WorkflowService in common_lib."""
 
+import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, AsyncGenerator
 from fastapi import APIRouter, HTTPException, Body
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -115,9 +116,18 @@ async def run_workflow(workflow_id: str, inputs: Dict[str, Any] = {}):
     edges = workflow.get("edges", [])
     if not nodes:
         raise HTTPException(status_code=400, detail="Workflow has no nodes")
-    return await workflow_service.run_workflow_stream(
+    gen = workflow_service.run_workflow_stream(
         nodes=nodes, edges=edges, inputs=inputs
     )
+
+    async def sse_wrapper() -> AsyncGenerator[str, None]:
+        async for event in gen:
+            if event.get("event_type") == "keepalive":
+                yield ": keepalive\n\n"
+            else:
+                yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(sse_wrapper(), media_type="text/event-stream")
 
 
 @router.post("/generate-template")
@@ -136,6 +146,15 @@ async def run_workflow_stream(
     edges: List[Dict[str, Any]] = None,
     inputs: Dict[str, Any] = {},
 ):
-    return await workflow_service.run_workflow_stream(
+    gen = workflow_service.run_workflow_stream(
         nodes=nodes, edges=edges, inputs=inputs
     )
+
+    async def sse_wrapper() -> AsyncGenerator[str, None]:
+        async for event in gen:
+            if event.get("event_type") == "keepalive":
+                yield ": keepalive\n\n"
+            else:
+                yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(sse_wrapper(), media_type="text/event-stream")

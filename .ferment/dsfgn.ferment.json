@@ -1,0 +1,296 @@
+{
+  "id": "proj_47b8d8ddfdf9",
+  "name": "dsfgn",
+  "goal": "dsfgn",
+  "scoping": {
+    "project_type": "web_app",
+    "tech_stack": [],
+    "constraints": [],
+    "target_user": "",
+    "complexity": "medium",
+    "questions_asked": []
+  },
+  "phases": [
+    {
+      "id": "phase_35408b",
+      "name": "Scaffold project",
+      "description": "Initialize project structure, dependencies, and configuration",
+      "steps": [
+        {
+          "id": "step_587af3",
+          "name": "Task 1",
+          "description": "Part of 'Scaffold project': Initialize project structure, dependencies, and configuration",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "id": "step_3d5944",
+          "name": "Task 2",
+          "description": "Part of 'Scaffold project': Initialize project structure, dependencies, and configuration",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "id": "step_4d80c4",
+          "name": "Task 3",
+          "description": "Part of 'Scaffold project': Initialize project structure, dependencies, and configuration",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        }
+      ],
+      "status": "pending",
+      "grade": null,
+      "parallel": false
+    },
+    {
+      "id": "phase_484e3a",
+      "name": "Implement core models and database",
+      "description": "Define data models, migrations, and storage layer",
+      "steps": [
+        {
+          "id": "step_12d5c0",
+          "name": "Task 4",
+          "description": "Part of 'Implement core models and database': Define data models, migrations, and storage layer",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "id": "step_0b08c3",
+          "name": "Task 5",
+          "description": "Part of 'Implement core models and database': Define data models, migrations, and storage layer",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "id": "step_15e6c5",
+          "name": "Task 6",
+          "description": "Part of 'Implement core models and database': Define data models, migrations, and storage layer",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        }
+      ],
+      "status": "pending",
+      "grade": null,
+      "parallel": false
+    },
+    {
+      "id": "phase_cecfe7",
+      "name": "Build API endpoints",
+      "description": "Create REST API routes with validation and error handling",
+      "steps": [
+        {
+          "id": "step_c97d63",
+          "name": "Task 7",
+          "description": "Part of 'Build API endpoints': Create REST API routes with validation and error handling",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "id": "step_b38828",
+          "name": "Task 8",
+          "description": "Part of 'Build API endpoints': Create REST API routes with validation and error handling",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "id": "step_afcff9",
+          "name": "Task 9",
+          "description": "Part of 'Build API endpoints': Create REST API routes with validation and error handling",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "id": "step_0c4129",
+          "name": "Task 10",
+          "description": "Part of 'Build API endpoints': Create REST API routes with validation and error handling",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        }
+      ],
+      "status": "pending",
+      "grade": null,
+      "parallel": false
+    },
+    {
+      "id": "phase_af1c94",
+      "name": "Add authentication and authorization",
+      "description": "Implement user auth, permissions, and security middleware",
+      "steps": [
+        {
+          "id": "step_b63efd",
+          "name": "Task 11",
+          "description": "Part of 'Add authentication and authorization': Implement user auth, permissions, and security middleware",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "id": "step_debad1",
+          "name": "Task 12",
+          "description": "Part of 'Add authentication and authorization': Implement user auth, permissions, and security middleware",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "id": "step_258403",
+          "name": "Task 13",
+          "description": "Part of 'Add authentication and authorization': Implement user auth, permissions, and security middleware",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        }
+      ],
+      "status": "pending",
+      "grade": null,
+      "parallel": false
+    },
+    {
+      "id": "phase_a0f6e1",
+      "name": "Write tests and documentation",
+      "description": "Add unit/integration tests and API documentation",
+      "steps": [
+        {
+          "id": "step_12896a",
+          "name": "Task 14",
+          "description": "Part of 'Write tests and documentation': Add unit/integration tests and API documentation",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "id": "step_459bd5",
+          "name": "Task 15",
+          "description": "Part of 'Write tests and documentation': Add unit/integration tests and API documentation",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "id": "step_e2f1ff",
+          "name": "Task 16",
+          "description": "Part of 'Write tests and documentation': Add unit/integration tests and API documentation",
+          "status": "pending",
+          "grade": null,
+          "assignee_role": "builder",
+          "retry_count": 0,
+          "attempt_limit": 3,
+          "result": null,
+          "error": null,
+          "started_at": null,
+          "completed_at": null
+        }
+      ],
+      "status": "pending",
+      "grade": null,
+      "parallel": false
+    }
+  ],
+  "decisions": [],
+  "memories": [],
+  "continuation": "automated",
+  "created_at": "2026-06-21T16:02:21.037922+00:00",
+  "updated_at": "2026-06-21T16:02:21.047928+00:00",
+  "_format_version": "1.0",
+  "_generator": "antigravity-ferment"
+}

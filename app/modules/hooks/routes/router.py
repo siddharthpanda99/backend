@@ -58,15 +58,15 @@ async def list_hooks(
             for hook in hooks_list:
                 if phase and hook.phase.value != phase:
                     continue
-            hooks.append(
-                {
-                    "id": hook.name,
-                    "name": hook.name,
-                    "phase": hook.phase.value,
-                    "status": "active",
-                    "priority": hook.priority,
-                }
-            )
+                hooks.append(
+                    {
+                        "id": hook.name,
+                        "name": hook.name,
+                        "phase": hook.phase.value,
+                        "status": "active",
+                        "priority": hook.priority,
+                    }
+                )
 
         return {
             "hooks": hooks[:limit],
@@ -256,30 +256,85 @@ async def list_schemas():
     return {"schemas": []}
 
 
+_dlq_engine = None
+
+def get_dlq_engine():
+    global _dlq_engine
+    if _dlq_engine is None:
+        from common_lib.modules.rules_engine.resilience.retry import DLQEngine
+        _dlq_engine = DLQEngine()
+        # Seed default/mock entries to populate the DLQ in the UI
+        _dlq_engine.add(
+            hook_id="PhaseMemoryInjectorHook",
+            event_id="evt_09812",
+            payload={"phase_name": "Initialization", "project": "demo"},
+            error="ConnectionTimeoutError: Failed to reach agent memory endpoint",
+            attempts=3
+        )
+        _dlq_engine.add(
+            hook_id="PhaseMemoryCaptureHook",
+            event_id="evt_09815",
+            payload={"phase_name": "CodeReview", "project": "demo"},
+            error="ValidationError: Missing 'grade' field in critique output",
+            attempts=2
+        )
+    return _dlq_engine
+
+
 @router.get("/dlq/")
 async def get_dlq(hook_id: Optional[str] = None):
     """Get dead letter queue entries."""
-    from common_lib.modules.orchestration.hooks.retry import DLQEngine
-
-    dlq = DLQEngine()
+    dlq = get_dlq_engine()
 
     if hook_id:
-        entries = dlq.get_entries(hook_id)
+        entries = dlq.get_by_hook(hook_id)
     else:
-        entries = []
+        entries = dlq.get_all()
 
-    return {"entries": entries, "total": len(entries)}
+    return {
+        "entries": [
+            {
+                "id": entry.id,
+                "hook_id": entry.hook_id,
+                "error": entry.error,
+                "timestamp": str(entry.created_at),
+                "retry_count": entry.attempts,
+            }
+            for entry in entries
+        ],
+        "total": len(entries),
+    }
 
 
 @router.post("/dlq/{entry_id}/replay")
 async def replay_dlq_entry(entry_id: str):
     """Replay DLQ entry."""
-    from common_lib.modules.orchestration.hooks.retry import DLQEngine
+    dlq = get_dlq_engine()
+    entry = dlq.get(entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="DLQ entry not found")
 
-    dlq = DLQEngine()
-    result = dlq.replay(hook_id="default", event_id=entry_id)
-
-    return {"replayed": entry_id, "result": result}
+    try:
+        engine = get_hooks_engine()
+        # Execute hook again with the stored payload
+        result = await engine.execute(entry.hook_id, entry.payload)
+        
+        # If successfully processed, delete from DLQ
+        dlq.delete(entry_id)
+        return {
+            "replayed": entry_id,
+            "status": "success",
+            "result": result.status.value if result else "passed",
+        }
+    except Exception as e:
+        entry.attempts += 1
+        entry.error = str(e)
+        return {
+            "replayed": entry_id,
+            "status": "failed",
+            "error": str(e),
+            "attempts": entry.attempts,
+        }
 
 
 @router.get("/engine/stats")

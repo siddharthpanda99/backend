@@ -2,8 +2,9 @@
 
 import json
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, AsyncGenerator
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session as SQLSession
 
 from common_lib.modules.data_storage.database.connection import (
@@ -238,7 +239,13 @@ def update_session_state(
 async def smart_chat(
     request: SmartChatRequest, session: SQLSession = Depends(get_db_session)
 ):
-    return await svc.smart_chat(session, request)
+    gen = svc.smart_chat(session, request)
+
+    async def sse_wrapper() -> AsyncGenerator[str, None]:
+        async for event in gen:
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(sse_wrapper(), media_type="text/event-stream")
 
 
 @router.post("/upload", response_model=FileUploadResponse)

@@ -48,6 +48,8 @@ from common_lib.modules.audio_processing.schemas import (
     ProjectResponse,
     OrchestraRequest,
     OrchestraResponse,
+    FullSongGenRequest,
+    FullSongGenResponse,
 )
 from common_lib.modules.audio_processing.service import audio_service
 from pydantic import BaseModel
@@ -267,6 +269,14 @@ async def load_project(request: ProjectLoadRequest):
 async def recover_project(request: ProjectRecoverRequest):
     try:
         return await audio_service.recover_project(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/full-song-generation", response_model=FullSongGenResponse)
+async def generate_full_song(request: FullSongGenRequest):
+    try:
+        return await audio_service.generate_full_song(request)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

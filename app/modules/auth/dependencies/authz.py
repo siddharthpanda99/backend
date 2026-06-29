@@ -13,6 +13,8 @@ from common_lib.modules.auth.authorization import (
     check_permission,
     verify_tenant_isolation,
 )
+from common_lib.modules.rbac.audit_service import RBACAuditService
+from common_lib.modules.rbac.permission_cache import get_permission_cache
 
 
 async def get_current_active_user(
@@ -111,8 +113,30 @@ async def get_authz_checker(
 def require_permission(action: str, resource_id: str = "*", resource_type: str = "*"):
     async def dependency(
         checker: Annotated[AuthzChecker, Depends(get_authz_checker)],
+        identity: Annotated[PlatformIdentity, Depends(get_current_identity)],
+        request: Request,
     ) -> None:
-        check_permission(checker, action, resource_id, resource_type)
+        try:
+            check_permission(checker, action, resource_id, resource_type)
+            audit = RBACAuditService()
+            audit.log_permission_check(
+                user_id=int(identity.subject_id),
+                resource=resource_type,
+                action=action,
+                allowed=True,
+                endpoint=str(request.url.path),
+            )
+        except Exception:
+            audit = RBACAuditService()
+            audit.log_permission_check(
+                user_id=int(identity.subject_id),
+                resource=resource_type,
+                action=action,
+                allowed=False,
+                resource_id=resource_id,
+                endpoint=str(request.url.path),
+            )
+            raise
 
     return Depends(dependency)
 

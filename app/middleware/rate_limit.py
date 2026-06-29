@@ -128,9 +128,12 @@ def _rate_limit_key(request: Request, group: str) -> str:
     """Build a rate-limit key partitioned by identity and endpoint group."""
     # Prefer authenticated identity from authz middleware
     authz = getattr(request.state, "authz", None)
-    if authz and authz.subject_id and authz.subject_id != "anonymous":
-        identity_part = f"subj:{authz.subject_id}"
-        tenant_part = f"tenant:{authz.tenant_id}"
+    subject_id = getattr(authz, "subject_id", None) if authz else None
+    tenant_id = getattr(authz, "tenant_id", None) if authz else None
+    
+    if subject_id and subject_id != "anonymous":
+        identity_part = f"subj:{subject_id}"
+        tenant_part = f"tenant:{tenant_id}"
     else:
         # Fall back to forwarded IP or direct client
         forwarded_for = request.headers.get("X-Forwarded-For", "")

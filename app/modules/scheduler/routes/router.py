@@ -31,6 +31,7 @@ class CreateCronJobRequest(BaseModel):
     max_retries: int = 3
     timeout_seconds: float = 300.0
     metadata: Dict[str, Any] = {}
+    auto_disable_threshold: int = 0  # 0 = disabled; N = auto-pause after N consecutive failures
 
 
 class UpdateCronJobRequest(BaseModel):
@@ -50,6 +51,8 @@ class UpdateCronJobRequest(BaseModel):
     max_retries: Optional[int] = None
     timeout_seconds: Optional[float] = None
     metadata: Optional[Dict[str, Any]] = None
+    auto_disable_threshold: Optional[int] = None
+    consecutive_failures: Optional[int] = None  # Allow manual reset
 
 
 class CreateFromTemplateRequest(BaseModel):
@@ -206,6 +209,33 @@ async def create_job_from_template(request: CreateFromTemplateRequest):
     return {
         "status": "ok",
         "message": f"Cron job '{job.name}' created from template",
+        "job": job.to_dict(),
+    }
+
+
+@router.get("/alerts")
+async def failure_alerts():
+    """Get active failure alerts for jobs with consecutive failures."""
+    service = _get_service()
+    return {"status": "ok", "alerts": service.get_failure_alerts()}
+
+
+@router.post("/jobs/{job_id}/reset-failures")
+async def reset_job_failures(job_id: str):
+    """Reset consecutive failure counter for a job and re-enable it."""
+    service = _get_service()
+    job = service.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+    updates: Dict[str, Any] = {"consecutive_failures": 0}
+    # Re-enable if it was auto-disabled
+    if not job.enabled and job.status.value == "disabled":
+        updates["enabled"] = True
+        updates["status"] = "active"
+    job = service.update_job(job_id, updates)
+    return {
+        "status": "ok",
+        "message": f"Failures reset for '{job.name}'",
         "job": job.to_dict(),
     }
 

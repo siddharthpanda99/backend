@@ -16,9 +16,11 @@ These routes power the Integration Hub frontend at /integrations.
 import logging
 import uuid
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 
 from pydantic import BaseModel
+
+from app.modules.integration.routes.versioning import resolve_api_version
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +163,10 @@ def _serialize_module(m: Any) -> Dict[str, Any]:
 
 
 @router.get("/modules", response_model=List[ModuleResponse])
-async def list_modules(category: Optional[str] = Query(None)):
+async def list_modules(
+    api_version: str = Depends(resolve_api_version),
+    category: Optional[str] = Query(None),
+):
     """List all registered module configs, optionally filtered by category."""
     try:
         svc = _get_service()
@@ -173,7 +178,10 @@ async def list_modules(category: Optional[str] = Query(None)):
 
 
 @router.get("/modules/{module_id}", response_model=ModuleResponse)
-async def get_module(module_id: str):
+async def get_module(
+    module_id: str,
+    api_version: str = Depends(resolve_api_version),
+):
     """Get a single module config."""
     try:
         svc = _get_service()
@@ -189,7 +197,11 @@ async def get_module(module_id: str):
 
 
 @router.put("/modules/{module_id}/toggle", response_model=ModuleResponse)
-async def toggle_module(module_id: str, request: ModuleToggleRequest):
+async def toggle_module(
+    module_id: str,
+    request: ModuleToggleRequest,
+    api_version: str = Depends(resolve_api_version),
+):
     """Enable or disable a module."""
     try:
         svc = _get_service()
@@ -205,7 +217,11 @@ async def toggle_module(module_id: str, request: ModuleToggleRequest):
 
 
 @router.put("/modules/{module_id}/settings", response_model=ModuleResponse)
-async def update_module_settings(module_id: str, request: ModuleSettingsRequest):
+async def update_module_settings(
+    module_id: str,
+    request: ModuleSettingsRequest,
+    api_version: str = Depends(resolve_api_version),
+):
     """Update module-specific settings."""
     try:
         svc = _get_service()
@@ -224,6 +240,7 @@ async def update_module_settings(module_id: str, request: ModuleSettingsRequest)
 async def update_module_interoperability(
     module_id: str,
     interoperable_with: List[str] = Body(..., embed=True),
+    api_version: str = Depends(resolve_api_version),
 ):
     """Update which modules a module can interoperate with."""
     try:
@@ -245,7 +262,10 @@ async def update_module_interoperability(
 
 
 @router.get("/pipelines", response_model=List[PipelineResponse])
-async def list_pipelines(status: Optional[str] = Query(None)):
+async def list_pipelines(
+    api_version: str = Depends(resolve_api_version),
+    status: Optional[str] = Query(None),
+):
     """List all saved pipeline configs."""
     try:
         svc = _get_service()
@@ -257,7 +277,10 @@ async def list_pipelines(status: Optional[str] = Query(None)):
 
 
 @router.post("/pipelines", response_model=PipelineResponse, status_code=201)
-async def create_pipeline(request: PipelineCreateRequest):
+async def create_pipeline(
+    request: PipelineCreateRequest,
+    api_version: str = Depends(resolve_api_version),
+):
     """Create a new pipeline config."""
     try:
         svc = _get_service()
@@ -273,7 +296,10 @@ async def create_pipeline(request: PipelineCreateRequest):
 
 
 @router.get("/pipelines/{pipeline_id}", response_model=PipelineResponse)
-async def get_pipeline(pipeline_id: str):
+async def get_pipeline(
+    pipeline_id: str,
+    api_version: str = Depends(resolve_api_version),
+):
     """Get a single pipeline config."""
     try:
         svc = _get_service()
@@ -289,7 +315,11 @@ async def get_pipeline(pipeline_id: str):
 
 
 @router.put("/pipelines/{pipeline_id}", response_model=PipelineResponse)
-async def update_pipeline(pipeline_id: str, request: PipelineUpdateRequest):
+async def update_pipeline(
+    pipeline_id: str,
+    request: PipelineUpdateRequest,
+    api_version: str = Depends(resolve_api_version),
+):
     """Update a pipeline config."""
     try:
         svc = _get_service()
@@ -306,14 +336,17 @@ async def update_pipeline(pipeline_id: str, request: PipelineUpdateRequest):
 
 
 @router.delete("/pipelines/{pipeline_id}")
-async def delete_pipeline(pipeline_id: str):
+async def delete_pipeline(
+    pipeline_id: str,
+    api_version: str = Depends(resolve_api_version),
+):
     """Delete a pipeline config."""
     try:
         svc = _get_service()
         deleted = svc.delete_pipeline(pipeline_id)
         if not deleted:
             raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
-        return {"status": "ok", "message": f"Pipeline {pipeline_id} deleted"}
+        return {"api_version": api_version, "status": "ok", "message": f"Pipeline {pipeline_id} deleted"}
     except HTTPException:
         raise
     except Exception as e:
@@ -322,7 +355,10 @@ async def delete_pipeline(pipeline_id: str):
 
 
 @router.post("/pipelines/{pipeline_id}/apply", response_model=ApplyResponse)
-async def apply_pipeline(pipeline_id: str):
+async def apply_pipeline(
+    pipeline_id: str,
+    api_version: str = Depends(resolve_api_version),
+):
     """Apply a pipeline config — activate it and update runtime behaviour."""
     try:
         svc = _get_service()
@@ -343,7 +379,10 @@ async def apply_pipeline(pipeline_id: str):
 
 
 @router.get("/pipelines/{pipeline_id}/modules", response_model=List[ModuleLinkResponse])
-async def get_pipeline_module_links(pipeline_id: str):
+async def get_pipeline_module_links(
+    pipeline_id: str,
+    api_version: str = Depends(resolve_api_version),
+):
     """Get all module links for a pipeline."""
     try:
         svc = _get_service()
@@ -368,6 +407,7 @@ async def get_pipeline_module_links(pipeline_id: str):
 async def add_module_to_pipeline(
     pipeline_id: str,
     body: Dict[str, Any] = Body(...),
+    api_version: str = Depends(resolve_api_version),
 ):
     """Add a module to a pipeline."""
     try:
@@ -393,14 +433,18 @@ async def add_module_to_pipeline(
 
 
 @router.delete("/pipelines/{pipeline_id}/modules/{link_id}")
-async def remove_module_from_pipeline(pipeline_id: str, link_id: str):
+async def remove_module_from_pipeline(
+    pipeline_id: str,
+    link_id: str,
+    api_version: str = Depends(resolve_api_version),
+):
     """Remove a module from a pipeline."""
     try:
         svc = _get_service()
         deleted = svc.remove_module_from_pipeline(link_id)
         if not deleted:
             raise HTTPException(status_code=404, detail=f"Link not found: {link_id}")
-        return {"status": "ok", "message": "Module removed from pipeline"}
+        return {"api_version": api_version, "status": "ok", "message": "Module removed from pipeline"}
     except HTTPException:
         raise
     except Exception as e:
@@ -414,7 +458,9 @@ async def remove_module_from_pipeline(pipeline_id: str, link_id: str):
 
 
 @router.get("/interoperability", response_model=InteroperabilityResponse)
-async def get_interoperability_matrix():
+async def get_interoperability_matrix(
+    api_version: str = Depends(resolve_api_version),
+):
     """Get the full interoperability matrix."""
     try:
         svc = _get_service()
@@ -430,23 +476,29 @@ async def get_interoperability_matrix():
 
 
 @router.get("/status")
-async def get_config_status():
+async def get_config_status(
+    api_version: str = Depends(resolve_api_version),
+):
     """Get a snapshot of the current integration configuration status."""
     try:
         svc = _get_service()
-        return svc.get_config_status()
+        status = svc.get_config_status()
+        status["api_version"] = api_version
+        return status
     except Exception as e:
         logger.error("Get config status failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/seed")
-async def seed_default_modules():
+async def seed_default_modules(
+    api_version: str = Depends(resolve_api_version),
+):
     """Seed the default module definitions into the database."""
     try:
         svc = _get_service()
         count = svc.seed_default_modules()
-        return {"status": "ok", "message": f"Seeded {count} modules", "count": count}
+        return {"api_version": api_version, "status": "ok", "message": f"Seeded {count} modules", "count": count}
     except Exception as e:
         logger.error("Seed modules failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

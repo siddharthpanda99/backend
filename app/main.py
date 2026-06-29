@@ -66,6 +66,20 @@ async def lifespan(app: FastAPI):
 
             init_db()
             print("Database initialized and models registered.")
+
+            # Seed RBAC roles and permissions
+            try:
+                from common_lib.modules.rbac.service import seed_roles
+                from sqlmodel import Session as SQLSession
+
+                with SQLSession(engine) as rbac_session:
+                    result = seed_roles(rbac_session)
+                    print(
+                        f"RBAC seeded: {result['permissions']} permissions, {result['roles']} roles"
+                    )
+            except Exception as se:
+                print(f"Warning: RBAC seeding failed: {se}")
+
             # Seed built-in themes from themes.json into DB
             try:
                 from common_lib.modules.settings.service import theme_service
@@ -224,36 +238,26 @@ async def lifespan(app: FastAPI):
 
                 with SQLSession(engine) as seed_ic_session:
                     svc = get_integration_config_service()
-                    count = svc.seed_default_modules(
-                        session=seed_ic_session
-                    )
+                    count = svc.seed_default_modules(session=seed_ic_session)
                     if count:
                         print(f"Startup: Seeded {count} integration module configs")
                     else:
                         print("Startup: Integration module configs already seeded")
 
                     # --- SEED: Integration sample pipelines ---
-                    pipeline_count = svc.seed_default_pipelines(
-                        session=seed_ic_session
-                    )
+                    pipeline_count = svc.seed_default_pipelines(session=seed_ic_session)
                     if pipeline_count:
                         print(
                             f"Startup: Seeded {pipeline_count} integration sample pipelines"
                         )
                     else:
-                        print(
-                            "Startup: Integration sample pipelines already seeded"
-                        )
+                        print("Startup: Integration sample pipelines already seeded")
 
                     # --- AUTO-ACTIVATE: Minimal Pipeline ---
                     # Only activate if no pipeline is currently active
-                    active_pipeline = svc.get_active_pipeline(
-                        session=seed_ic_session
-                    )
+                    active_pipeline = svc.get_active_pipeline(session=seed_ic_session)
                     if active_pipeline is None:
-                        minimal = svc.list_pipelines(
-                            session=seed_ic_session
-                        )
+                        minimal = svc.list_pipelines(session=seed_ic_session)
                         if minimal:
                             # Find the Minimal Pipeline (first seeded)
                             minimal_pipeline = next(
@@ -280,8 +284,9 @@ async def lifespan(app: FastAPI):
 
             # --- REGISTER: RIP Tools ---
             try:
-                from common_lib.modules.integration.adapters.tools import \
-                    RIPToolsAdapter
+                from common_lib.modules.integration.adapters.tools import (
+                    RIPToolsAdapter,
+                )
 
                 adapter = RIPToolsAdapter()
                 registered = await adapter.register_rip_tools()
@@ -898,7 +903,7 @@ async def lifespan(app: FastAPI):
 
     # Start scheduler cron loops
     try:
-        from app.modules.scheduler.service import get_scheduler_service
+        from common_lib.modules.scheduler.service import get_scheduler_service
 
         scheduler = get_scheduler_service()
         scheduler.load_from_disk()
@@ -1035,7 +1040,7 @@ async def lifespan(app: FastAPI):
 
     # Stop scheduler cron loops
     try:
-        from app.modules.scheduler.service import get_scheduler_service
+        from common_lib.modules.scheduler.service import get_scheduler_service
 
         scheduler = get_scheduler_service()
         await scheduler.stop_all()
@@ -1071,7 +1076,9 @@ def create_app() -> FastAPI:
         app.add_middleware(RequestLoggingMiddleware)
         print("Startup: Correlation and Request Logging middleware enabled")
     else:
-        print("Startup: Observability extensions disabled (ENABLE_OBSERVABILITY_EXTENSIONS=False)")
+        print(
+            "Startup: Observability extensions disabled (ENABLE_OBSERVABILITY_EXTENSIONS=False)"
+        )
 
     # Register all events in the observability catalog
     from common_lib.modules.observability.events import register_all_events
@@ -1134,7 +1141,6 @@ def create_app() -> FastAPI:
 
     app.add_middleware(AuthzMiddleware)
     print("Startup: Authz Middleware enabled")
-
 
     # Register Custom OpenAPI
     app.openapi = lambda: custom_openapi(app)
@@ -1209,14 +1215,28 @@ def create_app() -> FastAPI:
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(Exception, generic_exception_handler)
 
-    # Observability endpoints and tracing
+    # Observability — health endpoint registered directly, not via common_lib
     from common_lib.modules.observability import (
-        register_health_endpoint,
+        get_health_data,
         initialize_tracing,
     )
 
-    register_health_endpoint(app)
-    initialize_tracing(app)
+    @app.get("/health", include_in_schema=False)
+    @app.get("/readyz", include_in_schema=False)
+    async def health_check():
+        return get_health_data()
+
+    initialize_tracing()
+
+    # FastAPI instrumentation (requires app reference) — moved from common_lib
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+        FastAPIInstrumentor.instrument_app(app)
+    except ImportError:
+        pass
+    except Exception:
+        pass
 
     # Prometheus auto-instrumentation for HTTP + custom metrics
     try:
@@ -1226,9 +1246,11 @@ def create_app() -> FastAPI:
             app, endpoint="/metrics", include_in_schema=False
         )
     except Exception:
-        from common_lib.modules.observability import register_metrics_endpoint
+        from common_lib.modules.observability import get_metrics_data
 
-        register_metrics_endpoint(app)
+        @app.get("/metrics", include_in_schema=False)
+        async def metrics_endpoint():
+            return get_metrics_data()
 
     # NOTE: Knowledge Engine, Governance, Observability Admin, Docs,
     # Knowledge Hub, AuthZ, and Team routers are all registered by

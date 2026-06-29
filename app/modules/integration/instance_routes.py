@@ -24,8 +24,10 @@ import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from pydantic import BaseModel
+
+from app.modules.integration.routes.versioning import resolve_api_version
 
 router = APIRouter(prefix="/memory/instances", tags=["memory-instances"])
 
@@ -248,7 +250,10 @@ async def _unwire_instance_bridge(instance_id: str) -> List[str]:
 
 
 @router.post("", response_model=DeployResponse)
-async def deploy_instance(request: DeployRequest):
+async def deploy_instance(
+    request: DeployRequest,
+    api_version: str = Depends(resolve_api_version),
+):
     """Deploy a new memory instance from a manifest.
 
     Validates the manifest, creates the instance record, wires bridge
@@ -346,6 +351,7 @@ async def deploy_instance(request: DeployRequest):
 
 @router.get("", response_model=InstanceListResponse)
 async def list_instances(
+    api_version: str = Depends(resolve_api_version),
     status: Optional[str] = Query(None),
     target_type: Optional[str] = Query(None),
     target_id: Optional[str] = Query(None),
@@ -375,7 +381,10 @@ async def list_instances(
 
 
 @router.get("/{instance_id}")
-async def get_instance(instance_id: str):
+async def get_instance(
+    instance_id: str,
+    api_version: str = Depends(resolve_api_version),
+):
     """Get a specific instance with live health and events."""
     try:
         instance = _instance_registry.get(instance_id)
@@ -418,6 +427,7 @@ async def get_instance(instance_id: str):
         instance.last_heartbeat = datetime.now(timezone.utc).isoformat()
 
         return {
+            "api_version": api_version,
             "status": "ok",
             "instance": instance,
             "health": health,
@@ -433,7 +443,10 @@ async def get_instance(instance_id: str):
 
 
 @router.delete("/{instance_id}")
-async def teardown_instance(instance_id: str):
+async def teardown_instance(
+    instance_id: str,
+    api_version: str = Depends(resolve_api_version),
+):
     """Teardown a memory instance — unwire bridge, remove target binding."""
     try:
         instance = _instance_registry.get(instance_id)
@@ -467,6 +480,7 @@ async def teardown_instance(instance_id: str):
         )
 
         return {
+            "api_version": api_version,
             "status": "ok",
             "message": f"Instance {instance_id} torn down",
             "actions_taken": actions_taken,
@@ -480,7 +494,11 @@ async def teardown_instance(instance_id: str):
 
 
 @router.post("/{instance_id}/reload")
-async def reload_instance(instance_id: str, manifest: Optional[Dict[str, Any]] = Body(None)):
+async def reload_instance(
+    instance_id: str,
+    api_version: str = Depends(resolve_api_version),
+    manifest: Optional[Dict[str, Any]] = Body(None),
+):
     """Re-deploy an existing instance with an optional updated manifest."""
     try:
         instance = _instance_registry.get(instance_id)
@@ -516,6 +534,7 @@ async def reload_instance(instance_id: str, manifest: Optional[Dict[str, Any]] =
         ]
 
         return {
+            "api_version": api_version,
             "status": "ok",
             "instance": instance,
             "actions_taken": actions_taken,
@@ -531,6 +550,7 @@ async def reload_instance(instance_id: str, manifest: Optional[Dict[str, Any]] =
 @router.get("/{instance_id}/events")
 async def get_instance_events(
     instance_id: str,
+    api_version: str = Depends(resolve_api_version),
     limit: int = Query(50, ge=1, le=200),
 ):
     """Get recent events for a specific instance."""
@@ -554,6 +574,7 @@ async def get_instance_events(
             filtered = []
 
         return {
+            "api_version": api_version,
             "status": "ok",
             "events": filtered,
             "count": len(filtered),
@@ -567,7 +588,10 @@ async def get_instance_events(
 
 
 @router.get("/{instance_id}/health")
-async def get_instance_health(instance_id: str):
+async def get_instance_health(
+    instance_id: str,
+    api_version: str = Depends(resolve_api_version),
+):
     """Get live health metrics for a specific instance."""
     try:
         instance = _instance_registry.get(instance_id)
@@ -601,7 +625,7 @@ async def get_instance_health(instance_id: str):
             health["status"] = "unavailable"
             health["error"] = str(e)
 
-        return {"status": "ok", "health": health}
+        return {"api_version": api_version, "status": "ok", "health": health}
 
     except HTTPException:
         raise
@@ -611,7 +635,9 @@ async def get_instance_health(instance_id: str):
 
 
 @router.get("/summary/stats")
-async def instance_summary_stats():
+async def instance_summary_stats(
+    api_version: str = Depends(resolve_api_version),
+):
     """Get summary statistics across all instances."""
     try:
         instances = list(_instance_registry.values())
@@ -625,6 +651,7 @@ async def instance_summary_stats():
             by_target[i.target_type] = by_target.get(i.target_type, 0) + 1
 
         return {
+            "api_version": api_version,
             "status": "ok",
             "stats": {
                 "total": len(instances),

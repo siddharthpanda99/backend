@@ -180,3 +180,15 @@ def resolve_engine_manager():
     from common_lib.modules.orchestration.inference.manager import engine_manager
 
     return engine_manager
+
+
+def resolve_mcp_auth_provider():
+    """Helper to get the MCP auth provider for credential injection."""
+    from common_lib.modules.plugins.connectors.mcp_auth_provider import (
+        get_mcp_auth_provider,
+    )
+
+    return get_mcp_auth_provider()
+
+
+

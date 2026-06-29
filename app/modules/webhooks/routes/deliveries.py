@@ -9,7 +9,7 @@ import uuid
 import logging
 import json
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 
@@ -18,11 +18,19 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, delete as sql_delete
 
 from common_lib.modules.data_storage.database.connection import get_session
+from common_lib.modules.events.delivery_engine import DeliveryEngine
 from ..models import WebhookDeliveryRecord, WebhookEndpointRecord
 from ..schemas import (
-    DeliveryCreate, DeliveryUpdate, DeliveryResponse,
-    DeliveryListResponse, TestSendRequest, TestSendResponse, APIResponse,
+    DeliveryCreate,
+    DeliveryUpdate,
+    DeliveryResponse,
+    DeliveryListResponse,
+    TestSendRequest,
+    TestSendResponse,
+    APIResponse,
 )
+
+_delivery_engine: DeliveryEngine = None  # lazy init
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/deliveries", tags=["Webhook Deliveries"])
@@ -66,9 +74,7 @@ async def get_delivery(
     db: Session = Depends(get_session),
 ):
     delivery = db.execute(
-        select(WebhookDeliveryRecord).where(
-            WebhookDeliveryRecord.id == delivery_id
-        )
+        select(WebhookDeliveryRecord).where(WebhookDeliveryRecord.id == delivery_id)
     ).scalar_one_or_none()
     if not delivery:
         raise HTTPException(status_code=404, detail="Delivery not found")
@@ -110,9 +116,7 @@ async def update_delivery(
     db: Session = Depends(get_session),
 ):
     delivery = db.execute(
-        select(WebhookDeliveryRecord).where(
-            WebhookDeliveryRecord.id == delivery_id
-        )
+        select(WebhookDeliveryRecord).where(WebhookDeliveryRecord.id == delivery_id)
     ).scalar_one_or_none()
     if not delivery:
         raise HTTPException(status_code=404, detail="Delivery not found")
@@ -171,11 +175,13 @@ async def test_send_webhook(
         raise HTTPException(status_code=400, detail="Endpoint has no URL configured")
 
     import time
+
     start = time.monotonic()
 
     try:
         payload_bytes = json.dumps(
-            data.payload or {
+            data.payload
+            or {
                 "event": data.event_type,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "test": True,
@@ -212,7 +218,9 @@ async def test_send_webhook(
                 response_body=response_body,
                 duration_ms=round(duration, 1),
                 attempt=1,
-                max_attempts=ep.retry_config.get("max_retries", 3) if ep.retry_config else 3,
+                max_attempts=ep.retry_config.get("max_retries", 3)
+                if ep.retry_config
+                else 3,
             )
             db.add(delivery)
             db.commit()
@@ -237,11 +245,15 @@ async def test_send_webhook(
             status="failed",
             request_url=ep.url,
             request_headers={"Content-Type": "application/json"},
-            request_body=json.dumps(data.payload) if data.payload else '{"event":"test"}',
+            request_body=json.dumps(data.payload)
+            if data.payload
+            else '{"event":"test"}',
             error=error_msg,
             duration_ms=round(duration, 1),
             attempt=1,
-            max_attempts=ep.retry_config.get("max_retries", 3) if ep.retry_config else 3,
+            max_attempts=ep.retry_config.get("max_retries", 3)
+            if ep.retry_config
+            else 3,
         )
         db.add(delivery)
         db.commit()
@@ -265,11 +277,15 @@ async def test_send_webhook(
             status="failed",
             request_url=ep.url,
             request_headers={"Content-Type": "application/json"},
-            request_body=json.dumps(data.payload) if data.payload else '{"event":"test"}',
+            request_body=json.dumps(data.payload)
+            if data.payload
+            else '{"event":"test"}',
             error=error_msg,
             duration_ms=round(duration, 1),
             attempt=1,
-            max_attempts=ep.retry_config.get("max_retries", 3) if ep.retry_config else 3,
+            max_attempts=ep.retry_config.get("max_retries", 3)
+            if ep.retry_config
+            else 3,
         )
         db.add(delivery)
         db.commit()
@@ -279,3 +295,116 @@ async def test_send_webhook(
             error=error_msg,
             duration_ms=round(duration, 1),
         )
+
+
+# ─── Dispatch (Production Event Dispatch) ──────────────────────────
+
+
+def _get_delivery_engine() -> DeliveryEngine:
+    global _delivery_engine
+    if _delivery_engine is None:
+        _delivery_engine = DeliveryEngine()
+    return _delivery_engine
+
+
+@router.post("/dispatch", response_model=APIResponse)
+async def dispatch_event(
+    event_type: str = Query(..., description="Event type to dispatch"),
+    payload: Optional[Dict[str, Any]] = None,
+    db: Session = Depends(get_session),
+):
+    """
+    Dispatch an event to all matching outbound webhook endpoints.
+    This is the production dispatch mechanism — queries enabled endpoints
+    subscribed to the event type and delivers to each with retry logic.
+    """
+    import json
+
+    endpoints = (
+        db.execute(
+            select(WebhookEndpointRecord).where(
+                WebhookEndpointRecord.direction == "outbound",
+                WebhookEndpointRecord.enabled == True,
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    matching = [
+        ep
+        for ep in endpoints
+        if event_type in (ep.event_types or []) or "*" in (ep.event_types or [])
+    ]
+
+    if not matching:
+        return APIResponse(
+            success=True,
+            message=f"No outbound endpoints subscribed to '{event_type}'",
+        )
+
+    engine = _get_delivery_engine()
+    results = []
+    for ep in matching:
+        retry = ep.retry_config or {}
+        result = await engine.deliver(
+            url=ep.url,
+            payload={
+                "event_type": event_type,
+                "payload": payload or {},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+            headers=ep.headers,
+            secret=ep.secret,
+            timeout=10.0,
+            max_retries=retry.get("max_retries", 3),
+            interval_seconds=retry.get("interval_seconds", 1.0),
+            backoff=retry.get("backoff", "exponential"),
+            endpoint_id=ep.id,
+            endpoint_name=ep.name,
+            event_type=event_type,
+        )
+        results.append(
+            {
+                "endpoint_id": ep.id,
+                "endpoint_name": ep.name,
+                "success": result.success,
+                "status_code": result.status_code,
+                "error": result.error,
+            }
+        )
+
+        delivery = WebhookDeliveryRecord(
+            id=str(uuid.uuid4()),
+            endpoint_id=ep.id,
+            endpoint_name=ep.name,
+            direction="outbound",
+            event_type=event_type,
+            status="success" if result.success else "failed",
+            request_url=ep.url,
+            request_headers={"Content-Type": "application/json"},
+            request_body=json.dumps(payload) if payload else "{}",
+            response_status=result.status_code,
+            response_body=result.response_body,
+            error=result.error,
+            duration_ms=result.duration_ms,
+            attempt=result.attempt,
+            max_attempts=retry.get("max_retries", 3),
+        )
+        db.add(delivery)
+
+        ep.last_triggered_at = datetime.now(timezone.utc)
+
+    db.commit()
+
+    success_count = sum(1 for r in results if r["success"])
+    logger.info(
+        f"Dispatched '{event_type}' to {len(matching)} endpoints "
+        f"({success_count} succeeded)"
+    )
+
+    return APIResponse(
+        success=all(r["success"] for r in results),
+        message=f"Dispatched '{event_type}' to {len(matching)} endpoints",
+        data={"results": results},
+    )

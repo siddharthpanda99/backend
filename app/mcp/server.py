@@ -16,6 +16,7 @@ from app.mcp.tools.file_browser import register_file_browser_tools
 from app.mcp.tools.plugins import register_plugin_tools
 from app.mcp.tools.notifications import register_notification_tools
 from app.mcp.tools.music import register_music_tools
+from app.mcp.tools.messaging import register_messaging_tools
 from app.mcp.tools.data_pipeline import register_data_pipeline_tools
 from app.mcp.tools.users import register_user_tools
 from app.mcp.tools.sessions import register_session_tools
@@ -24,6 +25,14 @@ from app.mcp.tools.governance import register_governance_tools
 from app.mcp.tools.hooks_triggers import register_hooks_triggers_tools
 from app.mcp.tools.knowledge import register_knowledge_tools
 from app.mcp.tools.knowledgebase import register_knowledgebase_tools
+from app.mcp.tools.kpe import register_kpe_tools
+from app.mcp.tools.learning import register_learning_tools
+from app.mcp.tools.explainer import register_explainer_tools
+from app.mcp.tools.generators import register_generator_tools
+from app.mcp.tools.patterns import register_pattern_tools
+from app.mcp.tools.drift import register_drift_tools
+from app.mcp.tools.drift_alerts import register_drift_alert_tools
+from app.mcp.tools.drift_remediation import register_drift_remediation_tools
 from app.mcp.resources.cognitive import register_cognitive_resources
 
 # Setup MCP-specific logging
@@ -52,9 +61,10 @@ register_audio_tools(mcp_server)
 register_data_forge_tools(mcp_server)
 register_fleet_tools(mcp_server)
 register_file_browser_tools(mcp_server)
-register_plugin_tools(mcp_server)
+register_plugin_tools(mcp_server)    
 register_notification_tools(mcp_server)
 register_music_tools(mcp_server)
+register_messaging_tools(mcp_server)
 register_data_pipeline_tools(mcp_server)
 register_user_tools(mcp_server)
 register_session_tools(mcp_server)
@@ -63,6 +73,14 @@ register_governance_tools(mcp_server)
 register_hooks_triggers_tools(mcp_server)
 register_knowledge_tools(mcp_server)
 register_knowledgebase_tools(mcp_server)
+register_kpe_tools(mcp_server)
+register_learning_tools(mcp_server)
+register_explainer_tools(mcp_server)
+register_generator_tools(mcp_server)
+register_pattern_tools(mcp_server)
+register_drift_tools(mcp_server)
+register_drift_alert_tools(mcp_server)
+register_drift_remediation_tools(mcp_server)
 
 # 3. Register Modular Resources
 register_cognitive_resources(mcp_server)

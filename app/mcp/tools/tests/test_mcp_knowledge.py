@@ -518,7 +518,7 @@ class TestFastMCPSmoke:
 class TestRegistration:
     """MCP tool registration integrity (uses real FastMCP)."""
 
-    def test_all_nine_tools_registered(self) -> None:
+    def test_all_eleven_tools_registered(self) -> None:
         with patch("app.mcp.tools.knowledge.resolve_knowledge_engine_service"):
             server = FastMCP("test-knowledge")
             register_knowledge_tools(server)
@@ -534,6 +534,8 @@ class TestRegistration:
                 "knowledge_config",
                 "knowledge_compress",
                 "knowledge_decompress",
+                "knowledge_redact_pii",
+                "knowledge_detect_pii",
             }
             assert tool_names == expected, f"Missing: {expected - tool_names}"
 

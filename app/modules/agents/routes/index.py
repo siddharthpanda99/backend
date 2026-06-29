@@ -9,6 +9,16 @@ from app.modules.agents.routes.runtime_routes import router as runtime_router
 from app.modules.agents.routes.session_routes import router as session_router
 from app.modules.agents.routes.pipeline_routes import router as pipeline_router
 from app.modules.agents.routes.tracing_routes import router as tracing_router
+from app.modules.agents.routes.task_routes import router as task_router
+from app.modules.agents.routes.profile_routes import router as profile_router
+from app.modules.agents.routes.skill_routes import router as skill_router
+from app.modules.agents.routes.daemon_routes import router as daemon_router
+from app.modules.agents.routes.doom_loop_routes import router as doom_loop_router
+from app.modules.agents.routes.tool_artifact_routes import (
+    router as tool_artifact_router,
+)
+from app.modules.agents.routes.checkpoint_routes import router as checkpoint_router
+from app.modules.agents.routes.playbook_routes import router as playbook_router
 
 router = APIRouter()
 router.include_router(registry_router, prefix="/registry", tags=["Registry"])
@@ -16,6 +26,20 @@ router.include_router(runtime_router, prefix="/runtime", tags=["Agent Runtime"])
 router.include_router(session_router, prefix="/runtime", tags=["Sessions"])
 router.include_router(pipeline_router, prefix="/pipelines", tags=["Pipelines"])
 router.include_router(tracing_router, prefix="/traces", tags=["Agent Tracing"])
+router.include_router(task_router, prefix="/tasks", tags=["Task Queue"])
+router.include_router(profile_router, prefix="/profiles", tags=["Agent Profiles"])
+router.include_router(skill_router, prefix="/skills", tags=["Skill Bridge"])
+router.include_router(daemon_router, prefix="/daemons", tags=["Agent Daemons"])
+router.include_router(
+    doom_loop_router, prefix="/doom-loops", tags=["Doom Loop Detection"]
+)
+router.include_router(
+    tool_artifact_router, prefix="/tool-artifacts", tags=["Tool Artifacts"]
+)
+router.include_router(
+    checkpoint_router, prefix="/checkpoints", tags=["Context Checkpoints"]
+)
+router.include_router(playbook_router, prefix="/playbooks", tags=["Playbooks"])
 
 
 @router.get("/", response_model=APIResponse[List[AgentRead]])
