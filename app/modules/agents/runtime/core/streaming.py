@@ -622,6 +622,7 @@ async def stream_agent_generator(
                 yield _enc(
                     {
                         "event_type": "tool_start",
+                        "tool_name": name,
                         "content": f"🔧 Using: {name}",
                         "tool_input": inp,
                     }
@@ -637,7 +638,7 @@ async def stream_agent_generator(
                 out = ev.get("data", {}).get("output", "")
                 if not isinstance(out, str):
                     out = json.dumps(out, default=str)
-                yield _enc({"event_type": "tool_end", "content": str(out)})
+                yield _enc({"event_type": "tool_end", "tool_name": name, "content": str(out)})
                 yield trace(
                     "tool_result", f"📥 Result: {name}", str(out), {"tool_name": name}
                 )

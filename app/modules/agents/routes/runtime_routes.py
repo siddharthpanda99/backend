@@ -307,12 +307,19 @@ from common_lib.modules.agents.runtime import (
     update_session_state as _update_session_state,
 )
 
+
 @router.get("/session_state/{session_id}")
 async def read_session_state_endpoint(
     session_id: str, thread_id: str = None, db: Session = Depends(get_db_session)
 ):
     """Read the full LangGraph checkpoint state for a thread, plus DB messages."""
-    return _read_session_state(db, session_id, thread_id)
+    try:
+        return _read_session_state(db, session_id, thread_id)
+    except Exception as e:
+        import traceback
+
+        logger.error(f"session_state error: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/upload")
@@ -352,7 +359,6 @@ async def update_session_state(session_id: str, req: StateUpdateRequest):
     if "error" in res:
         raise HTTPException(status_code=400, detail=res["error"])
     return res
-
 
 
 @router.get("/available_tools")

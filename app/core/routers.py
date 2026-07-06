@@ -118,6 +118,11 @@ def _agentic_os_router():
     return router
 
 
+def _document_creator_router():
+    from app.modules.document_creator.routes.router import router
+
+    return router
+
 
 def _knowledge_hub_entries(api_prefix: str) -> list:
     """Build router entries for the knowledge_hub multi-router package."""
@@ -127,6 +132,7 @@ def _knowledge_hub_entries(api_prefix: str) -> list:
         packets_router,
         projects_router as kh_projects_router,
         streaming_router,
+        collections_router,
     )
 
     return [
@@ -158,6 +164,12 @@ def _knowledge_hub_entries(api_prefix: str) -> list:
             "router": streaming_router,
             "prefix": "",
             "tags": ["Knowledge Hub — Streaming"],
+            "auth": True,
+        },
+        {
+            "router": collections_router,
+            "prefix": "",
+            "tags": ["Knowledge Hub — Collections"],
             "auth": True,
         },
     ]
@@ -243,6 +255,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.dip.routes.kg import router as dip_kg_router
     from app.modules.dip.routes.storage import router as dip_storage_router
     from app.modules.dip.routes.embeddings import router as dip_embeddings_router
+    from app.modules.dip.routes.extraction import router as dip_extraction_router
     from app.modules.file_browser import router as file_browser_router
     from app.modules.file_browser.macro_routes import router as macro_router
     from app.modules.notification.routes import router as notification_router
@@ -269,6 +282,10 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.mcp.routes import router as mcp_router
     from app.modules.debug.routes import router as debug_router
     from app.modules.marketplace.routes import router as marketplace_router
+    from app.modules.marketplace.routes.audit_routes import (
+        router as entity_audit_router,
+    )
+    from app.modules.creators.routes.router import router as creators_router
     from app.modules.graph.routes import router as graph_router
     from app.modules.app_builder.schema import router as schema_router
     from app.modules.sync.routes.index import router as sync_router
@@ -280,9 +297,55 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.evolver import router as evolver_router
     from app.modules.writing.routes import router as writing_router
     from app.modules.messaging.routes import router as messaging_router
+    from app.modules.document_vault import router as document_vault_router
 
     def _hitl_router():
         from app.modules.hitl.routes import router
+
+        return router
+
+    def _control_center_router():
+        from app.modules.control_center.routes import router
+
+        return router
+
+    def _admin_db_router():
+        from app.modules.admin_db.routes import router
+
+        return router
+
+    def _etl_router():
+        from app.modules.multi_source_etl.routes import router
+
+        return router
+
+    def _database_connections_router():
+        from app.modules.database_connections.routes import router
+
+        return router
+
+    def _unified_triggers_router():
+        from app.modules.triggers.routes import router
+
+        return router
+
+    def _unified_hooks_router():
+        from app.modules.hooks.routes import router
+
+        return router
+
+    def _unified_rules_router():
+        from app.modules.rules.routes import router
+
+        return router
+
+    def _unified_interceptors_router():
+        from app.modules.interceptors.routes import router
+
+        return router
+
+    def _chatgpt_mcp_router():
+        from app.modules.chatgpt_mcp.routes import router
 
         return router
 
@@ -627,6 +690,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["dip/embeddings"],
             "auth": True,
         },
+        {
+            "router": dip_extraction_router,
+            "prefix": "",
+            "tags": ["dip/extraction"],
+            "auth": True,
+        },
         # ── Plugins & Connectors ───────────────────────────────────
         {
             "router": plugins_router,
@@ -674,7 +743,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["Keys Management"],
             "auth": True,
         },
-        {"router": proxy_router, "prefix": "/proxy", "tags": ["Proxy Routing"], "auth": True},
+        {
+            "router": proxy_router,
+            "prefix": "/proxy",
+            "tags": ["Proxy Routing"],
+            "auth": True,
+        },
         {"router": system_router, "prefix": "", "tags": ["System"], "auth": True},
         # ── Integration & Events ───────────────────────────────────
         {
@@ -719,6 +793,18 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": marketplace_router,
             "prefix": "/marketplace",
             "tags": ["Marketplace"],
+            "auth": True,
+        },
+        {
+            "router": creators_router,
+            "prefix": "/creators",
+            "tags": ["Creators"],
+            "auth": True,
+        },
+        {
+            "router": entity_audit_router,
+            "prefix": "/entities",
+            "tags": ["Entity Audit"],
             "auth": True,
         },
         {"router": graph_router, "prefix": "/graph", "tags": ["Graph"], "auth": True},
@@ -850,6 +936,80 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": evolver_router,
             "prefix": "/evolver",
             "tags": ["Evolver — GEP/ATP"],
+            "auth": True,
+        },
+        # ── Document Vault ──────────────────────────────────────────
+        {
+            "router": document_vault_router,
+            "prefix": "",
+            "tags": ["Document Vault"],
+            "auth": True,
+        },
+        # ── Document Creator ──────────────────────────────────────────
+        {
+            "router": _document_creator_router(),
+            "prefix": "",
+            "tags": ["Document Creator"],
+            "auth": True,
+        },
+        # ── Control Center ─────────────────────────────────────────
+        {
+            "router": _control_center_router(),
+            "prefix": "",
+            "tags": ["Control Center"],
+            "auth": True,
+        },
+        # ── Admin Database ─────────────────────────────────────────
+        {
+            "router": _admin_db_router(),
+            "prefix": "",
+            "tags": ["Admin Database"],
+            "auth": True,
+        },
+        # ── Multi-Source ETL ────────────────────────────────────────
+        {
+            "router": _etl_router(),
+            "prefix": "/etl",
+            "tags": ["Multi-Source ETL"],
+            "auth": True,
+        },
+        # ── Database Connections ─────────────────────────────────────
+        {
+            "router": _database_connections_router(),
+            "prefix": "/databases",
+            "tags": ["Database Connections"],
+            "auth": True,
+        },
+        # ── Unified Entity System (Triggers / Hooks / Rules) ──────────
+        {
+            "router": _unified_triggers_router(),
+            "prefix": "",
+            "tags": ["Unified Triggers"],
+            "auth": True,
+        },
+        {
+            "router": _unified_hooks_router(),
+            "prefix": "",
+            "tags": ["Unified Hooks"],
+            "auth": True,
+        },
+        {
+            "router": _unified_rules_router(),
+            "prefix": "",
+            "tags": ["Unified Rules"],
+            "auth": True,
+        },
+        {
+            "router": _unified_interceptors_router(),
+            "prefix": "",
+            "tags": ["Unified Interceptors"],
+            "auth": True,
+        },
+        # ── ChatGPT MCP Integration ────────────────────────────────
+        {
+            "router": _chatgpt_mcp_router(),
+            "prefix": "",
+            "tags": ["ChatGPT MCP Integration"],
             "auth": True,
         },
     ]

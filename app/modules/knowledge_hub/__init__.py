@@ -13,6 +13,7 @@ from app.modules.knowledge_hub.routes.pipelines import router as pipelines_route
 from app.modules.knowledge_hub.routes.packets import router as packets_router
 from app.modules.knowledge_hub.routes.projects import router as projects_router
 from app.modules.knowledge_hub.routes.streaming import router as streaming_router
+from app.modules.knowledge_hub.routes.collections import router as collections_router
 
 __all__ = [
     "sources_router",
@@ -20,4 +21,5 @@ __all__ = [
     "packets_router",
     "projects_router",
     "streaming_router",
+    "collections_router",
 ]

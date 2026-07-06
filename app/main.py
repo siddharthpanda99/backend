@@ -78,7 +78,9 @@ async def lifespan(app: FastAPI):
                         f"RBAC seeded: {result['permissions']} permissions, {result['roles']} roles"
                     )
             except Exception as se:
+                import traceback
                 print(f"Warning: RBAC seeding failed: {se}")
+                traceback.print_exc()
 
             # Seed built-in themes from themes.json into DB
             try:
@@ -89,7 +91,9 @@ async def lifespan(app: FastAPI):
                     result = theme_service.seed_from_json(seed_session)
                     print(f"Startup: {result.get('message', 'Themes seeded')}")
             except Exception as se:
+                import traceback
                 print(f"Warning: Theme seeding failed: {se}")
+                traceback.print_exc()
 
             try:
                 from common_lib.modules.keys_management.service import (
@@ -1141,6 +1145,15 @@ def create_app() -> FastAPI:
 
     app.add_middleware(AuthzMiddleware)
     print("Startup: Authz Middleware enabled")
+
+    # Control Center Activity Logging — automatically logs every API request
+    try:
+        from app.modules.control_center.middleware.activity_logger import ActivityLoggingMiddleware
+
+        app.add_middleware(ActivityLoggingMiddleware)
+        print("Startup: Control Center Activity Logging middleware enabled")
+    except Exception as cc_err:
+        print(f"Warning: Control Center Activity Logging middleware failed: {cc_err}")
 
     # Register Custom OpenAPI
     app.openapi = lambda: custom_openapi(app)

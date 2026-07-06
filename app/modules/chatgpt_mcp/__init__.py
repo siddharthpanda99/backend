@@ -1,0 +1,1 @@
+"""ChatGPT MCP Integration module."""

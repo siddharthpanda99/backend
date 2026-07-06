@@ -30,6 +30,7 @@ from .manifest import router as manifest_router
 from .capabilities import router as capabilities_router
 from .experiment import router as experiment_router
 from .etl import router as etl_router
+from .unified_etl import router as unified_etl_router
 
 router = APIRouter()
 
@@ -57,5 +58,6 @@ router.include_router(manifest_router)
 router.include_router(capabilities_router)
 router.include_router(experiment_router)
 router.include_router(etl_router)
+router.include_router(unified_etl_router)
 
 __all__ = ["router"]

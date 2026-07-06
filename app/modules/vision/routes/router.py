@@ -8,8 +8,19 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
 import io
+import shutil
 import pytesseract
 from PIL import Image
+
+# Auto-detect Tesseract binary on Windows when not on PATH
+if not shutil.which("tesseract"):
+    for candidate in [
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    ]:
+        if os.path.isfile(candidate):
+            pytesseract.tesseract_cmd = candidate
+            break
 
 from common_lib.modules.vision.schemas import (
     VisionGenerateRequest,
@@ -19,6 +30,23 @@ from common_lib.modules.vision.schemas import (
     VisionGalleryResponse,
     VisionPromptPreviewRequest,
     VisionPromptPreviewResponse,
+    RuntimeLoadRequest,
+    RuntimeLoadResponse,
+    RuntimeUnloadRequest,
+    RuntimeUnloadResponse,
+    RuntimeGenerateRequest,
+    RuntimeGenerateResponse,
+    RuntimeListResponse,
+    RuntimeFamiliesResponse,
+    RuntimeModelInfo,
+    RuntimeFamilyInfo,
+)
+from common_lib.modules.vision.runtime_service import (
+    list_loaded_models,
+    list_supported_families,
+    load_model,
+    unload_model,
+    generate_image,
 )
 from common_lib.modules.image_processing.controllers.vision_task_controller import (
     VisionTaskController,
@@ -263,6 +291,82 @@ async def list_gallery():
             )
             for f in gallery_folders
         ]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Diffusers Runtime endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/runtime/models")
+async def runtime_list_models():
+    """List all currently loaded diffusion models."""
+    models = list_loaded_models()
+    return RuntimeListResponse(
+        models=[RuntimeModelInfo(**m) for m in models]
+    )
+
+
+@router.get("/runtime/families")
+async def runtime_list_families():
+    """List all supported model families with capabilities."""
+    families = list_supported_families()
+    return RuntimeFamiliesResponse(
+        families=[RuntimeFamilyInfo(**f) for f in families]
+    )
+
+
+@router.post("/runtime/load", response_model=RuntimeLoadResponse)
+async def runtime_load_model(request: RuntimeLoadRequest):
+    """Load a diffusion model into GPU memory."""
+    result = load_model(
+        family=request.family,
+        model_id=request.model_id,
+        torch_dtype=request.torch_dtype,
+    )
+    if result.get("error"):
+        return RuntimeLoadResponse(status="error", error=result["error"])
+    return RuntimeLoadResponse(
+        status="success",
+        family_key=result["family_key"],
+        family=result["family"],
+        model_id=result["model_id"],
+    )
+
+
+@router.post("/runtime/unload", response_model=RuntimeUnloadResponse)
+async def runtime_unload_model(request: RuntimeUnloadRequest):
+    """Unload a diffusion model to free GPU memory."""
+    result = unload_model(family_key=request.family_key)
+    if result.get("error"):
+        return RuntimeUnloadResponse(status="error", message=result["error"])
+    return RuntimeUnloadResponse(status="success", message=result["message"])
+
+
+@router.post("/runtime/generate", response_model=RuntimeGenerateResponse)
+async def runtime_generate(request: RuntimeGenerateRequest):
+    """Generate images using a loaded or auto-selected model."""
+    result = generate_image(
+        prompt=request.prompt,
+        negative_prompt=request.negative_prompt or "",
+        width=request.width or 512,
+        height=request.height or 512,
+        num_inference_steps=request.num_inference_steps or 30,
+        guidance_scale=request.guidance_scale or 7.5,
+        seed=request.seed,
+        family_key=request.family_key,
+        family=request.family or "auto",
+        num_images=request.num_images or 1,
+    )
+    if result.get("error"):
+        return RuntimeGenerateResponse(status="error", error=result["error"])
+    return RuntimeGenerateResponse(
+        status="success",
+        images=result["images"],
+        seed=result["seed"],
+        elapsed_seconds=result["elapsed_seconds"],
+        model_family=result["model_family"],
     )
 
 

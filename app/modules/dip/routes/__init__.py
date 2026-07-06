@@ -5,6 +5,7 @@ from .kg import router as kg_router
 from .storage import router as storage_router
 from .rag import router as rag_router
 from .embeddings import router as embeddings_router
+from .extraction import router as extraction_router
 
 router = APIRouter()
 
@@ -15,5 +16,6 @@ router.include_router(kg_router)
 router.include_router(storage_router)
 router.include_router(rag_router)
 router.include_router(embeddings_router)
+router.include_router(extraction_router)
 
 __all__ = ["router"]

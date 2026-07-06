@@ -749,3 +749,28 @@ async def seed_builder_data(
             "tokens_count": t_count,
         },
     )
+
+# ═══════════════════════════════════════════════════════════════════
+# IDE Provisioning
+# ═══════════════════════════════════════════════════════════════════
+
+from common_lib.modules.app_builder.schemas import IDEProvisionRequest, IDEProvisionResponse
+
+@router.post("/ide/{app_id}/provision", response_model=IDEProvisionResponse)
+async def provision_ide_endpoint(
+    app_id: str,
+    request: IDEProvisionRequest,
+    db: Session = Depends(get_session),
+):
+    """Dynamically provision a VS Code IDE container for the specified app."""
+    try:
+        url = service.provision_ide(app_id)
+        return IDEProvisionResponse(
+            status="success",
+            message="IDE provisioned successfully.",
+            url=url
+        )
+    except Exception as e:
+        logger.error(f"Error provisioning IDE: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

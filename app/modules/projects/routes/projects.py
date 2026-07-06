@@ -64,7 +64,22 @@ def create_project(
     project_in: ProjectCreate,
     service: ProjectService = Depends(get_project_service),
 ):
+    # Pass along to the existing project service
     result = service.create_project(project_in)
+    
+    # Provision the database if requested
+    if project_in.database_type:
+        from common_lib.modules.db_provisioning.service import db_provisioner
+        try:
+            db_url = db_provisioner.provision_db(result.slug, project_in.database_type)
+            # We would update the project record here with the db_url
+            if db_url:
+                result = service.update_project(result.id, ProjectUpdate(database_url=db_url))
+        except Exception as e:
+            # We log it, but still return the created project
+            import logging
+            logging.getLogger(__name__).error(f"Failed to provision {project_in.database_type} for project {result.id}: {e}")
+
     ident: PlatformIdentity = request.state.identity
     log_crud_mutation(
         subject_id=ident.subject_id,

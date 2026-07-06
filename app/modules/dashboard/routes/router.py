@@ -111,3 +111,22 @@ async def get_token_usage():
         return APIResponse(data=tokens, message="Token usage retrieved")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/document-processing", response_model=APIResponse[Dict[str, Any]])
+async def get_document_processing():
+    """Get centralized document processing status.
+
+    Returns real stats from the database:
+    - Total documents, processed/processing/pending/failed counts
+    - Total chunks and tokens
+    - Projects and sources
+    - Pipeline execution stats
+    - Recent failures with details
+    - Documents grouped by type
+    """
+    try:
+        stats = _svc.get_document_processing_stats()
+        return APIResponse(data=stats, message="Document processing stats retrieved")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

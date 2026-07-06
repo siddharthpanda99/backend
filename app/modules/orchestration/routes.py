@@ -203,4 +203,7 @@ async def orchestration_status() -> Dict[str, Any]:
     }
 
 
+from app.modules.orchestration.session_runtime_routes import router as session_runtime_router
+router.include_router(session_runtime_router)
+
 __all__ = ["router"]

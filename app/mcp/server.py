@@ -33,6 +33,8 @@ from app.mcp.tools.patterns import register_pattern_tools
 from app.mcp.tools.drift import register_drift_tools
 from app.mcp.tools.drift_alerts import register_drift_alert_tools
 from app.mcp.tools.drift_remediation import register_drift_remediation_tools
+from app.mcp.tools.collections import register_collection_tools
+from app.mcp.tools.chatgpt import register_chatgpt_tools
 from app.mcp.resources.cognitive import register_cognitive_resources
 
 # Setup MCP-specific logging
@@ -81,6 +83,8 @@ register_pattern_tools(mcp_server)
 register_drift_tools(mcp_server)
 register_drift_alert_tools(mcp_server)
 register_drift_remediation_tools(mcp_server)
+register_collection_tools(mcp_server)
+register_chatgpt_tools(mcp_server)
 
 # 3. Register Modular Resources
 register_cognitive_resources(mcp_server)

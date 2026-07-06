@@ -151,7 +151,13 @@ def create_session_message(
     data: MessageCreate,
     db: SQLSession = Depends(get_db_session),
 ):
-    return svc.create_session_message(db, session_id, data)
+    try:
+        return svc.create_session_message(db, session_id, data)
+    except Exception as e:
+        import traceback
+
+        logger.error(f"create_message error: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{session_id}/conversations", response_model=List[ConversationResponse])

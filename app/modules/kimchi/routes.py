@@ -55,7 +55,7 @@ class ScopeRequest(BaseModel):
     goal: str
     auto_approve: bool = True
     continuation: str = "automated"  # "automated" | "manual"
-
+    database_type: Optional[str] = None
 
 class ExecuteRequest(BaseModel):
     """Request to run a previously scoped project."""
@@ -100,6 +100,7 @@ class PipelineResponse(BaseModel):
     grades: Optional[List[GradeResponse]] = None
     phase_grades: Optional[List[PhaseGrade]] = None
     trace_id: Optional[str] = None
+    scoping: Optional[Dict[str, Any]] = None
 
 
 # =========================================================================
@@ -141,6 +142,18 @@ async def create_scope(req: ScopeRequest) -> Dict[str, Any]:
             )
         except Exception:
             logger.warning("Failed to fire scoping event", exc_info=True)
+
+        # Provision the database if requested
+        if req.database_type:
+            from common_lib.modules.db_provisioning.service import db_provisioner
+            try:
+                db_url = db_provisioner.provision_db(project.name, req.database_type)
+                if db_url:
+                    project.scoping["database_type"] = req.database_type
+                    project.scoping["database_url"] = db_url
+                    project.goal += f"\n\n[System] Provisioned Database URL: {db_url}"
+            except Exception as e:
+                logger.error("Failed to provision %s for project %s: %s", req.database_type, project.name, e)
 
         save_project(project, base_dir="")
 
@@ -504,6 +517,7 @@ def _project_to_response(
         "continuation": project.continuation.value if project.continuation else "automated",
         "progress": project.progress,
         "trace_id": trace_id,
+        "scoping": project.scoping,
     }
 
 

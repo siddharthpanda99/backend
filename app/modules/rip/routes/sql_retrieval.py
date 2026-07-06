@@ -26,7 +26,7 @@ async def text_to_sql(payload: TextToSQLRequest):
         start = time.perf_counter()
         result = await _t2s(
             query=payload.query,
-            schema=payload.schema or {},
+            schema=payload.db_schema or {},
             top_k=payload.top_k,
             tenant_id=payload.tenant_id,
         )

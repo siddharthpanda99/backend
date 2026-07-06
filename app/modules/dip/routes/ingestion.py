@@ -16,6 +16,8 @@ from common_lib.modules.dip.ingestion.controller import (
     process_documents,
     get_processing_status,
     list_parsers,
+    list_ingestion_jobs,
+    delete_ingestion_job,
     parse_file_with_comparator,
     parse_file_with_comparator_content,
     save_extracted_text,
@@ -24,6 +26,7 @@ from common_lib.modules.dip.ingestion.controller import (
     create_ingestion_source,
     delete_ingestion_source,
     update_ingestion_source,
+    sync_ingestion_source,
 )
 from common_lib.modules.dip.document_vault import (
     list_documents,
@@ -192,6 +195,15 @@ async def update_source(source_id: str, payload: IngestionSourceUpdate):
     return result
 
 
+@router.post("/sources/{source_id}/sync")
+async def sync_source(source_id: str):
+    """Sync an ingestion source."""
+    result = await sync_ingestion_source(source_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error"))
+    return result
+
+
 
 @router.get("/vault")
 async def get_vault_documents(limit: int = Query(100)):
@@ -242,15 +254,39 @@ async def upload_source_file(
     result = await process_documents([file], parser, False, "vault")
     return {"data": result, "status": "uploaded"}
 
+@router.get("/jobs/stream")
+async def stream_job_progress():
+    """SSE stream for real-time ingestion job progress updates."""
+
+    async def event_generator():
+        async for message in stream_notifications(Channels.INGESTION_PROGRESS):
+            yield message
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/jobs")
-async def list_ingestion_jobs():
-    """List recent and active ingestion jobs."""
-    return {
-        "data": [
-            {"id": "job_001", "name": "Quarterly Reports", "status": "completed", "progress": 100},
-            {"id": "job_002", "name": "Technical Docs", "status": "processing", "progress": 45}
-        ]
-    }
+async def list_jobs():
+    """List recent and active ingestion jobs from DB + in-memory tracker."""
+    jobs = await list_ingestion_jobs()
+    return {"data": jobs}
+
+
+@router.delete("/jobs/{job_id}")
+async def delete_job(job_id: str):
+    """Delete an ingestion job record."""
+    deleted = delete_ingestion_job(job_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return {"success": True}
 
 @router.get("/metrics")
 async def get_ingestion_metrics():
