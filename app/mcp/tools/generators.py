@@ -8,7 +8,7 @@ logger = logging.getLogger("mcp.tools.generators")
 
 def register_generator_tools(mcp: FastMCP):
     """Register all generator engine tools — data-driven content generation."""
-    from common_lib.modules.external_platform.writing_studio.generator_engine import (
+    from common_lib.modules.external_platforms.writing_studio.generator_engine import (
         GeneratorEngine,
         get_generator_engine,
     )

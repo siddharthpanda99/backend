@@ -58,7 +58,7 @@ from common_lib.modules.admin_db.schemas import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/admin-db", tags=["Admin Database"])
+router = APIRouter(prefix="/admin-db", tags=["Admin Database"])
 
 
 # =============================================================================
@@ -74,7 +74,9 @@ def list_connections(
     limit: int = Query(50, ge=1, le=200),
 ):
     """List saved database connection profiles."""
-    return ConnectionService.list_profiles(search=search, db_type=db_type, offset=offset, limit=limit)
+    return ConnectionService.list_profiles(
+        search=search, db_type=db_type, offset=offset, limit=limit
+    )
 
 
 @router.get("/connections/{profile_id}")
@@ -154,6 +156,13 @@ def get_constraints(profile_id: str, schema: str, table: str):
 def get_indexes(profile_id: str, schema: str, table: str):
     """Get indexes for a table."""
     return SchemaInspectorService.get_indexes(profile_id, schema, table)
+
+
+@router.get("/schemas/{profile_id}/columns-all")
+def get_bulk_columns(profile_id: str, schema: str = Query("public")):
+    """Bulk-fetch columns and FK constraints for ALL tables in a schema.
+    Used by the ER diagram to show full column details for every table."""
+    return SchemaInspectorService.get_bulk_columns(profile_id, schema)
 
 
 # =============================================================================
@@ -288,6 +297,7 @@ def drop_schema(data: DropSchemaRequest):
 
 # ── Introspection endpoints for sub-tabs ─────────────────────────
 
+
 @router.get("/schemas/{profile_id}/views")
 def list_views(profile_id: str, schema: str = Query("public")):
     return SchemaManagerService.list_views(profile_id, schema)
@@ -306,6 +316,77 @@ def list_enums(profile_id: str, schema: str = Query("public")):
 @router.get("/schemas/{profile_id}/functions")
 def list_functions(profile_id: str, schema: str = Query("public")):
     return SchemaManagerService.list_functions(profile_id, schema)
+
+
+# =============================================================================
+# Migration Introspection Endpoints
+# =============================================================================
+
+
+@router.get("/migrations/{profile_id}")
+def get_migration_snapshot(
+    profile_id: str,
+    schema: str = Query("public"),
+):
+    """Get Alembic migration state, chain health, and orphaned table detection."""
+    from common_lib.modules.admin_db.migration_introspector import MigrationIntrospector
+
+    try:
+        from common_lib.modules.admin_db.service import SchemaInspectorService
+
+        engine = SchemaInspectorService._get_engine_for_profile(profile_id)
+        introspector = MigrationIntrospector()
+        snapshot = introspector.build_snapshot(engine, schema=schema)
+        engine.dispose()
+
+        return {
+            "chain_health": snapshot.chain_health,
+            "migrations": snapshot.migrations,
+            "table_health": snapshot.table_health,
+            "summary": snapshot.summary,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Migration introspection failed: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Migration introspection failed: {str(e)}"
+        )
+
+
+@router.post("/migrations/{profile_id}/auto-detect")
+def auto_detect_and_tag(
+    profile_id: str,
+    schema: str = Query("public"),
+):
+    """Auto-detect orphaned tables and generate a summary report."""
+    from common_lib.modules.admin_db.migration_introspector import MigrationIntrospector
+
+    try:
+        from common_lib.modules.admin_db.service import SchemaInspectorService
+
+        engine = SchemaInspectorService._get_engine_for_profile(profile_id)
+        introspector = MigrationIntrospector()
+        snapshot = introspector.build_snapshot(engine, schema=schema)
+        engine.dispose()
+
+        orphaned = [t for t in snapshot.table_health if t["status"] == "orphaned"]
+        return {
+            "orphaned_count": len(orphaned),
+            "orphaned_tables": orphaned,
+            "summary": snapshot.summary,
+            "recommendations": [
+                f"{len(orphaned)} table(s) appear orphaned (not tracked by any migration or ORM model).",
+                "Consider adding a migration to formally track these tables, or drop them if unused.",
+                "Run 'alembic revision --autogenerate' to auto-generate a migration for untracked tables.",
+            ]
+            if orphaned
+            else ["All tables are properly tracked. No orphaned tables detected."],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================
@@ -358,9 +439,15 @@ def dbt_delete_project(project_id: str):
 
 
 @router.get("/dbt/projects/{project_id}/models")
-def dbt_list_models(project_id: str, folder: Optional[str] = Query(None), search: Optional[str] = Query(None)):
+def dbt_list_models(
+    project_id: str,
+    folder: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+):
     """List models in a dbt project, optionally filtered by folder/search."""
-    return DbtStudioService.list_models(project_id, folder=folder, search=search).model_dump()
+    return DbtStudioService.list_models(
+        project_id, folder=folder, search=search
+    ).model_dump()
 
 
 @router.get("/dbt/projects/{project_id}/models/{model_path:path}")
@@ -372,10 +459,12 @@ def dbt_get_model(project_id: str, model_path: str):
 @router.post("/dbt/projects/{project_id}/models")
 def dbt_create_model(project_id: str, body: dict):
     """Create a new model in a project."""
-    model_path = body.get('model_path', '')
-    sql = body.get('sql', '')
-    description = body.get('description', '')
-    return DbtStudioService.create_model(project_id, model_path, sql, description).model_dump()
+    model_path = body.get("model_path", "")
+    sql = body.get("sql", "")
+    description = body.get("description", "")
+    return DbtStudioService.create_model(
+        project_id, model_path, sql, description
+    ).model_dump()
 
 
 @router.put("/dbt/projects/{project_id}/models")
@@ -429,13 +518,17 @@ def dbt_project_stats(project_id: str):
 
 # --- dbt Source Freshness ---
 
+
 @router.post("/dbt/freshness")
-def dbt_check_freshness(project_id: str = Query(...), source_name: Optional[str] = Query(None)):
+def dbt_check_freshness(
+    project_id: str = Query(...), source_name: Optional[str] = Query(None)
+):
     """Check freshness of dbt source tables."""
     return DbtFreshnessService.check_freshness(project_id, source_name=source_name)
 
 
 # --- dbt Column Lineage ---
+
 
 @router.get("/dbt/projects/{project_id}/lineage/{model_path:path}")
 def dbt_column_lineage(project_id: str, model_path: str):
@@ -445,17 +538,20 @@ def dbt_column_lineage(project_id: str, model_path: str):
 
 # --- dbt Documentation ---
 
+
 @router.get("/dbt/projects/{project_id}/docs")
 def dbt_generate_docs(
     project_id: str,
-    output_format: str = Query('markdown'),
+    output_format: str = Query("markdown"),
     include_tests: bool = Query(True),
     include_lineage: bool = Query(True),
 ):
     """Generate documentation for a dbt project."""
     return DbtDocService.generate(
-        project_id, output_format=output_format,
-        include_tests=include_tests, include_lineage=include_lineage,
+        project_id,
+        output_format=output_format,
+        include_tests=include_tests,
+        include_lineage=include_lineage,
     )
 
 

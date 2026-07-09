@@ -349,6 +349,16 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
         return router
 
+    def _iil_router():
+        from app.modules.iil.routes import router
+
+        return router
+
+    def _studio_router():
+        from app.modules.gpt_builder.routes import router
+
+        return router
+
     # ----------------------------------------------------------------
     # Declarative registry
     # Each entry maps to a single app.include_router() call.
@@ -1010,6 +1020,20 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": _chatgpt_mcp_router(),
             "prefix": "",
             "tags": ["ChatGPT MCP Integration"],
+            "auth": True,
+        },
+        # ── Internet Intelligence Layer (IIL) ──────────────────────────
+        {
+            "router": _iil_router(),
+            "prefix": "",
+            "tags": ["Internet Intelligence Layer"],
+            "auth": True,
+        },
+        # ── Nexus Studio (Custom GPT Builder) ───────────────────────────
+        {
+            "router": _studio_router(),
+            "prefix": "",
+            "tags": ["Nexus Studio"],
             "auth": True,
         },
     ]

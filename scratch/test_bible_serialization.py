@@ -6,8 +6,8 @@ project_root = Path(__file__).resolve().parents[2]
 common_lib_src = project_root / "Backend Monorepo" / "Python Libs" / "common_lib" / "src"
 sys.path.insert(0, str(common_lib_src))
 
-from common_lib.modules.external_platform.writing_studio.bible import SceneEntry, StoryBeat
-from common_lib.modules.external_platform.writing_studio.service import get_bible_service
+from common_lib.modules.external_platforms.writing_studio.bible import SceneEntry, StoryBeat
+from common_lib.modules.external_platforms.writing_studio.service import get_bible_service
 
 def test_serialization():
     project_id = "test_project_serialization"

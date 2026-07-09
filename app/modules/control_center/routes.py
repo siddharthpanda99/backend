@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from common_lib.modules.control_center.service import ControlCenterService
 
-router = APIRouter(prefix="/api/v1/control-center", tags=["control-center"])
+router = APIRouter(prefix="/control-center", tags=["control-center"])
 
 
 def get_db():

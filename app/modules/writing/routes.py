@@ -25,25 +25,25 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from common_lib.modules.external_platform.writing_studio.bible import (
+from common_lib.modules.external_platforms.writing_studio.bible import (
     BibleEntry,
     BibleSection,
 )
-from common_lib.modules.external_platform.writing_studio.database import (
+from common_lib.modules.external_platforms.writing_studio.database import (
     get_session_direct,
 )
-from common_lib.modules.external_platform.writing_studio.project_service import (
+from common_lib.modules.external_platforms.writing_studio.project_service import (
     WritingProjectService,
 )
-from common_lib.modules.external_platform.writing_studio.service import BibleService
-from common_lib.modules.external_platform.writing_studio.tool_builder import (
+from common_lib.modules.external_platforms.writing_studio.service import BibleService
+from common_lib.modules.external_platforms.writing_studio.tool_builder import (
     ToolBuilderService,
     ToolDefinition,
     ToolInstance,
     WritingToolType,
     get_tool_builder_service,
 )
-from common_lib.modules.external_platform.writing_studio.tool_instance_service import (
+from common_lib.modules.external_platforms.writing_studio.tool_instance_service import (
     ToolInstanceService,
 )
 
@@ -483,7 +483,7 @@ async def create_custom_tool(request: ToolCreateRequest):
     ToolBuilderService so it shows up in the tool library immediately.
     """
     try:
-        from common_lib.modules.external_platform.writing_studio.tool_builder import (
+        from common_lib.modules.external_platforms.writing_studio.tool_builder import (
             FieldDefinition,
             ToolDefinition,
             WritingToolType,
@@ -562,7 +562,7 @@ async def list_generators(
     N entities via the /tools/generate-content endpoint.
     """
     try:
-        from common_lib.modules.external_platform.writing_studio.generator_engine import (
+        from common_lib.modules.external_platforms.writing_studio.generator_engine import (
             GeneratorEngine,
         )
 
@@ -634,7 +634,7 @@ async def generate_content(request: ContentGenerateRequest):
     N structured items matching the schema.
     """
     try:
-        from common_lib.modules.external_platform.writing_studio.generator_engine import (
+        from common_lib.modules.external_platforms.writing_studio.generator_engine import (
             GeneratorEngine,
         )
 
@@ -876,7 +876,7 @@ def _instance_to_dict(instance) -> dict[str, Any]:
 
 
 def _get_pipeline_service():
-    from common_lib.modules.external_platform.writing_studio.pipeline_service import (
+    from common_lib.modules.external_platforms.writing_studio.pipeline_service import (
         PipelineService,
     )
 
@@ -979,7 +979,7 @@ async def build_pipeline_prompt(project_id: str, stage: Optional[str] = Query(No
 
 
 def _get_skills_service():
-    from common_lib.modules.external_platform.writing_studio.skills_service import (
+    from common_lib.modules.external_platforms.writing_studio.skills_service import (
         SkillsService,
     )
 
@@ -1106,7 +1106,7 @@ async def skill_brainstorm(project_id: str, request: SkillBrainstormRequest):
 
 
 def _get_draft_service():
-    from common_lib.modules.external_platform.writing_studio.draft_service import (
+    from common_lib.modules.external_platforms.writing_studio.draft_service import (
         DraftService,
     )
 
@@ -1317,7 +1317,7 @@ async def restore_draft_version(draft_id: str, version_number: int):
 
 
 def _get_history_service():
-    from common_lib.modules.external_platform.writing_studio.generation_history_service import (
+    from common_lib.modules.external_platforms.writing_studio.generation_history_service import (
         GenerationHistoryService,
     )
 
@@ -1445,7 +1445,7 @@ from fastapi.responses import Response
 
 
 def _get_export_service():
-    from common_lib.modules.external_platform.writing_studio.export_service import (
+    from common_lib.modules.external_platforms.writing_studio.export_service import (
         ExportService,
     )
 
@@ -1460,7 +1460,7 @@ async def export_project(project_id: str, fmt: str):
     Returns the export content with appropriate Content-Type header.
     """
     try:
-        from common_lib.modules.external_platform.writing_studio.export_service import (
+        from common_lib.modules.external_platforms.writing_studio.export_service import (
             EXPORT_FORMATS,
         )
 
