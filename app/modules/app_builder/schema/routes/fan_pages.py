@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func as sqlfunc, desc
 
@@ -33,13 +33,18 @@ from common_lib.modules.app_builder.schema import (
     FanPageDataResponse,
     APIResponse,
 )
+from app.modules.app_builder.schema.routes.ecosystem_utils import resolve_actor_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["App Fan Pages"])
 
 
 @router.get("/apps/{app_id}/fan-page", response_model=FanPageDataResponse)
-async def get_fan_page(app_id: str, db: Session = Depends(get_session)):
+async def get_fan_page(
+    app_id: str,
+    request: Request,
+    db: Session = Depends(get_session),
+):
     """Composite fan page data — listing, stats, recent content, activity."""
     listing = db.execute(
         select(AppListingRecord).where(AppListingRecord.app_id == app_id)
@@ -104,15 +109,16 @@ async def get_fan_page(app_id: str, db: Session = Depends(get_session)):
         .where(AppFollowerRecord.app_id == app_id)
     ).scalar() or 0
 
-    # Check if current user follows
-    is_following = False  # TODO: check against auth token
-    # user_id = "current-user"
-    # is_following = db.execute(
-    #     select(AppFollowerRecord).where(
-    #         AppFollowerRecord.app_id == app_id,
-    #         AppFollowerRecord.user_id == user_id,
-    #     )
-    # ).scalar_one_or_none() is not None
+    # Optional: only true when caller is authenticated and follows this app
+    is_following = False
+    user_id = resolve_actor_user_id(request, required=False)
+    if user_id:
+        is_following = db.execute(
+            select(AppFollowerRecord).where(
+                AppFollowerRecord.app_id == app_id,
+                AppFollowerRecord.user_id == user_id,
+            )
+        ).scalar_one_or_none() is not None
 
     return FanPageDataResponse(
         listing=AppListingResponse.model_validate(listing),
@@ -147,8 +153,12 @@ async def get_activity_feed(
 # ─── Follow / Unfollow ──────────────────────────────────────────
 
 @router.post("/apps/{app_id}/follow", response_model=APIResponse)
-async def follow_app(app_id: str, db: Session = Depends(get_session)):
-    user_id = "current-user"
+async def follow_app(
+    app_id: str,
+    request: Request,
+    db: Session = Depends(get_session),
+):
+    user_id = resolve_actor_user_id(request)
     existing = db.execute(
         select(AppFollowerRecord).where(
             AppFollowerRecord.app_id == app_id,
@@ -164,8 +174,12 @@ async def follow_app(app_id: str, db: Session = Depends(get_session)):
 
 
 @router.delete("/apps/{app_id}/follow", response_model=APIResponse)
-async def unfollow_app(app_id: str, db: Session = Depends(get_session)):
-    user_id = "current-user"
+async def unfollow_app(
+    app_id: str,
+    request: Request,
+    db: Session = Depends(get_session),
+):
+    user_id = resolve_actor_user_id(request)
     existing = db.execute(
         select(AppFollowerRecord).where(
             AppFollowerRecord.app_id == app_id,

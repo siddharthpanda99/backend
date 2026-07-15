@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, select
 
 from common_lib.modules.data_storage.database.connection import get_session
@@ -19,6 +19,7 @@ from common_lib.modules.app_builder.schema import (
     EnvironmentPromotionRecord,
     AppIsolationConfigRecord,
 )
+from app.modules.app_builder.schema.routes.ecosystem_utils import resolve_actor_user_id
 
 router = APIRouter(prefix="/promotions", tags=["Environment Promotions"])
 
@@ -137,6 +138,7 @@ async def delete_promotion(promotion_id: str, db: Session = Depends(get_session)
 @router.post("/{promotion_id}/approve", response_model=APIResponse)
 async def approve_promotion(
     promotion_id: str,
+    request: Request,
     data: dict = None,
     db: Session = Depends(get_session),
 ):
@@ -147,7 +149,8 @@ async def approve_promotion(
     if item.status != "pending":
         raise HTTPException(status_code=400, detail=f"Cannot approve promotion in '{item.status}' status")
 
-    approved_by = (data or {}).get("approved_by", "current-user")
+    # Prefer explicit body override for automation, else authenticated actor
+    approved_by = (data or {}).get("approved_by") or resolve_actor_user_id(request)
     item.status = "approved"
     item.approved_by = approved_by
     db.add(item)

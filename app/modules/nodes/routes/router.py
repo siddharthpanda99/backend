@@ -2,7 +2,9 @@
 Nodes Catalog API
 
 Unified endpoint for node definitions with rich metadata for Nodes Studio.
-Merges @node decorator pattern with ComfyUI class pattern.
+Surfaces **every** @node-decorated function across the codebase via the global
+node registry (common_lib.modules.nodes_registry), which AST-scans all modules
+and aggregates nodes regardless of package.
 """
 
 from typing import Any, Dict, List, Optional
@@ -31,19 +33,17 @@ async def nodes_catalog(
     tag: Optional[str] = Query(None, description="Filter by tag"),
 ):
     """
-    Return the full catalog of all discovered nodes with rich metadata.
+    Return the full catalog of **all** discovered @node functions with rich metadata.
 
-    Supports filtering by category, search query, and tags.
-    Returns unified node definitions compatible with both workflow engine
-    and ComfyUI execution.
+    Powered by the global node registry (common_lib.modules.nodes_registry), which
+    scans every module — so nodes defined outside image_processing (scaffolder,
+    data_pipeline, memory, workflows, plugins, ...) are included too.
     """
-    from common_lib.modules.image_processing.nodes_registry.discovery import (
-        get_node_registry,
-    )
+    from common_lib.modules.nodes_registry import get_node_registry
 
     try:
         registry = get_node_registry()
-        nodes = registry.to_catalog_response()
+        nodes = [_nodeinfo_to_catalog(n) for n in registry.list_nodes()]
 
         # Apply filters
         if category:
@@ -86,60 +86,45 @@ async def nodes_catalog(
 async def node_detail(node_id: str):
     """
     Return detailed metadata for a specific node.
-
-    Includes full documentation, use cases, examples, I/O ports,
-    and ComfyUI compatibility info.
     """
-    from common_lib.modules.image_processing.nodes_registry.discovery import (
-        get_node_registry,
-    )
+    from common_lib.modules.nodes_registry import get_node_registry
 
     try:
         registry = get_node_registry()
-        node = registry.get_node(node_id)
+        node = registry.get(node_id)
 
         if not node:
             raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found")
 
-        unified_meta = (
-            node.get("_unified_metadata", {}) or node.get("_node_metadata", {}) or {}
-        )
-
+        m = node.metadata or {}
         detail = {
-            # Core identity
             "id": node_id,
-            "name": node.get("node_id", node_id),
-            "label": node.get("display_name", node_id),
-            "class_name": node.get("class_name", ""),
-            "category": node["category"],
-            "description": node.get("description", ""),
-            "version": node.get("version", "1.0.0"),
-            "tags": node.get("tags", []),
-            # Rich documentation
-            "sections": node.get("sections", []),
-            "use_cases": node.get("use_cases", []),
-            "recommended_usage": node.get("recommended_usage", []),
-            "few_shot_examples": node.get("few_shot_examples", []),
-            # Ports
-            "inputs": node["inputs"],
-            "outputs": node["outputs"],
-            "input_ports": unified_meta.get("input_ports", []),
-            "output_ports": unified_meta.get("output_ports", []),
-            # Execution
-            "execution_timeout": unified_meta.get("execution_timeout", 60),
-            "execution_mode": unified_meta.get("execution_mode", "sync"),
-            "cacheable": unified_meta.get("cacheable", False),
-            "idempotent": unified_meta.get("idempotent", False),
-            "is_output": node.get("is_output", False),
-            "function_name": node.get("function_name", "execute"),
-            # Source location
-            "source_file": node.get("source_file", ""),
-            "line_number": node.get("line_number", 0),
-            "module_path": node.get("module_path", ""),
-            # ComfyUI compatibility
-            "comfyui": unified_meta.get("comfyui", {}),
-            # UI hints
-            "color": _get_category_color(node["category"]),
+            "name": node.name,
+            "label": node.name,
+            "class_name": node.qualname,
+            "category": node.category,
+            "description": node.description,
+            "version": node.version,
+            "tags": node.tags,
+            "sections": m.get("sections", []),
+            "use_cases": m.get("use_cases", []),
+            "recommended_usage": m.get("recommended_usage", []),
+            "few_shot_examples": m.get("examples", []),
+            "inputs": [{"name": k, "type": v} for k, v in node.input_schema.items()],
+            "outputs": [{"name": k, "type": v} for k, v in node.output_schema.items()],
+            "input_ports": m.get("input_ports", []),
+            "output_ports": m.get("output_ports", []),
+            "execution_timeout": node.execution_timeout,
+            "execution_mode": node.execution_mode,
+            "cacheable": node.cacheable,
+            "idempotent": node.idempotent,
+            "is_output": m.get("is_output", False),
+            "function_name": "execute",
+            "source_file": "",
+            "line_number": 0,
+            "module_path": node.module,
+            "comfyui": m.get("comfyui", {}),
+            "color": _get_category_color(node.category),
         }
 
         return NodeDetailResponse(
@@ -156,26 +141,49 @@ async def node_detail(node_id: str):
 @router.get("/categories", response_model=NodeCatalogResponse)
 async def node_categories():
     """Return all node categories with node counts."""
-    from common_lib.modules.image_processing.nodes_registry.discovery import (
-        get_node_registry,
-    )
+    from common_lib.modules.nodes_registry import get_node_registry
 
     try:
         registry = get_node_registry()
-        categories = registry.get_categories()
-
-        result = {
-            cat: {"count": len(nodes), "nodes": nodes}
-            for cat, nodes in categories.items()
-        }
+        categories: Dict[str, Dict[str, Any]] = {}
+        for node in registry.list_nodes():
+            cat = node.category
+            if cat not in categories:
+                categories[cat] = {"count": 0, "nodes": []}
+            categories[cat]["count"] += 1
+            categories[cat]["nodes"].append(node.name)
 
         return NodeCatalogResponse(
             status="success",
-            message=f"Found {len(result)} categories",
-            data={"categories": result},
+            message=f"Found {len(categories)} categories",
+            data={"categories": categories},
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _nodeinfo_to_catalog(node) -> Dict[str, Any]:
+    """Map a global-registry NodeInfo into the catalog node shape."""
+    return {
+        "id": node.name,
+        "node_id": node.name,
+        "name": node.name,
+        "display_name": node.name,
+        "label": node.name,
+        "class_name": node.qualname,
+        "category": node.category,
+        "description": node.description,
+        "version": node.version,
+        "tags": node.tags,
+        "inputs": [{"name": k, "type": v} for k, v in node.input_schema.items()],
+        "outputs": [{"name": k, "type": v} for k, v in node.output_schema.items()],
+        "module_path": node.module,
+        "function_name": "execute",
+        "source_file": "",
+        "line_number": 0,
+        "is_output": False,
+        "color": _get_category_color(node.category),
+    }
 
 
 def _get_category_color(category: str) -> str:
@@ -197,3 +205,34 @@ def _get_category_color(category: str) -> str:
     }
     cat_lower = category.lower().split("/")[0].strip()
     return colors.get(cat_lower, "#6b7280")
+
+
+class NodeSyncResponse(BaseModel):
+    status: str
+    message: str
+    data: Dict[str, Any]
+
+
+@router.post("/sync", response_model=NodeSyncResponse)
+async def sync_nodes():
+    """
+    Discover every @node across the codebase and persist the catalog to the
+    ``node_definitions`` table. This is what makes node functionality queryable
+    by AI agents via the API.
+
+    Logic lives in common_lib (image_processing.nodes_registry.startup); this
+    endpoint is just the thin trigger.
+    """
+    from common_lib.modules.image_processing.nodes_registry.startup import (
+        sync_nodes_on_startup,
+    )
+
+    try:
+        count = sync_nodes_on_startup()
+        return NodeSyncResponse(
+            status="success",
+            message=f"Synced {count} nodes to node_definitions",
+            data={"synced": count},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

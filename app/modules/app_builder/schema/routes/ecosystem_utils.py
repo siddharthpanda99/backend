@@ -4,12 +4,76 @@ App Ecosystem — Shared Utilities
 Common helpers used across ecosystem route files.
 """
 
+import logging
 import re
 import uuid
 from typing import Any, Dict, Optional, Type as TypingType
 
+from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func as sqlfunc
+
+logger = logging.getLogger(__name__)
+
+# Used only when DEV_MODE and no authenticated identity is present.
+# Keeps local tooling working without tokens; never used in non-dev.
+_DEV_FALLBACK_USER_ID = "dev-user"
+
+
+def resolve_actor_user_id(
+    request: Request,
+    *,
+    required: bool = True,
+) -> Optional[str]:
+    """Resolve the acting user id from AuthzMiddleware / request identity.
+
+    Priority:
+      1. ``request.state.authz.subject_id`` when present and not ``anonymous``
+      2. ``request.state.identity`` subject fields (if middleware resolved one)
+      3. ``request.state.user_id`` (if another layer set it)
+      4. DEV_MODE only: fall back to ``dev-user`` so unauthenticated local
+         tooling keeps working (same practical behaviour as the old
+         hardcoded ``current-user``, but clearly marked as a dev sentinel)
+      5. If ``required`` and not DEV_MODE: raise 401
+
+    Read-only optional use (``required=False``) returns ``None`` when
+    unauthenticated instead of falling back or raising.
+    """
+    authz = getattr(request.state, "authz", None)
+    if authz is not None:
+        subject_id = getattr(authz, "subject_id", None) or ""
+        if subject_id and subject_id != "anonymous":
+            return str(subject_id)
+
+    identity = getattr(request.state, "identity", None)
+    if identity is not None:
+        for attr in ("subject_id", "user_id", "id"):
+            value = getattr(identity, attr, None)
+            if value:
+                return str(value)
+
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        return str(user_id)
+
+    if not required:
+        return None
+
+    # Lazy import avoids circular imports at module load.
+    from app.core.settings import get_settings
+
+    if get_settings().DEV_MODE:
+        logger.debug(
+            "resolve_actor_user_id: no authenticated identity; "
+            "using DEV_MODE fallback %r",
+            _DEV_FALLBACK_USER_ID,
+        )
+        return _DEV_FALLBACK_USER_ID
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required",
+    )
 
 
 def slugify(text: str, max_length: int = 512) -> str:

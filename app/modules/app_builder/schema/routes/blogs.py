@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func as sqlfunc, desc
 
@@ -27,7 +27,11 @@ from common_lib.modules.app_builder.schema import (
     BlogCommentResponse,
     APIResponse,
 )
-from app.modules.app_builder.schema.routes.ecosystem_utils import generate_unique_slug, record_activity
+from app.modules.app_builder.schema.routes.ecosystem_utils import (
+    generate_unique_slug,
+    record_activity,
+    resolve_actor_user_id,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["App Blogs"])
@@ -79,10 +83,15 @@ async def list_blogs(
 
 
 @router.post("/apps/{app_id}/blogs", response_model=BlogPostResponse, status_code=201)
-async def create_blog(app_id: str, data: BlogPostCreate, db: Session = Depends(get_session)):
+async def create_blog(
+    app_id: str,
+    data: BlogPostCreate,
+    request: Request,
+    db: Session = Depends(get_session),
+):
     slug = generate_unique_slug(db, AppBlogPostRecord, data.title)
 
-    author_id = "current-user"  # TODO: auth
+    author_id = resolve_actor_user_id(request)
     record = AppBlogPostRecord(
         id=str(uuid.uuid4()),
         app_id=app_id,
@@ -162,7 +171,10 @@ async def list_comments(blog_id: str, db: Session = Depends(get_session)):
 
 @router.post("/blogs/{blog_id}/comments", response_model=BlogCommentResponse, status_code=201)
 async def create_comment(
-    blog_id: str, data: BlogCommentCreate, db: Session = Depends(get_session)
+    blog_id: str,
+    data: BlogCommentCreate,
+    request: Request,
+    db: Session = Depends(get_session),
 ):
     post = db.get(AppBlogPostRecord, blog_id)
     if not post:
@@ -171,7 +183,7 @@ async def create_comment(
     record = AppBlogCommentRecord(
         id=str(uuid.uuid4()),
         blog_id=blog_id,
-        author_id="current-user",  # TODO: auth
+        author_id=resolve_actor_user_id(request),
         parent_id=data.parent_id,
         body=data.body,
     )
@@ -196,12 +208,16 @@ async def delete_comment(comment_id: str, db: Session = Depends(get_session)):
 
 
 @router.post("/blogs/{blog_id}/like")
-async def toggle_like(blog_id: str, db: Session = Depends(get_session)):
+async def toggle_like(
+    blog_id: str,
+    request: Request,
+    db: Session = Depends(get_session),
+):
     post = db.get(AppBlogPostRecord, blog_id)
     if not post:
         raise HTTPException(status_code=404, detail="Blog post not found")
 
-    user_id = "current-user"  # TODO: auth
+    user_id = resolve_actor_user_id(request)
     existing = db.execute(
         select(AppBlogLikeRecord).where(
             AppBlogLikeRecord.blog_id == blog_id,

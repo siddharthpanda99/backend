@@ -67,8 +67,11 @@ from common_lib.modules.vision.enhanced_service import (
 from common_lib.modules.data_storage.database.connection import get_session
 from common_lib.paths import GENERATED_CONTENT
 
+from app.modules.vision.routes.ops_router import router as ops_router
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
+router.include_router(ops_router)
 controller = VisionTaskController()
 
 
@@ -148,6 +151,7 @@ async def list_swap_models():
     from common_lib.modules.image_processing.nodes.reactor.base import (
         get_insightface_models,
     )
+
     return get_insightface_models()
 
 
@@ -156,6 +160,7 @@ async def list_face_restore_models():
     from common_lib.modules.image_processing.nodes.reactor.base import (
         get_facerestore_models,
     )
+
     return get_facerestore_models()
 
 
@@ -177,6 +182,7 @@ async def list_nodes():
     from common_lib.modules.image_processing.nodes_registry.discovery import (
         get_all_nodes,
     )
+
     return get_all_nodes()
 
 
@@ -219,7 +225,8 @@ async def execute_workflow(request: VisionWorkflowRequest):
         workflow_data = {
             "id": workflow_def.get("id"),
             "nodes": workflow_def.get("nodes", []),
-            "edges": workflow_def.get("edges", []) or workflow_def.get("connections", []),
+            "edges": workflow_def.get("edges", [])
+            or workflow_def.get("connections", []),
         }
 
         workflow = builder.load_from_dict(workflow_data)
@@ -244,7 +251,9 @@ async def execute_workflow(request: VisionWorkflowRequest):
             val = state.state_vars.get(var_name)
             if val:
                 if isinstance(val, list):
-                    result_images.extend(i for i in val if isinstance(i, str) and i not in result_images)
+                    result_images.extend(
+                        i for i in val if isinstance(i, str) and i not in result_images
+                    )
                 elif isinstance(val, str) and val not in result_images:
                     result_images.append(val)
 
@@ -262,6 +271,7 @@ async def execute_workflow(request: VisionWorkflowRequest):
     except Exception as e:
         logger.exception(f"Error executing vision workflow: {e}")
         return VisionWorkflowResponse(status="error", message=str(e))
+
 
 @router.post("/ocr")
 async def perform_ocr(file: UploadFile = File(...)):
@@ -303,18 +313,14 @@ async def list_gallery():
 async def runtime_list_models():
     """List all currently loaded diffusion models."""
     models = list_loaded_models()
-    return RuntimeListResponse(
-        models=[RuntimeModelInfo(**m) for m in models]
-    )
+    return RuntimeListResponse(models=[RuntimeModelInfo(**m) for m in models])
 
 
 @router.get("/runtime/families")
 async def runtime_list_families():
     """List all supported model families with capabilities."""
     families = list_supported_families()
-    return RuntimeFamiliesResponse(
-        families=[RuntimeFamilyInfo(**f) for f in families]
-    )
+    return RuntimeFamiliesResponse(families=[RuntimeFamilyInfo(**f) for f in families])
 
 
 @router.post("/runtime/load", response_model=RuntimeLoadResponse)

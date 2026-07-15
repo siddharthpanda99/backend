@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func as sqlfunc, desc
 
@@ -27,6 +27,7 @@ from common_lib.modules.app_builder.schema import (
     ReviewRespondRequest,
     APIResponse,
 )
+from app.modules.app_builder.schema.routes.ecosystem_utils import resolve_actor_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["App Reviews"])
@@ -95,12 +96,15 @@ async def list_reviews(
 
 @router.post("/apps/{app_id}/reviews", response_model=ReviewResponse, status_code=201)
 async def create_review(
-    app_id: str, data: ReviewCreate, db: Session = Depends(get_session)
+    app_id: str,
+    data: ReviewCreate,
+    request: Request,
+    db: Session = Depends(get_session),
 ):
     record = AppReviewRecord(
         id=str(uuid.uuid4()),
         app_id=app_id,
-        user_id="current-user",  # TODO: extract from auth token
+        user_id=resolve_actor_user_id(request),
         **data.model_dump(),
     )
     db.add(record)
@@ -143,13 +147,16 @@ async def delete_review(review_id: str, db: Session = Depends(get_session)):
 
 @router.post("/reviews/{review_id}/vote", response_model=ReviewResponse)
 async def vote_review(
-    review_id: str, data: ReviewVoteRequest, db: Session = Depends(get_session)
+    review_id: str,
+    data: ReviewVoteRequest,
+    request: Request,
+    db: Session = Depends(get_session),
 ):
     review = db.get(AppReviewRecord, review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
-    user_id = "current-user"  # TODO: extract from auth token
+    user_id = resolve_actor_user_id(request)
 
     # Check existing vote
     existing = db.execute(

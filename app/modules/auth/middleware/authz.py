@@ -140,6 +140,9 @@ class AuthzMiddleware(BaseHTTPMiddleware):
             tenant_id=tenant_id,
         )
         setattr(request.state, "authz", checker)
+        # Convenience field used by thin routes (creators, app builder, etc.)
+        setattr(request.state, "user_id", subject_id or None)
+        setattr(request.state, "tenant_id", tenant_id)
         if subject_id:
             resolved_identity = identity_service.get_identity(subject_id)
             setattr(request.state, "identity", resolved_identity)

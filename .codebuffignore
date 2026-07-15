@@ -1,0 +1,39 @@
+# ── Backend Monorepo .codebuffignore ──────────────────────────────────────
+# Exclude non-essential files/directories from Freebuff indexing.
+# Only apply within this submodule (Backend/).
+
+# Dependencies
+node_modules/
+.venv/
+
+# Cache & temp
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.nox/
+*.egg-info/
+
+# Build output
+dist/
+build/
+
+# Logs
+logs/
+*.log
+
+# Scratch & tmp
+scratch/
+tmp/
+
+# Test databases (large, auto-generated)
+*.db
+*.sqlite
+*.sqlite3
+
+# Ferment cache
+.ferment/
+
+# OS artifacts
+.DS_Store
+Thumbs.db

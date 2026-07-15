@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func as sqlfunc, desc
 
@@ -29,7 +29,11 @@ from common_lib.modules.app_builder.schema import (
     ThreadVoteRequest,
     APIResponse,
 )
-from app.modules.app_builder.schema.routes.ecosystem_utils import generate_unique_slug, record_activity
+from app.modules.app_builder.schema.routes.ecosystem_utils import (
+    generate_unique_slug,
+    record_activity,
+    resolve_actor_user_id,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["App Forums"])
@@ -72,10 +76,15 @@ async def list_threads(
 
 
 @router.post("/apps/{app_id}/threads", response_model=ThreadResponse, status_code=201)
-async def create_thread(app_id: str, data: ThreadCreate, db: Session = Depends(get_session)):
+async def create_thread(
+    app_id: str,
+    data: ThreadCreate,
+    request: Request,
+    db: Session = Depends(get_session),
+):
     slug = generate_unique_slug(db, ForumThreadRecord, data.title)
 
-    author_id = "current-user"
+    author_id = resolve_actor_user_id(request)
     record = ForumThreadRecord(
         id=str(uuid.uuid4()),
         app_id=app_id,
@@ -170,7 +179,10 @@ async def list_replies(thread_id: str, db: Session = Depends(get_session)):
 
 @router.post("/threads/{thread_id}/replies", response_model=ThreadReplyResponse, status_code=201)
 async def create_reply(
-    thread_id: str, data: ThreadReplyCreate, db: Session = Depends(get_session)
+    thread_id: str,
+    data: ThreadReplyCreate,
+    request: Request,
+    db: Session = Depends(get_session),
 ):
     thread = db.get(ForumThreadRecord, thread_id)
     if not thread:
@@ -181,7 +193,7 @@ async def create_reply(
     record = ForumReplyRecord(
         id=str(uuid.uuid4()),
         thread_id=thread_id,
-        author_id="current-user",
+        author_id=resolve_actor_user_id(request),
         parent_id=data.parent_id,
         body_markdown=data.body_markdown,
     )
@@ -246,13 +258,16 @@ async def accept_answer(reply_id: str, db: Session = Depends(get_session)):
 
 @router.post("/thread-replies/{reply_id}/vote", response_model=ThreadReplyResponse)
 async def vote_reply(
-    reply_id: str, data: ThreadVoteRequest, db: Session = Depends(get_session)
+    reply_id: str,
+    data: ThreadVoteRequest,
+    request: Request,
+    db: Session = Depends(get_session),
 ):
     reply = db.get(ForumReplyRecord, reply_id)
     if not reply:
         raise HTTPException(status_code=404, detail="Reply not found")
 
-    user_id = "current-user"
+    user_id = resolve_actor_user_id(request)
     existing = db.execute(
         select(ForumVoteRecord).where(
             ForumVoteRecord.reply_id == reply_id,

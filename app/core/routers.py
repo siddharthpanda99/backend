@@ -262,6 +262,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.wildcards.routes import router as wildcards_router
     from app.modules.sam3.routes import router as sam3_router
     from app.modules.keys_management import router as keys_router
+    from app.modules.keys_management.credentials_routes import router as credentials_router
     from app.modules.proxy_routing import router as proxy_router
     from app.modules.collage.routes import router as collage_router
     from app.modules.experiments.routes import router as experiments_router
@@ -271,6 +272,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.plugins.routes import plugin_router
 
     # Lazy imports for modules not imported at main.py top level
+    from app.modules.edit.routes import router as edit_router
     from app.modules.vision.routes import router as vision_router
     from app.modules.filters.routes import router as filters_router
     from app.modules.nodes.routes import router as nodes_router
@@ -320,7 +322,172 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         return router
 
     def _database_connections_router():
-        from app.modules.database_connections.routes import router
+        from app.modules.db_studio.database_connections.routes import router
+
+        return router
+
+    def _query_workbench_router():
+        from app.modules.db_studio.query_workbench.routes import router
+
+        return router
+
+    def _schema_browser_router():
+        from app.modules.db_studio.schema_browser.routes import router
+
+        return router
+
+    def _data_browser_router():
+        from app.modules.db_studio.data_browser.routes import router
+
+        return router
+
+    def _visual_designers_router():
+        from app.modules.db_studio.visual_designers.routes import router
+
+        return router
+
+    def _ai_copilot_router():
+        from app.modules.db_studio.ai_copilot.routes import router
+
+        return router
+
+    def _query_execution_router():
+        from app.modules.db_studio.query_execution.routes import router
+
+        return router
+
+    def _data_exchange_router():
+        """Lazy-load Import, Export & Data Exchange router."""
+        from app.modules.db_studio.data_exchange.routes.router import get_router
+
+        return get_router()
+
+    def _migration_router():
+        """Lazy-load Migration & Schema Versioning router."""
+        from app.modules.db_studio.migration.routes.router import get_router
+
+        return get_router()
+
+    def _backup_router():
+        """Lazy-load Backup, Restore & Snapshot Manager router."""
+        from app.modules.db_studio.backup.routes.router import get_router
+
+        return get_router()
+
+    def _performance_router():
+        """Lazy-load Performance Profiler & Query Optimizer router."""
+        from app.modules.db_studio.performance.routes.router import get_router
+
+        return get_router()
+
+    def _connector_sdk_router():
+        from app.modules.db_studio.connector_sdk.routes import router
+
+        return router
+
+    def _capability_registry_router():
+        from app.modules.db_studio.capability_registry.routes.router import get_router
+
+        return get_router()
+
+    def _administration_router():
+        from app.modules.db_studio.administration.routes.router import get_router
+
+        return get_router()
+
+    def _etl_platform_router():
+        """Lazy-load ETL/ELT/Reverse ETL Platform router."""
+        from app.modules.db_studio.etl.routes.router import get_router
+
+        return get_router()
+
+    def _data_quality_router():
+        """Lazy-load Data Quality & Profiling router."""
+        from app.modules.db_studio.data_quality.routes.router import router
+
+        return router
+
+    def _observability_router():
+        """Lazy-load Monitoring & Observability router."""
+        from app.modules.db_studio.observability.routes.router import router
+
+        return router
+
+    def _security_router():
+        """Lazy-load Security, Auth & Secret Management router."""
+        from app.modules.db_studio.security.routes.router import router
+
+        return router
+
+    def _collaboration_router():
+        """Lazy-load RBAC, Teams & Collaboration router."""
+        from app.modules.db_studio.collaboration.routes.router import router
+
+        return router
+
+    def _notebook_router():
+        """Lazy-load Notebook & Interactive Workspace router."""
+        from app.modules.db_studio.notebook.routes.router import router
+
+        return router
+
+    def _knowledge_library_router():
+        """Lazy-load Query History, Snippets & Templates router."""
+        from app.modules.db_studio.knowledge_library.routes.router import router
+
+        return router
+
+    def _automation_router():
+        """Lazy-load Scheduler, Jobs & Automation router."""
+        from app.modules.db_studio.automation.routes.router import router
+
+        return router
+
+    def _plugin_marketplace_router():
+        """Lazy-load Plugin Marketplace & Extension SDK router."""
+        from app.modules.db_studio.plugin_marketplace.routes.router import router
+
+        return router
+
+    def _workspace_environment_router():
+        """Lazy-load Workspace, Projects & Environment Management router."""
+        from app.modules.db_studio.workspace_environment.routes.router import router
+
+        return router
+
+    def _discovery_router():
+        """Lazy-load Search, Catalog & Data Discovery router."""
+        from app.modules.db_studio.discovery.routes.router import router
+
+        return router
+
+    def _governance_router():
+        """Lazy-load Lineage, Governance & Compliance router."""
+        from app.modules.db_studio.governance.routes.router import router
+
+        return router
+
+    def _visualization_router():
+        """Lazy-load Visualization, Dashboards & Reporting router."""
+        from app.modules.db_studio.visualization.routes.router import router
+
+        return router
+
+    def _api_integration_router():
+        """Lazy-load API Layer, WebSocket & MCP Integration router."""
+        from app.modules.db_studio.api_integration.routes.router import router
+
+        return router
+
+    def _backend_architecture_router():
+        """Lazy-load Backend Architecture & Folder Structure router."""
+        from app.modules.db_studio.backend_architecture.routes.router import router
+
+        return router
+
+    def _frontend_design_router():
+        """Lazy-load Frontend Architecture & Design System router."""
+        from app.modules.db_studio.frontend_design.routes.router import router
 
         return router
 
@@ -359,6 +526,11 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
         return router
 
+    def _scaffolder_router():
+        from app.modules.scaffolder.routes import router
+
+        return router
+
     # ----------------------------------------------------------------
     # Declarative registry
     # Each entry maps to a single app.include_router() call.
@@ -392,6 +564,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": projects_router,
             "prefix": "/projects",
             "tags": ["Projects"],
+            "auth": True,
+        },
+        # ── Scaffolder ─────────────────────────────────────────────
+        {
+            "router": _scaffolder_router(),
+            "prefix": "/scaffolder",
+            "tags": ["Scaffolder"],
             "auth": True,
         },
         # ── Hooks / Webhooks ───────────────────────────────────────
@@ -593,6 +772,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
         },
         {
+            "router": edit_router,
+            "prefix": "/edit",
+            "tags": ["Image Editing"],
+            "auth": True,
+        },
+        {
             "router": vision_router,
             "prefix": "/vision",
             "tags": ["Vision"],
@@ -751,6 +936,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": keys_router,
             "prefix": "",
             "tags": ["Keys Management"],
+            "auth": True,
+        },
+        {
+            "router": credentials_router,
+            "prefix": "/keys/credentials",
+            "tags": ["Credentials Management"],
             "auth": True,
         },
         {
@@ -988,6 +1179,209 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": _database_connections_router(),
             "prefix": "/databases",
             "tags": ["Database Connections"],
+            "auth": True,
+        },
+        # ── Query Workbench ───────────────────────────────────────────
+        {
+            "router": _query_workbench_router(),
+            "prefix": "/query-workbench",
+            "tags": ["Query Workbench"],
+            "auth": True,
+        },
+        # ── Schema Browser ──────────────────────────────────────────────
+        {
+            "router": _schema_browser_router(),
+            "prefix": "/schema-browser",
+            "tags": ["Schema Browser"],
+            "auth": True,
+        },
+        # ── Data Browser ─────────────────────────────────────────────────
+        {
+            "router": _data_browser_router(),
+            "prefix": "/data-browser",
+            "tags": ["Data Browser"],
+            "auth": True,
+        },
+        # ── Visual Database Designers ────────────────────────────────────
+        {
+            "router": _visual_designers_router(),
+            "prefix": "/designers",
+            "tags": ["Visual Database Designers"],
+            "auth": True,
+        },
+        # ── AI Database Copilot ───────────────────────────────────────────
+        {
+            "router": _ai_copilot_router(),
+            "prefix": "/ai",
+            "tags": ["AI Database Copilot"],
+            "auth": True,
+        },
+        # ── Universal Query Execution Engine ───────────────────────────────
+        {
+            "router": _query_execution_router(),
+            "prefix": "/execution",
+            "tags": ["Universal Query Execution Engine"],
+            "auth": True,
+        },
+        # ── Connector SDK & Driver Framework ────────────────────────────────
+        {
+            "router": _connector_sdk_router(),
+            "prefix": "/connector-sdk",
+            "tags": ["Connector SDK & Driver Framework"],
+            "auth": True,
+        },
+        # ── Capability Registry & Database Abstraction Layer ─────────────────
+        {
+            "router": _capability_registry_router(),
+            "prefix": "/capabilities",
+            "tags": ["Capability Registry & DAL"],
+            "auth": True,
+        },
+        # ── Database Administration Center ─────────────────────────────────
+        {
+            "router": _administration_router(),
+            "prefix": "/admin",
+            "tags": ["Database Administration Center"],
+            "auth": True,
+        },
+        # ── Performance Profiler & Query Optimizer ──────────────────────────
+        {
+            "router": _performance_router(),
+            "prefix": "/performance",
+            "tags": ["Performance Profiler & Query Optimizer"],
+            "auth": True,
+        },
+        # ── Backup, Restore & Snapshot Manager ───────────────────────────────
+        {
+            "router": _backup_router(),
+            "prefix": "/backup",
+            "tags": ["Backup, Restore & Snapshot Manager"],
+            "auth": True,
+        },
+        # ── Migration & Schema Versioning ─────────────────────────────────────
+        {
+            "router": _migration_router(),
+            "prefix": "/migrations",
+            "tags": ["Migration & Schema Versioning"],
+            "auth": True,
+        },
+        # ── Import, Export & Data Exchange ─────────────────────────────────────
+        {
+            "router": _data_exchange_router(),
+            "prefix": "/data-exchange",
+            "tags": ["Import, Export & Data Exchange"],
+            "auth": True,
+        },
+        # ── ETL/ELT/Reverse ETL Platform ────────────────────────────────────────
+        {
+            "router": _etl_platform_router(),
+            "prefix": "/etl",
+            "tags": ["ETL/ELT/Reverse ETL Platform"],
+            "auth": True,
+        },
+        # ── Data Quality & Profiling ────────────────────────────────────────────────
+        {
+            "router": _data_quality_router(),
+            "prefix": "/data-quality",
+            "tags": ["Data Quality & Profiling"],
+            "auth": True,
+        },
+        # ── Monitoring & Observability ─────────────────────────────────────────────────
+        {
+            "router": _observability_router(),
+            "prefix": "/observability",
+            "tags": ["Monitoring & Observability"],
+            "auth": True,
+        },
+        # ── Security, Auth & Secret Management ──────────────────────────────────────────
+        {
+            "router": _security_router(),
+            "prefix": "/security",
+            "tags": ["Security, Auth & Secret Management"],
+            "auth": True,
+        },
+        # ── RBAC, Teams & Collaboration ─────────────────────────────────────────────────
+        {
+            "router": _collaboration_router(),
+            "prefix": "/collaboration",
+            "tags": ["RBAC, Teams & Collaboration"],
+            "auth": True,
+        },
+        # ── Notebook & Interactive Workspace ─────────────────────────────────────────────
+        {
+            "router": _notebook_router(),
+            "prefix": "/notebooks",
+            "tags": ["Notebook & Interactive Workspace"],
+            "auth": True,
+        },
+        # ── Query History, Snippets & Templates ───────────────────────────────────────────
+        {
+            "router": _knowledge_library_router(),
+            "prefix": "/knowledge-library",
+            "tags": ["Query History, Snippets & Templates"],
+            "auth": True,
+        },
+        # ── Scheduler, Jobs & Automation ───────────────────────────────────────────────────
+        {
+            "router": _automation_router(),
+            "prefix": "/automation",
+            "tags": ["Scheduler, Jobs & Automation"],
+            "auth": True,
+        },
+        # ── Plugin Marketplace & Extension SDK ────────────────────────────────────────────────
+        {
+            "router": _plugin_marketplace_router(),
+            "prefix": "/plugins",
+            "tags": ["Plugin Marketplace & Extension SDK"],
+            "auth": True,
+        },
+        # ── Workspace, Projects & Environment Management ────────────────────────────────────────
+        {
+            "router": _workspace_environment_router(),
+            "prefix": "/workspaces",
+            "tags": ["Workspace, Projects & Environment Management"],
+            "auth": True,
+        },
+        # ── Search, Catalog & Data Discovery ────────────────────────────────────────────────────
+        {
+            "router": _discovery_router(),
+            "prefix": "",
+            "tags": ["Search, Catalog & Data Discovery"],
+            "auth": True,
+        },
+        # ── Lineage, Governance & Compliance ────────────────────────────────────────────────────
+        {
+            "router": _governance_router(),
+            "prefix": "",
+            "tags": ["Lineage, Governance & Compliance"],
+            "auth": True,
+        },
+        # ── Visualization, Dashboards & Reporting ────────────────────────────────────────────────
+        {
+            "router": _visualization_router(),
+            "prefix": "",
+            "tags": ["Visualization, Dashboards & Reporting"],
+            "auth": True,
+        },
+        # ── API Layer, WebSocket & MCP Integration ────────────────────────────────────────────────
+        {
+            "router": _api_integration_router(),
+            "prefix": "",
+            "tags": ["API Layer, WebSocket & MCP Integration"],
+            "auth": True,
+        },
+        # ── Backend Architecture & Folder Structure ────────────────────────────────────────────
+        {
+            "router": _backend_architecture_router(),
+            "prefix": "",
+            "tags": ["Backend Architecture & Folder Structure"],
+            "auth": True,
+        },
+        # ── Frontend Architecture & Design System ────────────────────────────────────────────
+        {
+            "router": _frontend_design_router(),
+            "prefix": "",
+            "tags": ["Frontend Architecture & Design System"],
             "auth": True,
         },
         # ── Unified Entity System (Triggers / Hooks / Rules) ──────────

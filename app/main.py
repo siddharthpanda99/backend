@@ -79,6 +79,7 @@ async def lifespan(app: FastAPI):
                     )
             except Exception as se:
                 import traceback
+
                 print(f"Warning: RBAC seeding failed: {se}")
                 traceback.print_exc()
 
@@ -92,6 +93,7 @@ async def lifespan(app: FastAPI):
                     print(f"Startup: {result.get('message', 'Themes seeded')}")
             except Exception as se:
                 import traceback
+
                 print(f"Warning: Theme seeding failed: {se}")
                 traceback.print_exc()
 
@@ -215,6 +217,17 @@ async def lifespan(app: FastAPI):
                 except Exception as se:
                     print(f"Warning: Default connection seeding failed: {se}")
 
+            # --- SEED: Node registry (all @node functions) -> node_definitions ---
+            try:
+                from common_lib.modules.image_processing.nodes_registry.startup import (
+                    sync_nodes_on_startup,
+                )
+
+                synced = sync_nodes_on_startup()
+                print(f"Node registry synced: {synced} nodes discovered")
+            except Exception as se:
+                print(f"Warning: Node registry sync failed: {se}")
+
             # --- SEED: Knowledge Hub initial data ---
             try:
                 from common_lib.modules.knowledge_hub.seed_data import seed_all
@@ -232,6 +245,38 @@ async def lifespan(app: FastAPI):
                     )
             except Exception as kh_se:
                 print(f"Warning: Knowledge Hub seeding failed: {kh_se}")
+
+            # --- SEED: Rules Engine default rules ---
+            try:
+                from common_lib.modules.rules_engine.definition.registry import (
+                    seed_default_rules,
+                )
+
+                seeded_rules = seed_default_rules()
+                if seeded_rules:
+                    print(
+                        f"Startup: Seeded {seeded_rules} default rules into the rules engine"
+                    )
+                else:
+                    print("Startup: Default rules already seeded")
+
+                # --- SYNC: DB-persisted rules into in-memory engine ---
+                from common_lib.modules.integration.services.governance_rules_service import (
+                    GovernanceRulesService as RuleEngineService,
+                )
+                from sqlmodel import Session as _RE_Session
+
+                with _RE_Session(engine) as _re_session:
+                    service = RuleEngineService()
+                    synced = service.sync_to_engine(_re_session)
+                    if synced:
+                        print(
+                            f"Startup: Synced {synced} DB rules into the rules engine"
+                        )
+                    else:
+                        print("Startup: No new DB rules to sync into the rules engine")
+            except Exception as re_err:
+                print(f"Warning: Rules engine seed/sync failed: {re_err}")
 
             # --- SEED: Integration module configs ---
             try:
@@ -684,7 +729,6 @@ async def lifespan(app: FastAPI):
                 from common_lib.modules.knowledge_engine.embedding.registry import (
                     init_registry,
                 )
-                import os
 
                 _engine = create_engine(os.getenv("DATABASE_URL", DEFAULT_DB_URL))
                 with Session(_engine) as _session:
@@ -1148,7 +1192,9 @@ def create_app() -> FastAPI:
 
     # Control Center Activity Logging — automatically logs every API request
     try:
-        from app.modules.control_center.middleware.activity_logger import ActivityLoggingMiddleware
+        from app.modules.control_center.middleware.activity_logger import (
+            ActivityLoggingMiddleware,
+        )
 
         app.add_middleware(ActivityLoggingMiddleware)
         print("Startup: Control Center Activity Logging middleware enabled")

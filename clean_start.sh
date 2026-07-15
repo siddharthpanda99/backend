@@ -5,6 +5,15 @@ RESOURCES_DIR="../../resources"
 DB_COMPOSE="db.compose.yml"
 MINIO_COMPOSE="minio.compose.yml"
 VLLM_COMPOSE="vllm.compose.yml"
+DOWN_ON_EXIT=0
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --down-on-exit) DOWN_ON_EXIT=1 ;;
+    esac
+    shift
+done
 
 # Get absolute paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,9 +69,14 @@ fi
 # Define cleanup function for trap
 cleanup() {
     echo ""
-    echo "!!! TERMINATION DETECTED - TEARING DOWN INFRASTRUCTURE !!!"
-    if [ -z "$SKIP_DOCKER" ] && docker info >/dev/null 2>&1; then
-        cd "$ABS_RESOURCES_DIR" 2>/dev/null && docker compose -f "$DB_COMPOSE" -f "$MINIO_COMPOSE" -f "$VLLM_COMPOSE" down --remove-orphans 2>/dev/null || true
+    echo "!!! TERMINATION DETECTED !!!"
+    if [ "$DOWN_ON_EXIT" -eq 1 ]; then
+        echo "!!! TEARING DOWN INFRASTRUCTURE !!!"
+        if [ -z "$SKIP_DOCKER" ] && docker info >/dev/null 2>&1; then
+            cd "$ABS_RESOURCES_DIR" 2>/dev/null && docker compose -f "$DB_COMPOSE" -f "$MINIO_COMPOSE" -f "$VLLM_COMPOSE" down --remove-orphans 2>/dev/null || true
+        fi
+    else
+        echo "!!! SKIPPING DOCKER TEARDOWN (use --down-on-exit to teardown) !!!"
     fi
     echo "!!! CLEANUP COMPLETE. EXITING. !!!"
 }

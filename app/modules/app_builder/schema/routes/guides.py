@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func as sqlfunc, desc
 
@@ -31,7 +31,11 @@ from common_lib.modules.app_builder.schema import (
     GuideCompletionResponse,
     APIResponse,
 )
-from app.modules.app_builder.schema.routes.ecosystem_utils import generate_unique_slug, record_activity
+from app.modules.app_builder.schema.routes.ecosystem_utils import (
+    generate_unique_slug,
+    record_activity,
+    resolve_actor_user_id,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["App Guides"])
@@ -66,10 +70,15 @@ async def list_guides(
 
 
 @router.post("/apps/{app_id}/guides", response_model=GuideResponse, status_code=201)
-async def create_guide(app_id: str, data: GuideCreate, db: Session = Depends(get_session)):
+async def create_guide(
+    app_id: str,
+    data: GuideCreate,
+    request: Request,
+    db: Session = Depends(get_session),
+):
     slug = generate_unique_slug(db, AppGuideRecord, data.title)
 
-    author_id = "current-user"
+    author_id = resolve_actor_user_id(request)
     record = AppGuideRecord(
         id=str(uuid.uuid4()),
         app_id=app_id,
@@ -219,13 +228,16 @@ async def delete_step(step_id: str, db: Session = Depends(get_session)):
 
 @router.post("/guides/{guide_id}/complete", response_model=GuideCompletionResponse)
 async def mark_complete(
-    guide_id: str, data: GuideCompleteRequest, db: Session = Depends(get_session)
+    guide_id: str,
+    data: GuideCompleteRequest,
+    request: Request,
+    db: Session = Depends(get_session),
 ):
     guide = db.get(AppGuideRecord, guide_id)
     if not guide:
         raise HTTPException(status_code=404, detail="Guide not found")
 
-    user_id = "current-user"
+    user_id = resolve_actor_user_id(request)
     existing = db.execute(
         select(AppGuideCompletionRecord).where(
             AppGuideCompletionRecord.guide_id == guide_id,
