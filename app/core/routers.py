@@ -1419,7 +1419,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         # ── Internet Intelligence Layer (IIL) ──────────────────────────
         {
             "router": _iil_router(),
-            "prefix": "",
+            "prefix": "/iil",
             "tags": ["Internet Intelligence Layer"],
             "auth": True,
         },

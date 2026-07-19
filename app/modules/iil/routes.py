@@ -50,7 +50,7 @@ from common_lib.modules.data_storage.database.constants import DEFAULT_DB_URL
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/iil", tags=["Internet Intelligence Layer"])
+router = APIRouter(prefix="", tags=["Internet Intelligence Layer"])
 
 # Global service instance (lazy init)
 _iil_service: Optional[IILService] = None
@@ -644,9 +644,10 @@ async def iil_analytics(
     Hours with no activity are included as zero-count data points.
     """
     analytics = _get_analytics()
-    data_points = analytics.get_request_volume(hours=hours)
+    data_points_raw = analytics.get_request_volume(hours=hours)
+    data_points = [dp.__dict__ for dp in data_points_raw]
     total = analytics.get_total_requests()
-    max_count = max((dp.count for dp in data_points), default=0)
+    max_count = max((dp["count"] for dp in data_points), default=0)
     operations_total = analytics.get_operations_breakdown()
     cache_data = analytics.get_cache_hit_rate_data(hours=hours)
     overall_cache_rate = analytics.get_overall_cache_hit_rate()

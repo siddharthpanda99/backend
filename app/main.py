@@ -217,6 +217,15 @@ async def lifespan(app: FastAPI):
                 except Exception as se:
                     print(f"Warning: Default connection seeding failed: {se}")
 
+            # --- SEED: Connections YAML Data ---
+            try:
+                from common_lib.modules.connectors.bootstrap import seed_connections_from_yaml
+                from sqlmodel import Session as SQLSession
+                with SQLSession(engine) as seed_session:
+                    seed_connections_from_yaml(seed_session)
+            except Exception as conn_se:
+                print(f"Warning: Connections seeding from YAML failed: {conn_se}")
+
             # --- SEED: Node registry (all @node functions) -> node_definitions ---
             try:
                 from common_lib.modules.image_processing.nodes_registry.startup import (
@@ -348,6 +357,15 @@ async def lifespan(app: FastAPI):
                     print("Startup: RIP tools already registered")
             except Exception as rip_se:
                 print(f"Warning: RIP tool registration failed: {rip_se}")
+
+            # --- SEED: Observability YAML Data ---
+            try:
+                from common_lib.modules.observability.bootstrap import seed_observability_from_yaml
+                from sqlmodel import Session as SQLSession
+                with SQLSession(engine) as seed_session:
+                    seed_observability_from_yaml(seed_session)
+            except Exception as obs_se:
+                print(f"Warning: Observability seeding from YAML failed: {obs_se}")
 
             break
         except Exception as e:

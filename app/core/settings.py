@@ -1,5 +1,5 @@
-from pydantic_settings import BaseSettings
-from pydantic import model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import model_validator, field_validator
 from functools import lru_cache
 from typing import Self
 from common_lib.core.config import config
@@ -16,6 +16,11 @@ _KNOWN_WEAK_SECRETS: frozenset[str] = frozenset(
 
 
 class Settings(BaseSettings):
+    # enable_decoding=False stops pydantic-settings from json.loads()-ing complex
+    # (list/dict) env values before validators run, so comma-separated env strings
+    # like BACKEND_CORS_ORIGINS=a,b are handled by _split_csv_list instead of crashing.
+    model_config = SettingsConfigDict(enable_decoding=False)
+
     PROJECT_NAME: str = config.get("Backend", "project_name", "Nexus AI Backend")
     VERSION: str = config.get("Backend", "version", "0.1.0")
     ENVIRONMENT: str = config.get("Backend", "environment", "prod")
@@ -66,6 +71,32 @@ class Settings(BaseSettings):
     # Leave blank to disable proxy-header identity (safe default).
     TRUSTED_PROXY_SECRET: str = config.get("Backend", "trusted_proxy_secret", "")
 
+    @field_validator("BACKEND_CORS_ORIGINS", "EXCLUDE_TOOL_CATEGORIES", mode="before")
+    @classmethod
+    def _split_csv_list(cls, v):
+        """Accept list-typed settings from env as JSON *or* comma-separated strings.
+
+        We set ``enable_decoding=False`` so pydantic-settings does not try to
+        ``json.loads()`` the raw env value (a plain value like
+        ``http://localhost:3000,http://localhost:5173`` is not valid JSON and would
+        crash startup). We normalise strings here instead.
+        """
+        if v is None:
+            return v
+        if isinstance(v, str):
+            s = v.strip()
+            if not s:
+                return []
+            if s[0] in "[{":
+                import json as _json
+
+                try:
+                    return _json.loads(s)
+                except ValueError:
+                    return [item.strip() for item in s.split(",") if item.strip()]
+            return [item.strip() for item in s.split(",") if item.strip()]
+        return v
+
     @model_validator(mode="after")
     def _validate_security(self) -> Self:
         """Fail fast when security invariants are violated.
@@ -114,4 +145,3 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings():
     return Settings()
-

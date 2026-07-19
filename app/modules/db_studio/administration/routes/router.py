@@ -4,38 +4,86 @@ from fastapi import APIRouter, HTTPException
 from typing import List, Optional
 
 from common_lib.modules.db_studio.administration.service import AdminCenterService
+from common_lib.modules.db_studio.administration.provisioning import (
+    ProvisioningError,
+    ProvisioningUnsupported,
+)
 from common_lib.modules.db_studio.administration.schemas import (
-    UserCreate, UserUpdate, UserOut,
-    RoleCreate, RoleGrant, RoleOut, EffectivePermissionOut,
-    SessionOut, SessionKillRequest,
-    LockOut, DeadlockInfo,
-    MaintenanceRequest, MaintenanceOut,
-    ReplicationStatus, ReplicationTopology,
-    ConfigParam, ExtensionInfo, ServerInfo,
-    StorageUsage, TablespaceInfo,
-    JobCreate, JobOut,
+    UserCreate,
+    UserUpdate,
+    UserOut,
+    RoleCreate,
+    RoleGrant,
+    RoleOut,
+    EffectivePermissionOut,
+    SessionOut,
+    SessionKillRequest,
+    LockOut,
+    DeadlockInfo,
+    MaintenanceRequest,
+    MaintenanceOut,
+    ReplicationStatus,
+    ReplicationTopology,
+    ConfigParam,
+    ExtensionInfo,
+    ServerInfo,
+    StorageUsage,
+    TablespaceInfo,
+    JobCreate,
+    JobOut,
     AuditOut,
+    DatabaseCreate,
+    DatabaseOut,
+    ProvisionResult,
 )
 
 svc = AdminCenterService()
 
 
+def _handle(fn):
+    """Run a provisioning call, translating driver errors to HTTP codes."""
+    try:
+        return fn()
+    except ProvisioningUnsupported as e:
+        raise HTTPException(422, str(e))
+    except ProvisioningError as e:
+        raise HTTPException(400, str(e))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa
+        raise HTTPException(500, f"Provisioning failed: {e}")
+
+
 def get_router() -> APIRouter:
     router = APIRouter(prefix="/api/v1/admin", tags=["Database Administration"])
+
+    # ── Databases (real provisioning) ───────────────────────────────────
+
+    @router.post("/databases", response_model=ProvisionResult, status_code=201)
+    def create_database(req: DatabaseCreate):
+        return _handle(lambda: svc.create_database(req))
+
+    @router.get("/databases", response_model=List[DatabaseOut])
+    def list_databases(connection_id: str):
+        return _handle(lambda: svc.list_databases(connection_id))
+
+    @router.delete("/databases/{name}", response_model=ProvisionResult)
+    def drop_database(name: str, connection_id: str, confirm: bool = False):
+        return _handle(lambda: svc.drop_database(connection_id, name, confirm))
 
     # ── Users ──────────────────────────────────────────────────────────
 
     @router.post("/users", response_model=UserOut, status_code=201)
     def create_user(req: UserCreate):
-        return svc.create_user(req)
+        return _handle(lambda: svc.create_user(req))
 
     @router.get("/users", response_model=List[UserOut])
-    def list_users():
-        return svc.list_users()
+    def list_users(connection_id: str):
+        return _handle(lambda: svc.list_users(connection_id))
 
     @router.get("/users/{username}", response_model=UserOut)
-    def get_user(username: str):
-        r = svc.get_user(username)
+    def get_user(username: str, connection_id: str):
+        r = _handle(lambda: svc.get_user(username, connection_id))
         if not r:
             raise HTTPException(404, "User not found")
         return r
@@ -48,15 +96,14 @@ def get_router() -> APIRouter:
         return r
 
     @router.delete("/users/{username}", status_code=204)
-    def delete_user(username: str):
-        if not svc.delete_user(username):
-            raise HTTPException(404, "User not found")
+    def delete_user(username: str, connection_id: str, confirm: bool = False):
+        _handle(lambda: svc.delete_user(username, connection_id, confirm))
 
     # ── Roles ──────────────────────────────────────────────────────────
 
     @router.post("/roles", response_model=RoleOut, status_code=201)
     def create_role(req: RoleCreate):
-        return svc.create_role(req)
+        return _handle(lambda: svc.create_role(req))
 
     @router.get("/roles", response_model=List[RoleOut])
     def list_roles():
@@ -64,12 +111,17 @@ def get_router() -> APIRouter:
 
     @router.post("/roles/grant", response_model=dict)
     def grant_role(req: RoleGrant):
-        svc.grant_role(req)
-        return {"success": True, "message": f"Role '{req.role_name}' granted to '{req.target}'"}
+        _handle(lambda: svc.grant_role(req))
+        return {
+            "success": True,
+            "message": f"Role '{req.role_name}' granted to '{req.target}'",
+        }
 
     @router.post("/roles/revoke", response_model=dict)
-    def revoke_role(role_name: str, target: str):
-        svc.revoke_role(role_name, target)
+    def revoke_role(
+        role_name: str, target: str, connection_id: str, database: Optional[str] = None
+    ):
+        _handle(lambda: svc.revoke_role(role_name, target, connection_id, database))
         return {"success": True}
 
     @router.get("/roles/permissions/{username}", response_model=EffectivePermissionOut)
@@ -91,7 +143,9 @@ def get_router() -> APIRouter:
 
     @router.post("/sessions/{session_id}/kill", response_model=dict)
     def kill_session(session_id: str, force: bool = False, reason: str = None):
-        ok = svc.kill_session(SessionKillRequest(session_id=session_id, force=force, reason=reason))
+        ok = svc.kill_session(
+            SessionKillRequest(session_id=session_id, force=force, reason=reason)
+        )
         return {"success": ok, "message": f"Session {session_id} terminated"}
 
     # ── Locks ──────────────────────────────────────────────────────────
@@ -164,7 +218,9 @@ def get_router() -> APIRouter:
         return svc.create_job(req)
 
     @router.get("/jobs", response_model=List[JobOut])
-    def list_jobs(status: Optional[str] = None, job_type: Optional[str] = None, limit: int = 20):
+    def list_jobs(
+        status: Optional[str] = None, job_type: Optional[str] = None, limit: int = 20
+    ):
         return svc.list_jobs(status, job_type, limit)
 
     @router.get("/jobs/{job_id}", response_model=JobOut)

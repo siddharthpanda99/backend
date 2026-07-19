@@ -3,11 +3,14 @@
 from typing import Any, Dict, List, Optional
 from common_lib.modules.db_studio.administration.service import AdminCenterService
 from common_lib.modules.db_studio.administration.schemas import (
-    UserCreate, UserUpdate,
-    RoleCreate, RoleGrant,
+    UserCreate,
+    UserUpdate,
+    RoleCreate,
+    RoleGrant,
     SessionKillRequest,
     MaintenanceRequest,
     JobCreate,
+    DatabaseCreate,
 )
 
 svc = AdminCenterService()
@@ -16,45 +19,106 @@ svc = AdminCenterService()
 def register_administration_tools(mcp_server: Any) -> None:
     """Register all Module 10 agent-facing tools."""
 
+    # ── Database provisioning ──────────────────────────────────────────
+
+    @mcp_server.tool(
+        description="Create a database/keyspace/bucket on a target connection's instance"
+    )
+    def admin_create_database(
+        name: str, connection_id: str, owner: Optional[str] = None
+    ) -> str:
+        """Create a real database on the target instance."""
+        r = svc.create_database(
+            DatabaseCreate(name=name, connection_id=connection_id, owner=owner)
+        )
+        return r.message
+
+    @mcp_server.tool(description="List databases on a target connection's instance")
+    def admin_list_databases(connection_id: str) -> List[Dict[str, Any]]:
+        """List databases on the target instance."""
+        return [d.model_dump() for d in svc.list_databases(connection_id)]
+
+    @mcp_server.tool(
+        description="Drop a database on a target instance (requires confirm=True)"
+    )
+    def admin_drop_database(
+        name: str, connection_id: str, confirm: bool = False
+    ) -> str:
+        """Drop a database (destructive)."""
+        return svc.drop_database(connection_id, name, confirm).message
+
     # ── User Management ────────────────────────────────────────────────
 
-    @mcp_server.tool(description="Create a new database user")
-    def admin_create_user(username: str, role: Optional[str] = None) -> str:
+    @mcp_server.tool(
+        description="Create a new database user on a target connection's instance"
+    )
+    def admin_create_user(
+        username: str,
+        connection_id: str,
+        password: Optional[str] = None,
+        role: Optional[str] = None,
+        superuser: bool = False,
+    ) -> str:
         """Create a database user."""
-        req = UserCreate(username=username, role=role)
+        req = UserCreate(
+            username=username,
+            connection_id=connection_id,
+            password=password,
+            role=role,
+            superuser=superuser,
+        )
         result = svc.create_user(req)
         return f"User '{result.username}' created (role={result.role})"
 
-    @mcp_server.tool(description="List all database users")
-    def admin_list_users() -> List[Dict[str, Any]]:
+    @mcp_server.tool(
+        description="List all database users on a target connection's instance"
+    )
+    def admin_list_users(connection_id: str) -> List[Dict[str, Any]]:
         """List database users."""
-        return [u.model_dump() for u in svc.list_users()]
+        return [u.model_dump() for u in svc.list_users(connection_id)]
 
-    @mcp_server.tool(description="Delete a database user")
-    def admin_delete_user(username: str) -> str:
+    @mcp_server.tool(description="Delete a database user (requires confirm=True)")
+    def admin_delete_user(
+        username: str, connection_id: str, confirm: bool = False
+    ) -> str:
         """Delete a database user."""
-        if svc.delete_user(username):
+        if svc.delete_user(username, connection_id, confirm):
             return f"User '{username}' deleted"
         return f"User '{username}' not found"
 
     # ── Role Management ────────────────────────────────────────────────
 
-    @mcp_server.tool(description="Create a new database role")
-    def admin_create_role(name: str, description: Optional[str] = None) -> str:
+    @mcp_server.tool(
+        description="Create a new database role on a target connection's instance"
+    )
+    def admin_create_role(
+        name: str, connection_id: str, description: Optional[str] = None
+    ) -> str:
         """Create a database role."""
-        req = RoleCreate(name=name, description=description)
+        req = RoleCreate(
+            name=name, connection_id=connection_id, description=description
+        )
         result = svc.create_role(req)
         return f"Role '{result.name}' created"
 
-    @mcp_server.tool(description="List all database roles")
+    @mcp_server.tool(description="List all database roles (catalog)")
     def admin_list_roles() -> List[Dict[str, Any]]:
         """List database roles."""
         return [r.model_dump() for r in svc.list_roles()]
 
-    @mcp_server.tool(description="Grant a role to a user")
-    def admin_grant_role(role_name: str, target: str) -> str:
+    @mcp_server.tool(
+        description="Grant a role/privilege to a user on a target instance"
+    )
+    def admin_grant_role(
+        role_name: str, target: str, connection_id: str, database: Optional[str] = None
+    ) -> str:
         """Grant role to user."""
-        req = RoleGrant(role_name=role_name, target=target)
+        req = RoleGrant(
+            role_name=role_name,
+            target=target,
+            connection_id=connection_id,
+            database=database,
+        )
         svc.grant_role(req)
         return f"Role '{role_name}' granted to '{target}'"
 
@@ -92,7 +156,9 @@ def register_administration_tools(mcp_server: Any) -> None:
 
     # ── Maintenance ────────────────────────────────────────────────────
 
-    @mcp_server.tool(description="Run a maintenance operation (vacuum, analyze, reindex, etc.)")
+    @mcp_server.tool(
+        description="Run a maintenance operation (vacuum, analyze, reindex, etc.)"
+    )
     def admin_run_maintenance(operation: str, target: Optional[str] = None) -> str:
         """Run maintenance operation."""
         req = MaintenanceRequest(operation=operation, target=target)
@@ -100,9 +166,14 @@ def register_administration_tools(mcp_server: Any) -> None:
         return f"Maintenance '{result.operation}' completed in {result.duration_ms}ms (target: {result.target or 'all'})"
 
     @mcp_server.tool(description="List maintenance history")
-    def admin_list_maintenance_history(operation: Optional[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
+    def admin_list_maintenance_history(
+        operation: Optional[str] = None, limit: int = 10
+    ) -> List[Dict[str, Any]]:
         """List maintenance history."""
-        return [m.model_dump() for m in svc.list_maintenance_history(operation=operation, limit=limit)]
+        return [
+            m.model_dump()
+            for m in svc.list_maintenance_history(operation=operation, limit=limit)
+        ]
 
     # ── Replication ────────────────────────────────────────────────────
 
@@ -124,7 +195,9 @@ def register_administration_tools(mcp_server: Any) -> None:
         return svc.get_server_info().model_dump()
 
     @mcp_server.tool(description="List configuration parameters")
-    def admin_list_config_params(category: Optional[str] = None) -> List[Dict[str, Any]]:
+    def admin_list_config_params(
+        category: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """List config params."""
         return [p.model_dump() for p in svc.list_config_params(category)]
 
@@ -155,7 +228,9 @@ def register_administration_tools(mcp_server: Any) -> None:
         return f"Job '{result.id}' created (type={result.job_type}, status={result.status})"
 
     @mcp_server.tool(description="List administration jobs")
-    def admin_list_jobs(status: Optional[str] = None, job_type: Optional[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
+    def admin_list_jobs(
+        status: Optional[str] = None, job_type: Optional[str] = None, limit: int = 10
+    ) -> List[Dict[str, Any]]:
         """List administration jobs."""
         return [j.model_dump() for j in svc.list_jobs(status, job_type, limit)]
 
@@ -176,4 +251,7 @@ def register_administration_tools(mcp_server: Any) -> None:
         limit: int = 20,
     ) -> List[Dict[str, Any]]:
         """List audit logs."""
-        return [a.model_dump() for a in svc.list_audit_logs(action, target_type, severity, limit)]
+        return [
+            a.model_dump()
+            for a in svc.list_audit_logs(action, target_type, severity, limit)
+        ]

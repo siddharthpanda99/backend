@@ -666,3 +666,44 @@ def pipeline_run(data: PipelineRunRequest):
 def pipeline_run_history(pipeline_id: str, limit: int = Query(20, ge=1, le=100)):
     """Get run history for a pipeline."""
     return [h.model_dump() for h in PipelineService.get_run_history(pipeline_id, limit)]
+
+
+# ── Additional Schema Introspection Endpoints ─────────────────────
+
+
+@router.get("/schemas/{profile_id}/triggers")
+def list_triggers(profile_id: str, schema: str = Query("public")):
+    """List all triggers in a schema."""
+    return SchemaInspectorService.list_triggers(profile_id, schema)
+
+
+@router.get("/schemas/{profile_id}/enums/{enum_name}/usage")
+def get_enum_usage(profile_id: str, schema: str, enum_name: str):
+    """Get usage count for an enum type."""
+    return SchemaManagerService.get_enum_usage(profile_id, schema, enum_name)
+
+
+# ── DDL Generation Endpoint ──────────────────────────────────────
+
+
+@router.get("/ddl/{profile_id}/{schema}/{table}")
+def generate_ddl(profile_id: str, schema: str, table: str):
+    """Generate CREATE TABLE DDL for a table."""
+    return SchemaManagerService.generate_ddl(profile_id, schema, table)
+
+
+# ── Database Config & Extensions Endpoints ───────────────────────
+
+
+@router.get("/config/{profile_id}")
+def get_config(profile_id: str):
+    """Get database configuration parameters."""
+    from common_lib.modules.admin_db.service import DatabaseConfigService
+    return DatabaseConfigService.get_config(profile_id)
+
+
+@router.get("/config/{profile_id}/extensions")
+def get_extensions(profile_id: str):
+    """Get installed PostgreSQL extensions."""
+    from common_lib.modules.admin_db.service import DatabaseConfigService
+    return DatabaseConfigService.get_extensions(profile_id)

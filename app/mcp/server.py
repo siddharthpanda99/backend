@@ -37,6 +37,19 @@ from app.mcp.tools.drift_alerts import register_drift_alert_tools
 from app.mcp.tools.drift_remediation import register_drift_remediation_tools
 from app.mcp.tools.collections import register_collection_tools
 from app.mcp.tools.chatgpt import register_chatgpt_tools
+from app.mcp.tools.rbac import register_rbac_tools
+from app.mcp.tools.credentials import register_credentials_tools
+from app.mcp.tools.db_provisioning import register_db_provisioning_tools
+from app.mcp.tools.doc_processing import register_doc_processing_tools
+from app.mcp.tools.events import register_events_tools
+from app.mcp.tools.external_platforms import register_external_platforms_tools
+from app.mcp.tools.ferment import register_ferment_tools
+from app.mcp.tools.file_system import register_file_system_tools
+from app.mcp.tools.rules_engine import register_rules_engine_tools
+from app.mcp.tools.core_infrastructure import register_core_infrastructure_tools
+from app.mcp.tools.image_runtime import register_image_runtime_tools
+from app.mcp.tools.data_storage import register_data_storage_tools
+from app.mcp.tools.nodes_registry import register_nodes_registry_tools
 from app.mcp.tools.db_studio.database_connections import register_database_connections_tools
 from app.mcp.tools.db_studio.query_workbench import register_query_workbench_tools
 from app.mcp.tools.db_studio.schema_browser import register_schema_browser_tools
@@ -58,11 +71,11 @@ from app.mcp.tools.db_studio.security import register_security_tools
 from app.mcp.tools.db_studio.collaboration import register_collaboration_tools
 from app.mcp.tools.db_studio.notebook import register_notebook_tools
 from app.mcp.tools.db_studio.knowledge_library import register_knowledge_library_tools
-from app.mcp.tools.db_studio.automation import register_automation_tools
+from app.mcp.tools.db_studio.automation import register_automation_tools as register_db_studio_automation_tools
 from app.mcp.tools.db_studio.plugin_marketplace import register_plugin_marketplace_tools
 from app.mcp.tools.db_studio.workspace_environment import register_workspace_tools
 from app.mcp.tools.db_studio.discovery import register_discovery_tools as register_db_studio_discovery_tools
-from app.mcp.tools.db_studio.governance import register_governance_tools
+from app.mcp.tools.db_studio.governance import register_governance_tools as register_db_studio_governance_tools
 from app.mcp.tools.db_studio.visualization import register_visualization_tools
 from app.mcp.tools.db_studio.api_integration import register_api_integration_tools
 from app.mcp.tools.db_studio.backend_architecture import register_backend_architecture_tools
@@ -104,7 +117,6 @@ register_data_pipeline_tools(mcp_server)
 register_user_tools(mcp_server)
 register_session_tools(mcp_server)
 register_system_tools(mcp_server)
-register_governance_tools(mcp_server)
 register_image_edit_tools(mcp_server)
 register_hooks_triggers_tools(mcp_server)
 register_knowledge_tools(mcp_server)
@@ -119,6 +131,19 @@ register_drift_alert_tools(mcp_server)
 register_drift_remediation_tools(mcp_server)
 register_collection_tools(mcp_server)
 register_chatgpt_tools(mcp_server)
+register_rbac_tools(mcp_server)
+register_credentials_tools(mcp_server)
+register_db_provisioning_tools(mcp_server)
+register_doc_processing_tools(mcp_server)
+register_events_tools(mcp_server)
+register_external_platforms_tools(mcp_server)
+register_ferment_tools(mcp_server)
+register_file_system_tools(mcp_server)
+register_rules_engine_tools(mcp_server)
+register_core_infrastructure_tools(mcp_server)
+register_image_runtime_tools(mcp_server)
+register_data_storage_tools(mcp_server)
+register_nodes_registry_tools(mcp_server)
 register_database_connections_tools(mcp_server)
 register_query_workbench_tools(mcp_server)
 register_schema_browser_tools(mcp_server)
@@ -140,11 +165,11 @@ register_security_tools(mcp_server)
 register_collaboration_tools(mcp_server)
 register_notebook_tools(mcp_server)
 register_knowledge_library_tools(mcp_server)
-register_automation_tools(mcp_server)
+register_db_studio_automation_tools(mcp_server)
 register_plugin_marketplace_tools(mcp_server)
 register_workspace_tools(mcp_server)
 register_db_studio_discovery_tools(mcp_server)
-register_governance_tools(mcp_server)
+register_db_studio_governance_tools(mcp_server)
 register_visualization_tools(mcp_server)
 register_api_integration_tools(mcp_server)
 register_backend_architecture_tools(mcp_server)
