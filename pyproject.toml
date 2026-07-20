@@ -51,6 +51,7 @@ dependencies = [
     "litellm>=1.92.0",
     "duckduckgo-search",
     "trafilatura",
+    "sentence-transformers>=2.2.0",
 ]
 
 
@@ -63,6 +64,7 @@ markers = [
 nexus = "app.cli:main"
 dev = "app.cli:dev_server"
 db-up = "app.cli:db_up"
+node-server = "app.mcp.standalone_node_server:main"
 
 [build-system]
 requires = ["hatchling"]

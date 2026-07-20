@@ -219,8 +219,11 @@ async def lifespan(app: FastAPI):
 
             # --- SEED: Connections YAML Data ---
             try:
-                from common_lib.modules.connectors.bootstrap import seed_connections_from_yaml
+                from common_lib.modules.connectors.bootstrap import (
+                    seed_connections_from_yaml,
+                )
                 from sqlmodel import Session as SQLSession
+
                 with SQLSession(engine) as seed_session:
                     seed_connections_from_yaml(seed_session)
             except Exception as conn_se:
@@ -360,8 +363,11 @@ async def lifespan(app: FastAPI):
 
             # --- SEED: Observability YAML Data ---
             try:
-                from common_lib.modules.observability.bootstrap import seed_observability_from_yaml
+                from common_lib.modules.observability.bootstrap import (
+                    seed_observability_from_yaml,
+                )
                 from sqlmodel import Session as SQLSession
+
                 with SQLSession(engine) as seed_session:
                     seed_observability_from_yaml(seed_session)
             except Exception as obs_se:
@@ -1232,6 +1238,15 @@ def create_app() -> FastAPI:
     from app.core.routers import register_routers
 
     register_routers(app, settings.API_V1_STR, global_deps)
+
+    # FastMCP SSE transport — enables opencode / MCP clients to connect directly
+    from app.mcp.server import mcp_server
+
+    app.mount(
+        "/mcp/transport",
+        mcp_server.sse_app(),
+        name="mcp_sse",
+    )
 
     # Serve generated images as static files
     from common_lib.paths import GENERATED_CONTENT
