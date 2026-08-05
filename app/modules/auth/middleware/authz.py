@@ -133,6 +133,11 @@ class AuthzMiddleware(BaseHTTPMiddleware):
             if not identity.validate():
                 logger.warning("Invalid SPIFFE ID: %s", spiffe)
 
+        if _settings.DISABLE_AUTH and not subject_id:
+            subject_id = "1"
+            tenant_id = "default"
+            subject_type = SubjectType.HUMAN
+
         # --- Attach authz context to request state ---
         checker = AuthzChecker(
             subject_id=subject_id or "anonymous",
@@ -150,7 +155,7 @@ class AuthzMiddleware(BaseHTTPMiddleware):
             setattr(request.state, "identity", None)
 
         # --- Permission registry check — thin delegation to common_lib ---
-        if subject_id:
+        if subject_id and not _settings.DISABLE_AUTH:
             error = permission_registry_service.check_permission_for_request(
                 method=request.method,
                 path=path,

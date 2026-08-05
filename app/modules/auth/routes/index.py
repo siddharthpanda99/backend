@@ -166,3 +166,18 @@ def resend_verification(
 def admin_only_route():
     return APIResponse(data={"message": "You are an admin!"})
 
+
+# ── Include Submodule Routes ──────────────────────────────────────────
+
+from app.modules.auth.routes.mfa_routes import router as mfa_router
+from app.modules.auth.routes.session_routes import router as session_router
+from app.modules.auth.routes.lifecycle_routes import router as lifecycle_router
+from app.modules.auth.routes.domain_verification_routes import router as domain_router
+from app.modules.auth.routes.sso_routes import router as sso_router
+
+router.include_router(mfa_router)
+router.include_router(session_router)
+router.include_router(lifecycle_router)
+router.include_router(domain_router)
+router.include_router(sso_router)
+

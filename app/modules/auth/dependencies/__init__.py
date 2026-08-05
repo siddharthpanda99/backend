@@ -8,6 +8,10 @@ from app.modules.auth.dependencies.authz import (
     RoleChecker,
 )
 
+# Backward-compatible alias — offline_routes.py and universal_graph_routes.py
+# import "get_current_user" which maps to get_current_active_user.
+get_current_user = get_current_active_user
+
 __all__ = [
     "get_current_active_user",
     "get_current_identity",
@@ -16,4 +20,5 @@ __all__ = [
     "require_permission",
     "require_tenant",
     "RoleChecker",
+    "get_current_user",
 ]
