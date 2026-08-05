@@ -22,6 +22,11 @@ from common_lib.modules.multi_source_etl import (
     TriggerListResponse,
     MonitorMetric,
     MetricsResponse,
+    TransformRequest,
+    CollectionTransformRequest,
+)
+from common_lib.modules.multi_source_etl.schemas import (
+    TransformOperation,
 )
 
 from common_lib.modules.multi_source_etl.query_executor import (
@@ -42,6 +47,9 @@ from common_lib.modules.multi_source_etl.etl_infra import (
     container_logs,
     container_build,
     container_restart,
+)
+from common_lib.modules.multi_source_etl.tabular_transform import (
+    TabularTransformService,
 )
 
 from common_lib.modules.multi_source_etl.etl_init import init_all as etl_init_all
@@ -385,6 +393,48 @@ def api_create_migration(conn_id: str, req: MigrateCreateRequest):
 @router.get("/connections/{conn_id}/migrations/status")
 def api_migration_status(conn_id: str):
     return migration_status(conn_id)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Tabular Transform
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+_transform_svc = TabularTransformService()
+
+
+@router.post("/transform/table")
+def api_transform_table(req: TransformRequest):
+    """Apply tabular transformations to a list of records."""
+    try:
+        result = _transform_svc.transform_table(req.records, req.operations)
+        return {
+            "transformed": result[:500],
+            "rows_before": len(req.records),
+            "rows_after": len(result),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/transform/collection")
+def api_transform_collection(req: CollectionTransformRequest):
+    """Apply tabular transformations to multiple collections."""
+    try:
+        result = _transform_svc.transform_collection(req.extracted, req.collection_ops)
+        return {
+            "transformed": {k: v[:500] for k, v in result.items()},
+            "collections": len(result),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/transform/engines")
+def api_list_transform_engines():
+    """List available tabular engine types."""
+    from common_lib.modules.doc_processing.excel.core import list_engines
+    return {"engines": list_engines()}
 
 
 __all__ = ["router"]

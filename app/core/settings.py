@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     # P0-1 FIX: Default is now False. Set DEV_MODE=True explicitly in dev via config.ini or env.
     # DEV_MODE=True is rejected when ENVIRONMENT is "prod" or "staging" (see validator below).
     DEV_MODE: bool = config.get("Backend", "dev_mode", False)
+    DISABLE_AUTH: bool = config.get("Backend", "disable_auth", False)
 
     BACKEND_CORS_ORIGINS: list[str] = config.get_list(
         "Backend", "cors_origins", ["http://localhost:3000", "http://localhost:5173"]
@@ -113,6 +114,12 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"DEV_MODE=True is not allowed in ENVIRONMENT={self.ENVIRONMENT!r}. "
                 "Set DEV_MODE=False or change ENVIRONMENT to 'development'."
+            )
+
+        if is_prod_like and self.DISABLE_AUTH:
+            raise ValueError(
+                f"DISABLE_AUTH=True is not allowed in ENVIRONMENT={self.ENVIRONMENT!r}. "
+                "Authentication must be enabled in production."
             )
 
         if not is_dev:

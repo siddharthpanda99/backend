@@ -16,6 +16,7 @@ from sqlalchemy import DateTime
 class ConnectionHealthRecord(SQLModel, table=True):
     """A single health check result snapshot for a connection."""
     __tablename__ = "connection_health"
+    __table_args__ = {"extend_existing": True}
 
     id: str = Field(
         primary_key=True, max_length=128,
@@ -49,6 +50,7 @@ class ConnectionHealthRecord(SQLModel, table=True):
 class ConnectionHealthConfig(SQLModel, table=True):
     """Global health check configuration (singleton row)."""
     __tablename__ = "connection_health_config"
+    __table_args__ = {"extend_existing": True}
 
     id: str = Field(primary_key=True, default="default", max_length=32)
     check_interval_seconds: int = Field(default=60)

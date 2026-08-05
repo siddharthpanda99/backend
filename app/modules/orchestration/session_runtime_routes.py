@@ -13,11 +13,17 @@ from common_lib.modules.data_storage.database.connection import get_engine
 from sqlalchemy import Column, Integer, Text, Float, JSON, DateTime
 from sqlalchemy.sql import func
 from common_lib.modules.data_storage.database.orm import PureBase
+from common_lib.modules.orchestration.session.models import (
+    SafetyProfile as SafetyProfileRecord,
+    ReasoningState as ReasoningStateRecord,
+    ToolExecutionRecord as ToolExecRecord,
+)
 
 router = APIRouter(prefix="/session-runtime", tags=["Session Runtime"])
 
 
 # ── Safety Profiles ───────────────────────────────────────────────
+
 
 class SafetyProfileCreate(BaseModel):
     name: str
@@ -39,16 +45,8 @@ class SafetyProfileListResponse(BaseModel):
     total: int
 
 
-class SafetyProfileRecord(PureBase):
-    __tablename__ = "safety_profiles"
-    id = Column(Integer, primary_key=True)
-    name = Column(Text, unique=True, nullable=False)
-    blocked_topics_json = Column("blocked_topics", JSON, default=[])
-    forbidden_patterns_json = Column("forbidden_patterns", JSON, default=[])
-    moderation_enabled = Column(Integer, default=1)
-
-
 # ── Reasoning States ──────────────────────────────────────────────
+
 
 class ReasoningStateResponse(BaseModel):
     id: int
@@ -62,15 +60,8 @@ class ReasoningStateListResponse(BaseModel):
     total: int
 
 
-class ReasoningStateRecord(PureBase):
-    __tablename__ = "reasoning_states"
-    id = Column(Integer, primary_key=True)
-    current_plan = Column(Text)
-    goals_json = Column("goals", JSON, default=[])
-    status = Column(Text)
-
-
 # ── Tool Execution Records ────────────────────────────────────────
+
 
 class ToolExecutionRecordResponse(BaseModel):
     id: int
@@ -86,17 +77,8 @@ class ToolExecutionRecordListResponse(BaseModel):
     total: int
 
 
-class ToolExecRecord(PureBase):
-    __tablename__ = "tool_execution_records"
-    id = Column(Integer, primary_key=True)
-    context_id = Column(Integer, nullable=True)
-    tool_id = Column(Text, nullable=False, index=True)
-    input_json = Column("input", JSON)
-    output_json = Column("output", JSON)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
-
-
 # ── Conversation History ──────────────────────────────────────────
+
 
 class ConversationHistoryCreate(BaseModel):
     session_id: Optional[str] = None
@@ -151,18 +133,25 @@ class ConversationHistoryRecord(PureBase):
     access_count = Column(Integer, default=0)
     last_accessed = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
     extraction_type = Column(Text)
 
 
 # ── Response helpers ──────────────────────────────────────────────
 
+
 def _safety_profile_response(row) -> SafetyProfileResponse:
     return SafetyProfileResponse(
         id=row.id,
         name=row.name,
-        blocked_topics=row.blocked_topics_json if isinstance(row.blocked_topics_json, list) else [],
-        forbidden_patterns=row.forbidden_patterns_json if isinstance(row.forbidden_patterns_json, list) else [],
+        blocked_topics=row.blocked_topics_json
+        if isinstance(row.blocked_topics_json, list)
+        else [],
+        forbidden_patterns=row.forbidden_patterns_json
+        if isinstance(row.forbidden_patterns_json, list)
+        else [],
         moderation_enabled=bool(row.moderation_enabled),
     )
 
@@ -206,6 +195,7 @@ def _conv_history_response(row) -> ConversationHistoryResponse:
 
 
 # ── Safety Profiles endpoints ─────────────────────────────────────
+
 
 @router.get("/safety-profiles", response_model=SafetyProfileListResponse)
 def list_safety_profiles():
@@ -253,6 +243,7 @@ def delete_safety_profile(profile_id: int):
 
 # ── Reasoning States endpoints ────────────────────────────────────
 
+
 @router.get("/reasoning-states", response_model=ReasoningStateListResponse)
 def list_reasoning_states(
     status: Optional[str] = Query(None),
@@ -280,6 +271,7 @@ def get_reasoning_state(state_id: int):
 
 
 # ── Tool Execution Records endpoints ──────────────────────────────
+
 
 @router.get("/tool-executions", response_model=ToolExecutionRecordListResponse)
 def list_tool_executions(
@@ -330,6 +322,7 @@ def get_tool_execution(exec_id: int):
 
 # ── Conversation History endpoints ────────────────────────────────
 
+
 @router.get("/conversation-history", response_model=ConversationHistoryListResponse)
 def list_conversation_history(
     session_id: Optional[str] = Query(None),
@@ -346,12 +339,12 @@ def list_conversation_history(
         if type:
             query = query.where(ConversationHistoryRecord.type == type)
         if extraction_type:
-            query = query.where(ConversationHistoryRecord.extraction_type == extraction_type)
+            query = query.where(
+                ConversationHistoryRecord.extraction_type == extraction_type
+            )
         if search:
             like = f"%{search}%"
-            query = query.where(
-                ConversationHistoryRecord.content.like(like)
-            )
+            query = query.where(ConversationHistoryRecord.content.like(like))
         query = query.order_by(ConversationHistoryRecord.created_at.desc())
         all_rows = session.exec(query).all()
         total = len(all_rows)
@@ -373,7 +366,9 @@ def conversation_history_stats():
         by_extraction = {}
         for r in all_rows:
             by_type[r.type or "unknown"] = by_type.get(r.type or "unknown", 0) + 1
-            by_extraction[r.extraction_type or "unknown"] = by_extraction.get(r.extraction_type or "unknown", 0) + 1
+            by_extraction[r.extraction_type or "unknown"] = (
+                by_extraction.get(r.extraction_type or "unknown", 0) + 1
+            )
         sessions = set(r.session_id for r in all_rows if r.session_id)
         return {
             "total_entries": total,
@@ -383,7 +378,9 @@ def conversation_history_stats():
         }
 
 
-@router.post("/conversation-history", response_model=ConversationHistoryResponse, status_code=201)
+@router.post(
+    "/conversation-history", response_model=ConversationHistoryResponse, status_code=201
+)
 def create_conversation_history(body: ConversationHistoryCreate):
     with Session(get_engine()) as session:
         row = ConversationHistoryRecord(

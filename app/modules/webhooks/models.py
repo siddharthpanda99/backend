@@ -16,6 +16,7 @@ class WebhookEndpointRecord(SQLModel, table=True):
     """A webhook endpoint — inbound (receives events) or outbound (sends events)."""
 
     __tablename__ = "webhook_endpoints"
+    __table_args__ = {"extend_existing": True}
 
     id: str = Field(
         primary_key=True,
@@ -84,6 +85,7 @@ class WebhookDeliveryRecord(SQLModel, table=True):
     """A delivery log entry — tracks every webhook send/receive attempt."""
 
     __tablename__ = "webhook_deliveries"
+    __table_args__ = {"extend_existing": True}
 
     id: str = Field(
         primary_key=True,
@@ -146,6 +148,7 @@ class EventWorkflowMappingRecord(SQLModel, table=True):
     """Maps event types to workflow definitions for automated triggering."""
 
     __tablename__ = "event_workflow_mappings"
+    __table_args__ = {"extend_existing": True}
 
     id: str = Field(primary_key=True, max_length=128)
     event_type: str = Field(max_length=256, index=True)
@@ -172,6 +175,7 @@ class WebhookCallbackRecord(SQLModel, table=True):
     """Tracks callback URLs for long-running webhook operations."""
 
     __tablename__ = "webhook_callbacks"
+    __table_args__ = {"extend_existing": True}
 
     id: str = Field(primary_key=True, max_length=128)
     callback_url: str = Field(max_length=1024)

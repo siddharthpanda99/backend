@@ -248,6 +248,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.app_builder import router as builder_router
     from app.modules.dashboard.routes import router as dashboard_router
     from app.modules.system.routes import router as system_router
+    from app.modules.app_ops import router as app_ops_router
     from app.modules.settings.routes import router as settings_router
     from app.modules.dip.routes.ingestion import router as dip_ingestion_router
     from app.modules.dip.routes.pipeline import pipeline_router as dip_pipeline_router
@@ -262,7 +263,9 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.wildcards.routes import router as wildcards_router
     from app.modules.sam3.routes import router as sam3_router
     from app.modules.keys_management import router as keys_router
-    from app.modules.keys_management.credentials_routes import router as credentials_router
+    from app.modules.keys_management.credentials_routes import (
+        router as credentials_router,
+    )
     from app.modules.proxy_routing import router as proxy_router
     from app.modules.collage.routes import router as collage_router
     from app.modules.experiments.routes import router as experiments_router
@@ -294,6 +297,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.integration.routes import router as integration_router
     from app.modules.scheduler.routes import router as scheduler_router
     from app.modules.sandbox import router as sandbox_router
+    from app.modules.doc_processing import router as doc_processing_router
     from app.modules.scheduler.routes.news_routes import router as sd_news_router
     from app.modules.prompt_studio.routes import router as prompt_studio_router
     from app.modules.evolver import router as evolver_router
@@ -419,6 +423,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
         return router
 
+    def _security_audit_router():
+        """Lazy-load Security Audit Events, DLP & Compliance router."""
+        from app.modules.security.routes.security_routes import router
+
+        return router
+
     def _collaboration_router():
         """Lazy-load RBAC, Teams & Collaboration router."""
         from app.modules.db_studio.collaboration.routes.router import router
@@ -530,6 +540,96 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         from app.modules.scaffolder.routes import router
 
         return router
+
+    def _project_management_router():
+        from app.modules.project_management.routes.index import router
+
+        return router
+
+    def _secrets_manager_routers() -> list:
+        """Build router entries for the Secrets Manager multi-router package."""
+        from app.modules.secrets_manager.routes import (
+            vault_router,
+            policy_router,
+            core_router,
+            audit_router,
+            dynamic_router,
+            rotation_router,
+            pki_router,
+            ssh_router,
+            proxy_router,
+            kubernetes_router,
+            cloud_router,
+        )
+
+        return [
+            {
+                "router": vault_router,
+                "prefix": "/secrets",
+                "tags": ["Secrets Manager — Vault"],
+                "auth": True,
+            },
+            {
+                "router": policy_router,
+                "prefix": "/secrets",
+                "tags": ["Secrets Manager — Policy"],
+                "auth": True,
+            },
+            {
+                "router": core_router,
+                "prefix": "/secrets",
+                "tags": ["Secrets Manager — Encryption"],
+                "auth": True,
+            },
+            {
+                "router": audit_router,
+                "prefix": "/secrets",
+                "tags": ["Secrets Manager — Audit"],
+                "auth": True,
+            },
+            {
+                "router": dynamic_router,
+                "prefix": "/secrets",
+                "tags": ["Secrets Manager — Dynamic Secrets"],
+                "auth": True,
+            },
+            {
+                "router": rotation_router,
+                "prefix": "/secrets",
+                "tags": ["Secrets Manager — Rotation"],
+                "auth": True,
+            },
+            {
+                "router": pki_router,
+                "prefix": "/secrets",
+                "tags": ["Secrets Manager — PKI"],
+                "auth": True,
+            },
+            {
+                "router": ssh_router,
+                "prefix": "/secrets",
+                "tags": ["Secrets Manager — SSH"],
+                "auth": True,
+            },
+            {
+                "router": proxy_router,
+                "prefix": "/secrets",
+                "tags": ["Secrets Manager — Proxy/SDK"],
+                "auth": True,
+            },
+            {
+                "router": kubernetes_router,
+                "prefix": "/secrets",
+                "tags": ["Secrets Manager — Kubernetes"],
+                "auth": True,
+            },
+            {
+                "router": cloud_router,
+                "prefix": "/secrets",
+                "tags": ["Secrets Manager — Cloud"],
+                "auth": True,
+            },
+        ]
 
     # ----------------------------------------------------------------
     # Declarative registry
@@ -666,6 +766,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": daemon_router,
             "prefix": "/agents",
             "tags": ["Agent Daemons"],
+            "auth": True,
+        },
+        # ── Project Management ─────────────────────────────────────
+        {
+            "router": _project_management_router(),
+            "prefix": "/projects",
+            "tags": ["Project Management"],
             "auth": True,
         },
         # ── Site Builder ────────────────────────────────────────
@@ -951,6 +1058,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
         },
         {"router": system_router, "prefix": "", "tags": ["System"], "auth": True},
+        {
+            "router": app_ops_router,
+            "prefix": "",
+            "tags": ["App Ops"],
+            "auth": True,
+        },
         # ── Integration & Events ───────────────────────────────────
         {
             "router": integration_router,
@@ -976,6 +1089,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         },
         # ── External Apps ──────────────────────────────────────────
         {"router": ext_apps_router, "prefix": "", "tags": ["Ext-Apps"], "auth": True},
+        # ── Doc Processing (PDF + Excel) ─────────────────────────────
+        {
+            "router": doc_processing_router,
+            "prefix": "/doc-processing",
+            "tags": ["Doc Processing"],
+            "auth": True,
+        },
         # ── File Browser ───────────────────────────────────────────
         {
             "router": file_browser_router,
@@ -1300,6 +1420,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["Security, Auth & Secret Management"],
             "auth": True,
         },
+        # ── Security Audit Events, DLP & Compliance ──────────────────────────────────────
+        {
+            "router": _security_audit_router(),
+            "prefix": "/security",
+            "tags": ["Security Audit"],
+            "auth": True,
+        },
         # ── RBAC, Teams & Collaboration ─────────────────────────────────────────────────
         {
             "router": _collaboration_router(),
@@ -1430,6 +1557,15 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["Nexus Studio"],
             "auth": True,
         },
+        # ── Project Management ───────────────────────────
+        {
+            "router": _project_management_router(),
+            "prefix": "/pm",
+            "tags": ["Project Management"],
+            "auth": True,
+        },
+        # ── Secrets Manager ───────────────────────────
+        *_secrets_manager_routers(),
     ]
 
     for entry in ROUTER_DEFINITIONS:

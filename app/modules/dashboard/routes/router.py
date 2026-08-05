@@ -1,19 +1,25 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any, List
 from datetime import datetime
+from sqlmodel import Session
 from app.modules.common.types.index import APIResponse
-from common_lib.modules.data_storage.database.connection import get_session
+from common_lib.modules.data_storage.database.connection import get_engine
 from common_lib.modules.dashboard.service import DashboardService
 
 router = APIRouter()
 
 
+def _get_session_ctx():
+    return Session(get_engine())
+
+
 def _get_scheduler_stats():
     from app.modules.scheduler.service import get_scheduler_service
+
     return get_scheduler_service().get_stats()
 
 
-_svc = DashboardService(get_session, get_scheduler_stats_fn=_get_scheduler_stats)
+_svc = DashboardService(_get_session_ctx, get_scheduler_stats_fn=_get_scheduler_stats)
 
 
 @router.get("", response_model=APIResponse[Dict[str, Any]])
@@ -84,13 +90,45 @@ async def get_system_health():
         return APIResponse(data=health, message="System health retrieved")
     except Exception as e:
         default_services = [
-            {"name": "API Server", "status": "healthy", "uptime": "14d 6h", "cpu": 23, "memory": 45},
-            {"name": "Agent Runtime", "status": "healthy", "uptime": "14d 6h", "cpu": 67, "memory": 72},
-            {"name": "Model Hub", "status": "healthy", "uptime": "5d 12h", "cpu": 12, "memory": 28},
-            {"name": "Workflow Engine", "status": "degraded", "uptime": "2d 3h", "cpu": 89, "memory": 81},
-            {"name": "Database", "status": "healthy", "uptime": "14d 6h", "cpu": 34, "memory": 62},
+            {
+                "name": "API Server",
+                "status": "healthy",
+                "uptime": "14d 6h",
+                "cpu": 23,
+                "memory": 45,
+            },
+            {
+                "name": "Agent Runtime",
+                "status": "healthy",
+                "uptime": "14d 6h",
+                "cpu": 67,
+                "memory": 72,
+            },
+            {
+                "name": "Model Hub",
+                "status": "healthy",
+                "uptime": "5d 12h",
+                "cpu": 12,
+                "memory": 28,
+            },
+            {
+                "name": "Workflow Engine",
+                "status": "degraded",
+                "uptime": "2d 3h",
+                "cpu": 89,
+                "memory": 81,
+            },
+            {
+                "name": "Database",
+                "status": "healthy",
+                "uptime": "14d 6h",
+                "cpu": 34,
+                "memory": 62,
+            },
         ]
-        return APIResponse(data=default_services, message="System health retrieved (default)")
+        return APIResponse(
+            data=default_services, message="System health retrieved (default)"
+        )
 
 
 @router.get("/activity", response_model=APIResponse[List[Dict[str, Any]]])

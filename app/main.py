@@ -64,6 +64,21 @@ async def lifespan(app: FastAPI):
                 WorkflowEvent,
             )
 
+            # Register all PM models (Project, ProductIdea, RoadmapItem, etc.)
+            # Must happen BEFORE init_db() so tables are created in the right order
+            from common_lib.modules.project_management.init_db import (
+                get_pm_metadata,
+            )
+
+            get_pm_metadata()
+
+            # Register all Secrets Manager models (Secret, Policy, etc.)
+            from common_lib.modules.secrets_manager.init_db import (
+                get_sm_metadata,
+            )
+
+            get_sm_metadata()
+
             init_db()
             print("Database initialized and models registered.")
 
@@ -983,6 +998,37 @@ async def lifespan(app: FastAPI):
         print("Startup: Scheduler loaded jobs and started active cron loops")
     except Exception as e:
         print(f"Warning: Could not start scheduler: {e}")
+
+    # --- Create Project Management tables ---
+    try:
+        from common_lib.modules.project_management.init_db import create_pm_tables
+
+        create_pm_tables(engine)
+        print("Startup: Project Management tables created/verified")
+    except Exception as e:
+        print(f"Warning: PM table creation failed: {e}")
+
+    # --- Create Secrets Manager tables ---
+    try:
+        from common_lib.modules.secrets_manager.init_db import create_sm_tables
+
+        create_sm_tables(engine)
+        print("Startup: Secrets Manager tables created/verified")
+    except Exception as e:
+        print(f"Warning: SM table creation failed: {e}")
+
+    # --- Project Management → Notification Bridge ---
+    try:
+        from common_lib.modules.integration.bridges.project_management_notification_bridge import (
+            setup_project_management_notification_bridge,
+        )
+
+        setup_project_management_notification_bridge()
+        print(
+            "Startup: Project Management notification bridge wired to NotificationService"
+        )
+    except Exception as e:
+        print(f"Warning: Project Management notification bridge setup failed: {e}")
 
     # Start periodic decay loop task (interval live-configurable from config.ini / API)
     decay_task = None
