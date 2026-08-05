@@ -201,18 +201,23 @@ def _build_handler(node_info) -> Optional[Any]:
 
     params_code = ", ".join(param_defs)
 
+    # Build kwargs explicitly from parameter names (never dict(locals()),
+    # which would leak internal `_node_mod`/`_node_func` variables into the
+    # call and break every generated handler).
+    kwarg_expr = ", ".join(f"'{k}': {k}" for k in (t[0] for t in typed_params))
+
     safe_mod = node_mod.replace("'", "\\'")
     safe_qualname = node_qualname.replace("'", "\\'")
 
     body = f"""async def _handler({params_code}):
     try:
-        mod = importlib.import_module('{safe_mod}')
-        func = _resolve_func(mod, '{safe_qualname}')
-        _kwargs = dict(locals())
-        if asyncio.iscoroutinefunction(func):
-            result = await func(**_kwargs)
+        _node_mod = importlib.import_module('{safe_mod}')
+        _node_func = _resolve_func(_node_mod, '{safe_qualname}')
+        _kwargs = {{{kwarg_expr}}}
+        if asyncio.iscoroutinefunction(_node_func):
+            result = await _node_func(**_kwargs)
         else:
-            result = func(**_kwargs)
+            result = _node_func(**_kwargs)
         return _serialize(result)
     except Exception as _e:
         return {{'error': str(_e)}}"""

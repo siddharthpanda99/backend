@@ -41,6 +41,7 @@ from app.mcp.tools.rbac import register_rbac_tools
 from app.mcp.tools.credentials import register_credentials_tools
 from app.mcp.tools.db_provisioning import register_db_provisioning_tools
 from app.mcp.tools.doc_processing import register_doc_processing_tools
+from app.mcp.tools.excel import register_excel_tools
 from app.mcp.tools.events import register_events_tools
 from app.mcp.tools.external_platforms import register_external_platforms_tools
 from app.mcp.tools.ferment import register_ferment_tools
@@ -93,7 +94,9 @@ from app.mcp.tools.db_studio.backend_architecture import (
 )
 from app.mcp.tools.db_studio.frontend_design import register_frontend_design_tools
 from app.mcp.tools.tool_search import register_tool_search_tools
+from app.mcp.tools.project_management import register_project_management_tools
 from app.mcp.resources.cognitive import register_cognitive_resources
+from common_lib.modules.project_management.mcp import register_pm_resources
 
 # Setup MCP-specific logging
 logging.basicConfig(level=logging.INFO)
@@ -127,6 +130,7 @@ register_notification_tools(mcp_server)
 register_music_tools(mcp_server)
 register_messaging_tools(mcp_server)
 register_data_pipeline_tools(mcp_server)
+register_project_management_tools(mcp_server)
 register_user_tools(mcp_server)
 register_session_tools(mcp_server)
 register_system_tools(mcp_server)
@@ -148,6 +152,7 @@ register_rbac_tools(mcp_server)
 register_credentials_tools(mcp_server)
 register_db_provisioning_tools(mcp_server)
 register_doc_processing_tools(mcp_server)
+register_excel_tools(mcp_server)
 register_events_tools(mcp_server)
 register_external_platforms_tools(mcp_server)
 register_ferment_tools(mcp_server)
@@ -191,6 +196,7 @@ register_tool_search_tools(mcp_server)
 
 # 3. Register Modular Resources
 register_cognitive_resources(mcp_server)
+register_pm_resources(mcp_server)
 
 # 4. Register ALL @node wrappers as individual MCP tools (dynamic registration)
 try:
