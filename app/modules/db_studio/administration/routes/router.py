@@ -201,6 +201,29 @@ def get_router() -> APIRouter:
     def list_extensions():
         return svc.list_extensions()
 
+    @router.get("/config/real", response_model=List[ConfigParam])
+    def get_real_config(connection_id: Optional[str] = None):
+        """Query real pg_settings from a target connection or platform DB."""
+        return svc.get_real_config(connection_id)
+
+    @router.get("/config/extensions/real", response_model=List[ExtensionInfo])
+    def get_real_extensions(connection_id: Optional[str] = None):
+        """Query real pg_extension from a target connection or platform DB."""
+        return svc.get_real_extensions(connection_id)
+
+    @router.get("/roles/real", response_model=List[RoleOut])
+    def get_real_roles(connection_id: Optional[str] = None):
+        """Query real pg_roles from a target connection or platform DB."""
+        return svc.get_real_roles(connection_id)
+
+    # ── Dashboard Metrics (Phase 3) ─────────────────────────────────
+
+    @router.get("/dashboard/metrics")
+    def get_dashboard_metrics(connection_id: Optional[str] = None):
+        """Query real dashboard metrics: DB size, connections, cache hit, tuples, TPS."""
+        from typing import Any, Dict
+        return svc.get_dashboard_metrics(connection_id)
+
     # ── Storage ────────────────────────────────────────────────────────
 
     @router.get("/storage", response_model=List[StorageUsage])

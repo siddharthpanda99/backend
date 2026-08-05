@@ -5,6 +5,7 @@ Thin wrapper — all logic in common_lib.modules.schema_browser.service.
 """
 
 import logging
+import time
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -31,6 +32,13 @@ from common_lib.modules.db_studio.schema_browser import (
     CommentOut,
     RefreshRequest,
     RefreshResponse,
+    EnumType,
+    EnumTypeDetail,
+    EnumListResponse,
+    TriggerInfo,
+    TriggerListResponse,
+    ViewDetail,
+    ViewListResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -230,3 +238,60 @@ def delete_comment(comment_id: str):
     if not svc.delete_comment(comment_id):
         raise HTTPException(status_code=404, detail=f"Comment '{comment_id}' not found")
     return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ENUM Types
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/enums", response_model=EnumListResponse)
+def list_enums(connection_id: str, schema: str = Query("public")):
+    """List all ENUM types in a schema."""
+    start = time.time()
+    enums = svc.get_enums(connection_id, schema)
+    return EnumListResponse(
+        enums=enums, total=len(enums),
+        connection_id=connection_id,
+        duration_ms=round((time.time() - start) * 1000, 2),
+    )
+
+
+@router.get("/enums/{enum_name}", response_model=EnumTypeDetail)
+def get_enum_detail(connection_id: str, schema: str = Query("public"), enum_name: str = ...):
+    """Get detailed info for a single ENUM type."""
+    result = svc.get_enum_detail(connection_id, schema, enum_name)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Enum '{enum_name}' not found")
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Triggers
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/triggers", response_model=TriggerListResponse)
+def list_triggers(connection_id: str, schema: str = Query("public")):
+    """List all triggers in a schema."""
+    start = time.time()
+    triggers = svc.get_triggers(connection_id, schema)
+    return TriggerListResponse(
+        triggers=triggers, total=len(triggers),
+        connection_id=connection_id,
+        duration_ms=round((time.time() - start) * 1000, 2),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Views
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/views", response_model=ViewListResponse)
+def list_views(connection_id: str, schema: str = Query("public")):
+    """List all views in a schema."""
+    start = time.time()
+    views = svc.get_views(connection_id, schema)
+    return ViewListResponse(
+        views=views, total=len(views),
+        connection_id=connection_id,
+        duration_ms=round((time.time() - start) * 1000, 2),
+    )

@@ -496,3 +496,24 @@ def update_config_visibility(db_type: str, req: VisibilityUpdate):
     with _get_session() as session:
         vis = profile_svc.update_visibility(session, db_type, req.visibility)
         return {"ok": True, "db_type": vis.db_type, "updated_at": vis.updated_at}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Platform DB Auto-Connect
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.post("/connections/platform")
+def ensure_platform_connection():
+    """Auto-register the platform's own PostgreSQL as a connection.
+
+    Reads from config.ini [Database] and creates a connection record
+    if one doesn't already exist for this host+port+database.
+    """
+    conn = svc.ensure_platform_connection()
+    if not conn:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to auto-register platform DB. Check config.ini [Database]."
+        )
+    return conn
