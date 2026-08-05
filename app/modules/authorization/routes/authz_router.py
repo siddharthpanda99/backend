@@ -568,6 +568,11 @@ async def cache_stats() -> dict:
     return {"size": authz_cache.size()}
 
 
+# ── PM Field Security & Guest Access (via pm_rbac) ─────────────────────
+
+from app.modules.authorization.routes.pm_rbac import router as pm_rbac_router
+router.include_router(pm_rbac_router, prefix="", tags=["PM RBAC — Field Security & Guest Access"])
+
 # ── Permission Registry Management ────────────────────────────────────────
 
 
