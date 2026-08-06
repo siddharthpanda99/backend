@@ -112,6 +112,12 @@ def _kimchi_router():
     return router
 
 
+def _ferment_router():
+    from app.modules.ferment.routes.router import router
+
+    return router
+
+
 def _agentic_os_router():
     from app.modules.agentic_os.routes import router
 
@@ -1189,6 +1195,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": _kimchi_router(),
             "prefix": "/kimchi",
             "tags": ["Kimchi Pipeline"],
+            "auth": True,
+        },
+        # ── Ferment (Multi-agent improvement engine) ──────────────
+        {
+            "router": _ferment_router(),
+            "prefix": "/ferment",
+            "tags": ["Ferment"],
             "auth": True,
         },
         # ── DAW ────────────────────────────────────────────────────

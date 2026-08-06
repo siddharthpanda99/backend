@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     DEV_MODE: bool = config.get("Backend", "dev_mode", False)
     DISABLE_AUTH: bool = config.get("Backend", "disable_auth", False)
 
+    # Goal Mode — flag-gated ferment-driven project execution. When enabled, the
+    # ferment router exposes POST /ferment/goal and project status endpoints, and
+    # the agent graph builder prefers the ferment role-driven loop.
+    GOAL_MODE: bool = config.get("Backend", "goal_mode", False)
+
     BACKEND_CORS_ORIGINS: list[str] = config.get_list(
         "Backend", "cors_origins", ["http://localhost:3000", "http://localhost:5173"]
     )
