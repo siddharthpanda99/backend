@@ -21,6 +21,76 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# ── Session-scoped Goal-Mode settings (Goal-Mode v2 toggle) ────────────────
+# Lightweight in-process store keyed by session id. The frontend chat-settings
+# toggle maps to these values; ProjectEngine.execute_project reads the
+# per-session `goal_mode` flag through the `inputs`/params threading.
+_SESSION_GOAL_MODE: Dict[str, Dict[str, Any]] = {}
+
+
+def _session_settings(session_id: str) -> Dict[str, Any]:
+    if session_id not in _SESSION_GOAL_MODE:
+        _SESSION_GOAL_MODE[session_id] = {
+            "goal_mode": _goal_mode_enabled(),
+            "token_budget": None,
+        }
+    return _SESSION_GOAL_MODE[session_id]
+
+
+class FermentSettingsRequest(BaseModel):
+    session_id: str = Field(..., description="Agent session id for the toggle")
+    goal_mode: Optional[bool] = Field(
+        None, description="Goal-Mode toggle for this session (default OFF)"
+    )
+    token_budget: Optional[int] = Field(
+        None, description="Optional per-goal token budget (guard inactive without it)"
+    )
+
+
+@router.get("/settings")
+async def get_ferment_settings(session_id: str) -> Dict[str, Any]:
+    """Return the session-scoped Goal-Mode settings (toggle + budget + threshold).
+
+    Gated on GOAL_MODE so the toggle surface stays hidden when Goal Mode is off.
+    """
+    _require_goal_mode()
+    settings = _session_settings(session_id)
+    return {
+        "session_id": session_id,
+        "goal_mode": settings["goal_mode"],
+        "token_budget": settings["token_budget"],
+        "compact_trigger_fraction": getattr(
+            _settings_or_none(), "COMPACT_TRIGGER_FRACTION", 0.6
+        ),
+    }
+
+
+@router.post("/settings")
+async def update_ferment_settings(request: FermentSettingsRequest) -> Dict[str, Any]:
+    """Update the session-scoped Goal-Mode toggle and/or token budget."""
+    _require_goal_mode()
+    settings = _session_settings(request.session_id)
+    if request.goal_mode is not None:
+        settings["goal_mode"] = request.goal_mode
+    if request.token_budget is not None:
+        settings["token_budget"] = max(int(request.token_budget), 0)
+    return {
+        "session_id": request.session_id,
+        "goal_mode": settings["goal_mode"],
+        "token_budget": settings["token_budget"],
+    }
+
+
+def _settings_or_none():
+    """Settings accessor that never raises on import issues."""
+    try:
+        from app.core.settings import get_settings
+
+        return get_settings()
+    except Exception:
+        return None
+
+
 class GoalRequest(BaseModel):
     goal: str = Field(
         ...,
@@ -187,4 +257,207 @@ async def delete_project(project_id: str) -> Dict[str, Any]:
         return {"success": deleted, "message": "Project deleted successfully"}
     except Exception as e:
         logger.exception("Failed to delete ferment project")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Goal-Mode v2: token budget + compaction endpoints ───────────────────────
+# Path contract (GOAL_MODE_PLAN.md §9.4 / frontend goalMode/api.ts):
+#   GET  /tokens/{project_id}                            → budget status
+#   POST /tokens/{project_id}                            → ledger accumulation (internal)
+#   POST /tokens/extension/{extension_id}/approve|reject → HITL decision
+#   POST /tokens/{project_id}/compact                    → conversation compaction
+# Extension ids are project-scoped (ext_001) and the frontend sends ONLY the
+# extension id, so approve/reject resolve the owning project by scanning the
+# persisted .ferment/ ledgers (see _resolve_project_by_extension).
+
+
+class TokenBudgetRequest(BaseModel):
+    project_id: str
+    budget: Optional[int] = Field(
+        None, description="Set/clear the per-goal token budget"
+    )
+
+
+class TokenUsageRequest(BaseModel):
+    tokens: int = Field(..., description="Tokens consumed to accumulate (advisory)")
+
+
+def _session_goal_mode_override(session_id: Optional[str]) -> Optional[bool]:
+    """Map a session-scoped toggle (if any) to an explicit goal_mode override."""
+    if session_id and session_id in _SESSION_GOAL_MODE:
+        return _SESSION_GOAL_MODE[session_id]["goal_mode"]
+    return None
+
+
+def _resolve_project_by_extension(extension_id: str) -> Optional[str]:
+    """Resolve the owning project id for a (project-scoped) extension id.
+
+    Extension entries live on the persisted FermentProject JSON
+    (``project.extensions``, e.g. ``ext_001``) and carry no project reference —
+    the frontend sends only the extension id. Scan every project under
+    ``.ferment/`` and return the id of the first project whose ``extensions``
+    contains a matching entry id, else ``None``.
+    """
+    from common_lib.modules.ferment.persistence import (
+        list_projects as _list_project_names,
+        load_project as _load_project,
+    )
+
+    for name in _list_project_names():
+        project = _load_project(name)
+        if project is None:
+            continue
+        for entry in project.extensions or []:
+            if entry.get("id") == extension_id:
+                return project.id
+    return None
+
+
+@router.get("/tokens/{project_id}")
+async def check_token_budget(
+    project_id: str, session_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """Goal-Mode v2 — return the token ledger status for a project."""
+    _require_goal_mode()
+    try:
+        svc = _get_service()
+        result = svc.check_token_budget(
+            project_id, goal_mode=_session_goal_mode_override(session_id)
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to check token budget")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tokens/{project_id}")
+async def record_token_usage(
+    project_id: str,
+    request: TokenUsageRequest,
+    session_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Goal-Mode v2 — accumulate token usage into the project ledger (internal)."""
+    _require_goal_mode()
+    try:
+        svc = _get_service()
+        result = svc.record_token_usage(
+            project_id,
+            request.tokens,
+            goal_mode=_session_goal_mode_override(session_id),
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return result
+    except Exception as e:
+        logger.exception("Failed to record token usage")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tokens/extension/{extension_id}/approve")
+async def approve_token_extension(
+    extension_id: str,
+    session_id: Optional[str] = None,
+    approved_by: str = "human",
+    extra_tokens: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Goal-Mode v2 — approve a pending token-budget extension by id.
+
+    The frontend sends only the extension id; the owning project is resolved
+    by scanning the persisted ledgers (``_resolve_project_by_extension``).
+    """
+    _require_goal_mode()
+    project_id = _resolve_project_by_extension(extension_id)
+    if project_id is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Token extension '{extension_id}' was not found in any "
+                "persisted ferment project"
+            ),
+        )
+    try:
+        svc = _get_service()
+        result = svc.approve_token_extension(
+            project_id,
+            approved_by=approved_by,
+            extra_tokens=extra_tokens,
+            goal_mode=_session_goal_mode_override(session_id),
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to approve token extension")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tokens/extension/{extension_id}/reject")
+async def reject_token_extension(
+    extension_id: str,
+    session_id: Optional[str] = None,
+    rejected_by: str = "human",
+) -> Dict[str, Any]:
+    """Goal-Mode v2 — reject (stop) a pending token-budget extension by id.
+
+    The frontend sends only the extension id; the owning project is resolved
+    by scanning the persisted ledgers (``_resolve_project_by_extension``).
+    """
+    _require_goal_mode()
+    project_id = _resolve_project_by_extension(extension_id)
+    if project_id is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Token extension '{extension_id}' was not found in any "
+                "persisted ferment project"
+            ),
+        )
+    try:
+        svc = _get_service()
+        result = svc.reject_token_extension(
+            project_id,
+            rejected_by=rejected_by,
+            goal_mode=_session_goal_mode_override(session_id),
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to reject token extension")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tokens/{project_id}/compact")
+async def compact_project_session(
+    project_id: str,
+    session_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Goal-Mode v2 — auto-compact the agent session context (best-effort).
+
+    ``session_id`` comes from the query param (the frontend sends no body);
+    falls back to a project-scoped session id when omitted.
+    """
+    _require_goal_mode()
+    try:
+        svc = _get_service()
+        result = svc.compact_project_session(
+            project_id,
+            session_id or f"ferment-{project_id}",
+            goal_mode=_session_goal_mode_override(session_id),
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to compact project session")
         raise HTTPException(status_code=500, detail=str(e))

@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     # the agent graph builder prefers the ferment role-driven loop.
     GOAL_MODE: bool = config.get("Backend", "goal_mode", False)
 
+    # Goal-Mode v2 — auto conversation compactor trigger. When a goal project's
+    # token usage crosses budget * COMPACT_TRIGGER_FRACTION, the ferment loop
+    # auto-compacts the agent session context (best-effort). Only effective when
+    # the token-budget guard is active (Goal Mode ON + a token_budget is set).
+    COMPACT_TRIGGER_FRACTION: float = config.get(
+        "Backend", "compact_trigger_fraction", 0.6
+    )
+
     BACKEND_CORS_ORIGINS: list[str] = config.get_list(
         "Backend", "cors_origins", ["http://localhost:3000", "http://localhost:5173"]
     )
