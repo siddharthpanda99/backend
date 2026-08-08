@@ -180,6 +180,290 @@ async def get_trace_event(event_id: str):
 
 
 # =========================================================================
+# Request-level Trace Endpoints (one user request == one trace_id)
+# =========================================================================
+
+
+@router.get("/recent")
+async def get_recent_traces(
+    agent_id: Optional[str] = Query(
+        default=None, description="Optional filter — only traces for this agent"
+    ),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    days: int = Query(
+        default=0, ge=0, le=365, description="Lookback window in days (0=all)"
+    ),
+):
+    """
+    Get recent request-level traces, one row per trace_id.
+
+    Each row summarizes a single agent response (request): session, agent,
+    timing, event counts, tokens, cost, and terminal status.
+    """
+    try:
+        recorder = _get_recorder()
+        traces = recorder.get_recent_traces(
+            agent_id=agent_id, limit=limit, offset=offset, days=days
+        )
+        return {"traces": traces, "count": len(traces)}
+    except Exception as e:
+        logger.error(f"Failed to get recent traces: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/trace/{trace_id}")
+async def get_trace_detail(trace_id: str):
+    """
+    Get the full request-level trace: all events + payload rows.
+
+    Events are ordered by timestamp; payloads include llm_prompt,
+    llm_response, context_sections, memory_retrieval, subagent, hitl_decision
+    and conversation_history records captured for the request.
+    """
+    try:
+        recorder = _get_recorder()
+        detail = recorder.get_trace_detail(trace_id=trace_id)
+        if not detail:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No trace found for trace_id: {trace_id}",
+            )
+        return detail
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get trace detail for {trace_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/trace/{trace_id}/payloads")
+async def get_trace_payloads(
+    trace_id: str,
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+):
+    """Get the payload rows recorded for a single request trace."""
+    try:
+        recorder = _get_recorder()
+        payloads = recorder.get_payloads_for_trace(
+            trace_id=trace_id, limit=limit, offset=offset
+        )
+        return {"payloads": payloads, "count": len(payloads)}
+    except Exception as e:
+        logger.error(f"Failed to get payloads for trace {trace_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/request/latest")
+async def get_latest_requests(
+    agent_id: Optional[str] = Query(
+        default=None,
+        description="Optional filter — only requests for this agent",
+    ),
+    limit: int = Query(default=50, ge=1, le=500),
+):
+    """
+    Get the most recent request correlation ids (global, not session-scoped).
+
+    One row per correlation id, most recent activity first, with the last
+    event time and event count. Pass ``agent_id`` to scope to one agent.
+    """
+    try:
+        recorder = _get_recorder()
+        requests = recorder.get_latest_correlation_ids(agent_id=agent_id, limit=limit)
+        return {"requests": requests, "count": len(requests)}
+    except Exception as e:
+        logger.error(f"Failed to get latest request ids: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/request/{correlation_id}")
+async def get_request_trace(correlation_id: str):
+    """
+    Get the full grouped trace for one request correlation id.
+
+    Response: request header (session/agent/timing) + chain ``events`` +
+    ``payloads`` rows, each in step order. Payload rows also match by
+    ``request_id`` so pre-rename data is still found.
+    """
+    try:
+        recorder = _get_recorder()
+        trace = recorder.get_request_trace(correlation_id=correlation_id)
+        if not trace:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No trace found for correlation_id: {correlation_id}",
+            )
+        return trace
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get request trace for {correlation_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/session/{session_id}/payloads")
+async def get_session_payloads(
+    session_id: str,
+    payload_type: Optional[str] = Query(
+        default=None,
+        description=(
+            "Optional filter — only payloads of this type "
+            "(e.g. llm_prompt, llm_response, tool_call, memory_retrieval)"
+        ),
+    ),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+):
+    """
+    Get the payload rows recorded for a chat session, optionally filtered
+    by payload type. Ordered by creation time.
+    """
+    try:
+        recorder = _get_recorder()
+        payloads = recorder.get_payloads_for_session(
+            session_id=session_id,
+            limit=limit,
+            offset=offset,
+            payload_types=[payload_type] if payload_type else None,
+        )
+        return {"payloads": payloads, "count": len(payloads)}
+    except Exception as e:
+        logger.error(f"Failed to get payloads for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/payload/{payload_id}")
+async def get_trace_payload_body(payload_id: str):
+    """
+    Get the raw payload body for a single payload row.
+
+    Used by the UI to lazy-load the full (potentially large) JSON blob when
+    the user expands a payload card.
+    """
+    try:
+        recorder = _get_recorder()
+        body = recorder.get_payload_body(payload_id=payload_id)
+        if body is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Payload not found: {payload_id}",
+            )
+        try:
+            import json
+
+            parsed = json.loads(body)
+            return {"payload_id": payload_id, "body": parsed}
+        except Exception:
+            return {"payload_id": payload_id, "body": body}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get payload body {payload_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sessions")
+async def get_recent_sessions(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+):
+    """
+    Get recent sessions that have trace data (across all agents).
+
+    Returns one row per session with last activity, event counts, LLM/tool
+    call counts and total cost.
+    """
+    try:
+        recorder = _get_recorder()
+        sessions = recorder.get_recent_sessions(limit=limit, offset=offset)
+        return {"sessions": sessions, "count": len(sessions)}
+    except Exception as e:
+        logger.error(f"Failed to get recent sessions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/session/{session_id}/requests")
+async def get_session_request_ids(
+    session_id: str,
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """
+    Get the most recent request (trace/correlation) IDs for a session.
+
+    Lets the UI list the individual user requests that make up a chat session
+    and drill into each one's full trace.
+    """
+    try:
+        recorder = _get_recorder()
+        requests = recorder.get_latest_correlation_ids(
+            session_id=session_id, limit=limit
+        )
+        return {"requests": requests, "count": len(requests)}
+    except Exception as e:
+        logger.error(f"Failed to get request IDs for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/retention/purge")
+async def purge_old_traces(
+    days: Optional[int] = Query(
+        default=None,
+        ge=1,
+        le=3650,
+        description="Delete traces older than N days (defaults to TRACE_RETENTION_DAYS)",
+    ),
+    confirm: bool = Query(
+        default=False,
+        description="Must be true to actually delete — guards against accidental data loss",
+    ),
+):
+    """
+    Purge trace events and payloads older than the retention window.
+
+    Requires ``confirm=true`` — without it the call returns a dry-run summary
+    with ``deleted=0`` so accidental invocation never wipes data. Also respects
+    the TRACE_RETENTION_ENABLED flag: when the flag is false this returns a
+    skipped result (no deletions).
+    """
+    try:
+        recorder = _get_recorder()
+        if not confirm:
+            return {
+                "events_deleted": 0,
+                "payloads_deleted": 0,
+                "skipped": True,
+                "reason": "confirm=true required — dry run, nothing deleted",
+            }
+        result = recorder.purge_older_than(days=days or 0)
+        return result
+    except Exception as e:
+        logger.error(f"Failed to purge old traces: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/retention/config")
+async def get_retention_config():
+    """Get the current trace retention configuration (flag + duration)."""
+    try:
+        from common_lib.modules.observability.constants import (
+            TRACE_FULL_PAYLOADS,
+            TRACE_RETENTION_ENABLED,
+            TRACE_RETENTION_DAYS,
+        )
+
+        return {
+            "full_payloads_enabled": TRACE_FULL_PAYLOADS,
+            "retention_enabled": TRACE_RETENTION_ENABLED,
+            "retention_days": TRACE_RETENTION_DAYS,
+        }
+    except Exception as e:
+        logger.error(f"Failed to get retention config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =========================================================================
 # Cost Analytics Endpoints
 # =========================================================================
 

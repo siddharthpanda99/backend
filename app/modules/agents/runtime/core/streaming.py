@@ -68,6 +68,10 @@ async def stream_agent_generator(
     )
     from app.core.common_lib_integration import common_memory
     from common_lib.modules.orchestration.agents.agent.tracing import TraceRecorder
+    from common_lib.modules.integration.ports.tracing_port import (
+        get_current_correlation_id,
+    )
+    from common_lib.modules.observability.constants import TRACE_FULL_PAYLOADS
 
     active_session = get_active_session()
 
@@ -107,6 +111,7 @@ async def stream_agent_generator(
     agent = get_master_agent()
     trace_recorder = TraceRecorder(common_memory)
     trace_id = str(uuid.uuid4())
+    correlation_id = get_current_correlation_id()
     agent_id = active_session.get("agent_id", "unknown")
     provider = active_session.get("provider", "unknown")
     model_name = active_session.get("model", "unknown")
@@ -439,7 +444,20 @@ async def stream_agent_generator(
                     step_number=step,
                     agent_id=agent_id,
                     prompt_preview=prompt_content[:500] if prompt_content else None,
+                    correlation_id=correlation_id,
                 )
+                # Record full LLM prompt payload (for the tracing UI detail view)
+                if TRACE_FULL_PAYLOADS and prompt_content:
+                    trace_recorder.record_payload(
+                        session_id=session_id,
+                        trace_id=trace_id,
+                        payload_type="llm_prompt",
+                        payload_name=f"llm_{llm_call_count}_prompt",
+                        payload=prompt_content,
+                        step_number=step,
+                        agent_id=agent_id,
+                        correlation_id=correlation_id,
+                    )
 
             elif kind == "on_chat_model_stream":
                 chunk = ev.get("data", {}).get("chunk")
@@ -521,7 +539,30 @@ async def stream_agent_generator(
                     llm_call_number=llm_call_count,
                     step_number=step,
                     agent_id=agent_id,
+                    correlation_id=correlation_id,
                 )
+                # Emit full LLM response payload to trace payloads table (if enabled)
+                if TRACE_FULL_PAYLOADS:
+                    # Capture the model's response content (assistant message)
+                    response_content = ""
+                    if msg_list:
+                        last_msg = msg_list[-1] if isinstance(msg_list, list) else msg_list
+                        if hasattr(last_msg, "content"):
+                            response_content = (
+                                last_msg.content if isinstance(last_msg.content, str) else str(last_msg.content or "")
+                            )
+                        elif isinstance(last_msg, dict):
+                            response_content = str(last_msg.get("content", ""))
+                    trace_recorder.record_payload(
+                        session_id=session_id,
+                        trace_id=trace_id,
+                        payload_type="llm_response",
+                        payload_name=f"llm_{llm_call_count}_response",
+                        payload=response_content,
+                        step_number=step,
+                        agent_id=agent_id,
+                        correlation_id=correlation_id,
+                    )
                 # Emit token usage SSE event for frontend
                 yield _enc(
                     {
@@ -560,7 +601,21 @@ async def stream_agent_generator(
                     tool_input=inp[:1000] if len(inp) > 1000 else inp,
                     step_number=step,
                     agent_id=agent_id,
+                    correlation_id=correlation_id,
                 )
+                # Record full tool-call payload (input + context) for the UI
+                if TRACE_FULL_PAYLOADS and inp:
+                    trace_recorder.record_payload(
+                        session_id=session_id,
+                        trace_id=trace_id,
+                        payload_type="tool_call",
+                        payload_name=f"tool_{name}_input",
+                        payload={"tool_name": name, "input": inp},
+                        step_number=step,
+                        agent_id=agent_id,
+                        tool_name=name,
+                        correlation_id=correlation_id,
+                    )
 
                 # Doom loop detection via signature-based scanning
                 _doom_loop_tool_history.append(
@@ -680,6 +735,7 @@ async def stream_agent_generator(
                     step_number=step,
                     tool_status="completed",
                     agent_id=agent_id,
+                    correlation_id=correlation_id,
                 )
 
             elif kind == "on_chain_start" and name in ALLOWED_NODES:
@@ -700,6 +756,7 @@ async def stream_agent_generator(
                     node_name=name,
                     step_number=step,
                     agent_id=agent_id,
+                    correlation_id=correlation_id,
                 )
 
             elif kind == "on_chain_end":
@@ -744,6 +801,7 @@ async def stream_agent_generator(
                         duration_ms=chain_end_duration,
                         step_number=step,
                         agent_id=agent_id,
+                        correlation_id=correlation_id,
                     )
 
                     # Check for HITL Interruption
@@ -815,7 +873,50 @@ async def stream_agent_generator(
                     step_number=step,
                     event_name=name or kind,
                     agent_id=agent_id,
+                    correlation_id=correlation_id,
                 )
+
+        # Record the conversation history + context sections payloads so the
+        # tracing UI can show exactly what the agent saw for this request —
+        # captured on BOTH success and failure paths.
+        if TRACE_FULL_PAYLOADS:
+            try:
+                history_payload = {
+                    "user_message": message,
+                    "session_id": session_id,
+                    "model": model_name,
+                    "provider": provider,
+                    "final_answer": str(final_answer or ""),
+                }
+                trace_recorder.record_payload(
+                    session_id=session_id,
+                    trace_id=trace_id,
+                    payload_type="conversation_history",
+                    payload_name="request_context",
+                    payload=history_payload,
+                    step_number=step,
+                    agent_id=agent_id,
+                    correlation_id=correlation_id,
+                )
+                context_sections = active_session.get("context_metrics", {}) or {}
+                trace_recorder.record_payload(
+                    session_id=session_id,
+                    trace_id=trace_id,
+                    payload_type="context_sections",
+                    payload_name="context_metrics",
+                    payload=context_sections,
+                    step_number=step,
+                    agent_id=agent_id,
+                    correlation_id=correlation_id,
+                )
+            except Exception as ctx_err:
+                logger.warning(
+                    "[Streaming] Context payload recording failed: %s", ctx_err
+                )
+
+                "verify",
+                f"Final check: reviewing the {len(_reqs)} requirement(s) against the result.",
+            )
 
         if final_answer:
             body = final_answer
@@ -829,6 +930,7 @@ async def stream_agent_generator(
                 trace_id=trace_id,
                 step_number=step,
                 agent_id=agent_id,
+                correlation_id=correlation_id,
             )
         else:
             yield trace("error", "⚠️ Agent terminated without a final answer")
@@ -839,6 +941,7 @@ async def stream_agent_generator(
                 error="Agent terminated without a final answer",
                 step_number=step,
                 agent_id=agent_id,
+                correlation_id=correlation_id,
             )
 
     except Exception as exc:
@@ -850,6 +953,7 @@ async def stream_agent_generator(
             error=f"Stream error: {exc}",
             step_number=0,
             agent_id=agent_id,
+            correlation_id=correlation_id,
         )
 
 
