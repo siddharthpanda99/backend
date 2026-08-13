@@ -127,3 +127,38 @@ from app.modules.project_management.routes.test_management_routes import router 
 router.include_router(core_router, prefix="", tags=["PM Core & Analytics"])
 router.include_router(cache_router, prefix="", tags=["PM Cache"])
 router.include_router(test_management_router, prefix="", tags=["PM Test Management"])
+
+# AUTO-GENERATED GAP MODULE MOUNTS
+from app.modules.project_management.routes.wiki_routes import router as wiki_router
+from app.modules.project_management.routes.editor_routes import router as editor_router
+from app.modules.project_management.routes.spaces_routes import router as spaces_router
+from app.modules.project_management.routes.templates_routes import router as templates_router
+from app.modules.project_management.routes.macros_routes import router as macros_router
+from app.modules.project_management.routes.git_routes import router as git_router
+from app.modules.project_management.routes.cicd_routes import router as cicd_router
+from app.modules.project_management.routes.code_review_routes import router as code_review_router
+from app.modules.project_management.routes.dora_routes import router as dora_router
+from app.modules.project_management.routes.incident_routes import router as incident_router
+from app.modules.project_management.routes.service_desk_routes import router as service_desk_router
+from app.modules.project_management.routes.customer_portal_routes import router as customer_portal_router
+from app.modules.project_management.routes.knowledge_base_routes import router as knowledge_base_router
+from app.modules.project_management.routes.integration_hub_routes import router as integration_hub_router
+from app.modules.project_management.routes.developer_api_routes import router as developer_api_router
+from app.modules.project_management.routes.admin_billing_routes import router as admin_billing_router
+
+router.include_router(wiki_router, prefix="", tags=["PM Wiki & Page Engine (Confluence Core)"])
+router.include_router(editor_router, prefix="", tags=["PM Rich Text Editor"])
+router.include_router(spaces_router, prefix="", tags=["PM Space Management"])
+router.include_router(templates_router, prefix="", tags=["PM Templates Library"])
+router.include_router(macros_router, prefix="", tags=["PM Page Macros & Embeds"])
+router.include_router(git_router, prefix="", tags=["PM Git Integration Layer"])
+router.include_router(cicd_router, prefix="", tags=["PM CI/CD & Deployment Tracking"])
+router.include_router(code_review_router, prefix="", tags=["PM Code Review Integration"])
+router.include_router(dora_router, prefix="", tags=["PM DevOps Metrics & DORA"])
+router.include_router(incident_router, prefix="", tags=["PM Incident & On-Call Management"])
+router.include_router(service_desk_router, prefix="", tags=["PM Service Desk & Helpdesk"])
+router.include_router(customer_portal_router, prefix="", tags=["PM Customer Portal"])
+router.include_router(knowledge_base_router, prefix="", tags=["PM Knowledge Base (Public)"])
+router.include_router(integration_hub_router, prefix="", tags=["PM Integration Hub & Webhooks"])
+router.include_router(developer_api_router, prefix="", tags=["PM API & Developer Platform"])
+router.include_router(admin_billing_router, prefix="", tags=["PM Admin, Billing & Enterprise Controls"])
