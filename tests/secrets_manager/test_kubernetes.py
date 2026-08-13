@@ -3,9 +3,9 @@ Tests for Secrets Manager Kubernetes submodule (SSOT 10).
 
 Tests K8s auth configs, CSI drivers, operator configs, external secrets.
 """
+
 from __future__ import annotations
 
-import pytest
 from common_lib.modules.secrets_manager.kubernetes.service import KubernetesService
 
 
@@ -14,8 +14,9 @@ class TestKubernetesService:
 
     def test_create_auth_config(self, db):
         svc = KubernetesService(session=db)
-        result = svc.create_auth_config(name="prod-cluster", cluster_name="prod-eks",
-                                        namespace="secrets-ns")
+        result = svc.create_auth_config(
+            name="prod-cluster", cluster_name="prod-eks", namespace="secrets-ns"
+        )
         assert result["name"] == "prod-cluster"
         assert result["cluster_name"] == "prod-eks"
 
@@ -28,7 +29,9 @@ class TestKubernetesService:
 
     def test_create_csi_driver(self, db):
         svc = KubernetesService(session=db)
-        result = svc.create_csi_driver(name="secrets-store", driver_name="secrets-store.csi.k8s.io")
+        result = svc.create_csi_driver(
+            name="secrets-store", driver_name="secrets-store.csi.k8s.io"
+        )
         assert result["name"] == "secrets-store"
         assert result["driver_name"] == "secrets-store.csi.k8s.io"
 

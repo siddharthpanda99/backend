@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
 from common_lib.modules.secrets_manager.engines.service import EngineRegistryService
-from common_lib.modules.secrets_manager.engines.models import SecretEngine, EngineStatus
 
 
 class TestEngineRegistryService:
@@ -23,20 +21,28 @@ class TestEngineRegistryService:
 
     def test_register_engine_duplicate(self, db):
         svc = EngineRegistryService(session=db)
-        svc.register_engine(name="mysql", engine_type="database", mount_path="/v1/mysql/")
-        result = svc.register_engine(name="mysql", engine_type="database", mount_path="/v1/mysql2/")
+        svc.register_engine(
+            name="mysql", engine_type="database", mount_path="/v1/mysql/"
+        )
+        result = svc.register_engine(
+            name="mysql", engine_type="database", mount_path="/v1/mysql2/"
+        )
         assert "error" in result
 
     def test_get_engine_by_id(self, db):
         svc = EngineRegistryService(session=db)
-        created = svc.register_engine(name="redis", engine_type="database", mount_path="/v1/redis/")
+        created = svc.register_engine(
+            name="redis", engine_type="database", mount_path="/v1/redis/"
+        )
         engine = svc.get_engine(engine_id=created["id"])
         assert engine is not None
         assert engine["name"] == "redis"
 
     def test_get_engine_by_name(self, db):
         svc = EngineRegistryService(session=db)
-        svc.register_engine(name="mongodb", engine_type="database", mount_path="/v1/mongo/")
+        svc.register_engine(
+            name="mongodb", engine_type="database", mount_path="/v1/mongo/"
+        )
         engine = svc.get_engine(name="mongodb")
         assert engine is not None
         assert engine["engine_type"] == "database"
@@ -63,15 +69,17 @@ class TestEngineRegistryService:
 
     def test_enable_engine(self, db):
         svc = EngineRegistryService(session=db)
-        created = svc.register_engine(name="disable-test", engine_type="database",
-                                       mount_path="/v1/dt/")
+        created = svc.register_engine(
+            name="disable-test", engine_type="database", mount_path="/v1/dt/"
+        )
         svc.disable_engine(created["id"])
         assert svc.enable_engine(created["id"]) is True
 
     def test_disable_engine(self, db):
         svc = EngineRegistryService(session=db)
-        created = svc.register_engine(name="disable-me", engine_type="database",
-                                       mount_path="/v1/dm/")
+        created = svc.register_engine(
+            name="disable-me", engine_type="database", mount_path="/v1/dm/"
+        )
         assert svc.disable_engine(created["id"]) is True
 
     def test_disable_engine_not_found(self, db):
@@ -80,23 +88,26 @@ class TestEngineRegistryService:
 
     def test_remove_engine(self, db):
         svc = EngineRegistryService(session=db)
-        created = svc.register_engine(name="remove-me", engine_type="database",
-                                       mount_path="/v1/rm/")
+        created = svc.register_engine(
+            name="remove-me", engine_type="database", mount_path="/v1/rm/"
+        )
         assert svc.remove_engine(created["id"]) is True
         assert svc.get_engine(engine_id=created["id"]) is None
 
     def test_record_health_healthy(self, db):
         svc = EngineRegistryService(session=db)
-        created = svc.register_engine(name="healthy-eng", engine_type="database",
-                                       mount_path="/v1/he/")
+        created = svc.register_engine(
+            name="healthy-eng", engine_type="database", mount_path="/v1/he/"
+        )
         result = svc.record_health(created["id"], is_healthy=True)
         assert result["is_healthy"] is True
         assert result["circuit_breaker_open"] is False
 
     def test_record_health_circuit_breaking(self, db):
         svc = EngineRegistryService(session=db)
-        created = svc.register_engine(name="cb-eng", engine_type="database",
-                                       mount_path="/v1/cb/")
+        created = svc.register_engine(
+            name="cb-eng", engine_type="database", mount_path="/v1/cb/"
+        )
         # 3 failures opens circuit
         svc.record_health(created["id"], is_healthy=False)
         svc.record_health(created["id"], is_healthy=False)
@@ -106,8 +117,9 @@ class TestEngineRegistryService:
 
     def test_get_engine_health(self, db):
         svc = EngineRegistryService(session=db)
-        created = svc.register_engine(name="health-check", engine_type="database",
-                                       mount_path="/v1/hc/")
+        created = svc.register_engine(
+            name="health-check", engine_type="database", mount_path="/v1/hc/"
+        )
         svc.record_health(created["id"], is_healthy=True, latency_ms=12.5)
         health = svc.get_engine_health(created["id"])
         assert health is not None

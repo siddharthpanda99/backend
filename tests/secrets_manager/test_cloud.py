@@ -3,9 +3,9 @@ Tests for Secrets Manager Cloud submodule (SSOT 11).
 
 Tests cloud provider management, external vault sync, replication configs.
 """
+
 from __future__ import annotations
 
-import pytest
 from common_lib.modules.secrets_manager.cloud.service import CloudFederationService
 
 
@@ -14,7 +14,9 @@ class TestCloudFederationService:
 
     def test_create_provider(self, db):
         svc = CloudFederationService(session=db)
-        result = svc.create_provider(name="aws-prod", provider_type="aws", region="us-west-2")
+        result = svc.create_provider(
+            name="aws-prod", provider_type="aws", region="us-west-2"
+        )
         assert result["name"] == "aws-prod"
         assert result["provider_type"] == "aws"
 
@@ -27,8 +29,11 @@ class TestCloudFederationService:
 
     def test_register_vault(self, db):
         svc = CloudFederationService(session=db)
-        result = svc.register_vault(name="hashicorp-prod", vault_type="hashicorp",
-                                    endpoint_url="https://vault.example.com")
+        result = svc.register_vault(
+            name="hashicorp-prod",
+            vault_type="hashicorp",
+            endpoint_url="https://vault.example.com",
+        )
         assert result["name"] == "hashicorp-prod"
         assert result["vault_type"] == "hashicorp"
 
@@ -41,8 +46,9 @@ class TestCloudFederationService:
 
     def test_create_replication(self, db):
         svc = CloudFederationService(session=db)
-        result = svc.create_replication(name="us-to-eu", target_cluster="eu-cluster",
-                                        replication_mode="async")
+        result = svc.create_replication(
+            name="us-to-eu", target_cluster="eu-cluster", replication_mode="async"
+        )
         assert result["name"] == "us-to-eu"
         assert result["replication_mode"] == "async"
 

@@ -3,9 +3,9 @@ Tests for Secrets Manager Rotation submodule (SSOT 04).
 
 Tests rotation policy management, execution, and record tracking.
 """
+
 from __future__ import annotations
 
-import pytest
 from common_lib.modules.secrets_manager.rotation.service import RotationService
 from common_lib.modules.secrets_manager.vault.service import VaultService
 
@@ -71,7 +71,9 @@ class TestRotationService:
         vault.create_secret(name="record-secret", value="v1")
 
         rot = RotationService(session=db)
-        policy = rot.create_policy(name="record-pol", interval_days=30, secret_name="record-secret")
+        policy = rot.create_policy(
+            name="record-pol", interval_days=30, secret_name="record-secret"
+        )
         rot.execute_rotation(policy_id=policy["id"])
 
         records = rot.list_records(policy_id=policy["id"])

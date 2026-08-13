@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
 from common_lib.modules.secrets_manager.seal.service import SealService
-from common_lib.modules.secrets_manager.seal.models import SealState, SealConfig, SealStatus
 
 
 class TestSealService:
@@ -26,7 +24,9 @@ class TestSealService:
 
     def test_configure_seal_with_auto_unseal(self, db):
         svc = SealService(session=db)
-        result = svc.configure_seal(total_shares=3, threshold=2, auto_unseal_provider="aws_kms")
+        result = svc.configure_seal(
+            total_shares=3, threshold=2, auto_unseal_provider="aws_kms"
+        )
         assert result["auto_unseal_enabled"] is True
         assert result["auto_unseal_provider"] == "aws_kms"
 

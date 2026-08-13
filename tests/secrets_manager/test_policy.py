@@ -3,11 +3,15 @@ Tests for Secrets Manager Policy submodule (SSOT 02).
 
 Tests policy CRUD, evaluation, binding (by path AND secret_id), and edge cases.
 """
+
 from __future__ import annotations
 
-import pytest
 from common_lib.modules.secrets_manager.policy.service import PolicyEngine
-from common_lib.modules.secrets_manager.policy.models import PolicyRule, PolicyCondition, PolicyEffect
+from common_lib.modules.secrets_manager.policy.models import (
+    PolicyRule,
+    PolicyCondition,
+    PolicyEffect,
+)
 
 
 class TestPolicyEngine:
@@ -15,8 +19,16 @@ class TestPolicyEngine:
 
     def test_create_policy(self, db):
         engine = PolicyEngine(session=db)
-        rules = [{"actions": ["read_value"], "effect": "allow", "resources": ["secret:test-*"]}]
-        result = engine.create_policy(name="test-policy", rules=rules, description="Test policy")
+        rules = [
+            {
+                "actions": ["read_value"],
+                "effect": "allow",
+                "resources": ["secret:test-*"],
+            }
+        ]
+        result = engine.create_policy(
+            name="test-policy", rules=rules, description="Test policy"
+        )
         assert result["name"] == "test-policy"
         assert "id" in result
 
@@ -58,7 +70,13 @@ class TestPolicyEngine:
     def test_evaluate_allow(self, db):
         """Test that a matching allow rule returns allowed=True."""
         engine = PolicyEngine(session=db)
-        rules = [{"actions": ["read_value"], "effect": "allow", "resources": ["secret:api-key"]}]
+        rules = [
+            {
+                "actions": ["read_value"],
+                "effect": "allow",
+                "resources": ["secret:api-key"],
+            }
+        ]
         engine.create_policy(name="allow-test", rules=rules)
         engine.bind_policy(policy_name="allow-test", path="secret:api-key")
 
@@ -70,7 +88,11 @@ class TestPolicyEngine:
         """Test that explicit deny takes precedence."""
         engine = PolicyEngine(session=db)
         rules = [
-            {"actions": ["read_value"], "effect": "deny", "resources": ["secret:api-key"]},
+            {
+                "actions": ["read_value"],
+                "effect": "deny",
+                "resources": ["secret:api-key"],
+            },
             {"actions": ["read_value"], "effect": "allow", "resources": ["*"]},
         ]
         engine.create_policy(name="deny-test", rules=rules)
@@ -142,7 +164,9 @@ class TestPolicyEngine:
         engine = PolicyEngine(session=db)
 
         # Path-bound policy that denies
-        deny_rules = [{"actions": ["delete"], "effect": "deny", "resources": ["/app/*"]}]
+        deny_rules = [
+            {"actions": ["delete"], "effect": "deny", "resources": ["/app/*"]}
+        ]
         engine.create_policy(name="deny-path", rules=deny_rules)
         engine.bind_policy(policy_name="deny-path", path="/app/prod-secret")
 
@@ -196,11 +220,15 @@ class TestPolicyRule:
     """Unit tests for PolicyRule evaluation."""
 
     def test_action_match(self):
-        rule = PolicyRule(actions=["read_value"], effect=PolicyEffect.ALLOW, resources=["*"])
+        rule = PolicyRule(
+            actions=["read_value"], effect=PolicyEffect.ALLOW, resources=["*"]
+        )
         assert rule.evaluate("read_value", "any-resource", {}) is True
 
     def test_action_no_match(self):
-        rule = PolicyRule(actions=["read_value"], effect=PolicyEffect.ALLOW, resources=["*"])
+        rule = PolicyRule(
+            actions=["read_value"], effect=PolicyEffect.ALLOW, resources=["*"]
+        )
         assert rule.evaluate("write_value", "any-resource", {}) is None
 
     def test_wildcard_action(self):
@@ -208,12 +236,16 @@ class TestPolicyRule:
         assert rule.evaluate("anything", "any-resource", {}) is True
 
     def test_resource_match_exact(self):
-        rule = PolicyRule(actions=["*"], effect=PolicyEffect.ALLOW, resources=["secret:api-key"])
+        rule = PolicyRule(
+            actions=["*"], effect=PolicyEffect.ALLOW, resources=["secret:api-key"]
+        )
         assert rule.evaluate("read_value", "secret:api-key", {}) is True
         assert rule.evaluate("read_value", "secret:other", {}) is None
 
     def test_resource_wildcard(self):
-        rule = PolicyRule(actions=["*"], effect=PolicyEffect.ALLOW, resources=["secret:*"])
+        rule = PolicyRule(
+            actions=["*"], effect=PolicyEffect.ALLOW, resources=["secret:*"]
+        )
         assert rule.evaluate("read_value", "secret:api-key", {}) is True
         assert rule.evaluate("read_value", "secret:something-else", {}) is True
         assert rule.evaluate("read_value", "other:thing", {}) is None
@@ -225,7 +257,9 @@ class TestPolicyRule:
     def test_condition_met(self):
         condition = PolicyCondition(field="ip", operator="eq", value="10.0.0.1")
         rule = PolicyRule(
-            actions=["*"], effect=PolicyEffect.ALLOW, resources=["*"],
+            actions=["*"],
+            effect=PolicyEffect.ALLOW,
+            resources=["*"],
             conditions=[condition],
         )
         assert rule.evaluate("read", "x", {"ip": "10.0.0.1"}) is True
@@ -233,7 +267,9 @@ class TestPolicyRule:
     def test_condition_not_met(self):
         condition = PolicyCondition(field="ip", operator="eq", value="10.0.0.1")
         rule = PolicyRule(
-            actions=["*"], effect=PolicyEffect.ALLOW, resources=["*"],
+            actions=["*"],
+            effect=PolicyEffect.ALLOW,
+            resources=["*"],
             conditions=[condition],
         )
         # Condition not met → rule is skipped (returns None)
@@ -242,7 +278,9 @@ class TestPolicyRule:
     def test_condition_exists(self):
         condition = PolicyCondition(field="user.role", operator="exists", value=None)
         rule = PolicyRule(
-            actions=["*"], effect=PolicyEffect.ALLOW, resources=["*"],
+            actions=["*"],
+            effect=PolicyEffect.ALLOW,
+            resources=["*"],
             conditions=[condition],
         )
         assert rule.evaluate("read", "x", {"user": {"role": "admin"}}) is True

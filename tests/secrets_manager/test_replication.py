@@ -3,7 +3,6 @@
 import pytest
 from sqlmodel import Session, create_engine, SQLModel
 from common_lib.modules.secrets_manager.replication.service import ReplicationService
-from common_lib.modules.secrets_manager.replication.models import ReplicationConfig, ReplicationLag
 
 
 @pytest.fixture
@@ -19,8 +18,12 @@ def session():
 class TestReplication:
     def test_register_cluster(self, session):
         svc = ReplicationService(session)
-        result = svc.register_cluster("us-east-1", "https://vault-east.example.com",
-                                       cluster_type="performance", is_primary=True)
+        result = svc.register_cluster(
+            "us-east-1",
+            "https://vault-east.example.com",
+            cluster_type="performance",
+            is_primary=True,
+        )
         assert result["cluster_name"] == "us-east-1"
         assert result["is_primary"] is True
 

@@ -3,9 +3,9 @@ Tests for Secrets Manager Vault submodule (SSOT 01).
 
 Tests CRUD, versioning, listing, metadata, and edge cases.
 """
+
 from __future__ import annotations
 
-import pytest
 from common_lib.modules.secrets_manager.vault.service import VaultService
 
 
@@ -107,8 +107,14 @@ class TestVaultService:
 
     def test_get_secret_info(self, db):
         svc = VaultService(session=db)
-        svc.create_secret(name="info-test", value="val", description="info desc",
-                          tags=["info"], owner="owner1", ttl_seconds=3600)
+        svc.create_secret(
+            name="info-test",
+            value="val",
+            description="info desc",
+            tags=["info"],
+            owner="owner1",
+            ttl_seconds=3600,
+        )
         info = svc.get_secret_info(name="info-test")
         assert info["name"] == "info-test"
         assert info["description"] == "info desc"

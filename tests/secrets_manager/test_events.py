@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
 from common_lib.modules.secrets_manager.events.service import EventService
-from common_lib.modules.secrets_manager.events.models import SecretEvent, AlertRule
 
 
 class TestEventService:

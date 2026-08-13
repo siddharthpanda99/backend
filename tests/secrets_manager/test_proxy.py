@@ -3,9 +3,9 @@ Tests for Secrets Manager Proxy submodule (SSOT 09).
 
 Tests API key management, client configs, agent configs, proxy routes.
 """
+
 from __future__ import annotations
 
-import pytest
 from common_lib.modules.secrets_manager.proxy.service import ProxyService
 
 
@@ -52,8 +52,9 @@ class TestProxyService:
 
     def test_create_client_config(self, db):
         svc = ProxyService(session=db)
-        result = svc.create_client_config(name="my-app", client_type="rest",
-                                          base_url="https://secrets.example.com")
+        result = svc.create_client_config(
+            name="my-app", client_type="rest", base_url="https://secrets.example.com"
+        )
         assert result["name"] == "my-app"
         assert result["client_type"] == "rest"
 
@@ -66,8 +67,9 @@ class TestProxyService:
 
     def test_create_agent_config(self, db):
         svc = ProxyService(session=db)
-        result = svc.create_agent_config(name="sidecar-prod", agent_type="sidecar",
-                                         cache_ttl_seconds=600)
+        result = svc.create_agent_config(
+            name="sidecar-prod", agent_type="sidecar", cache_ttl_seconds=600
+        )
         assert result["name"] == "sidecar-prod"
         assert result["agent_type"] == "sidecar"
 
@@ -80,8 +82,12 @@ class TestProxyService:
 
     def test_create_proxy_route(self, db):
         svc = ProxyService(session=db)
-        result = svc.create_proxy_route(name="db-route", source_path="/secrets/db",
-                                        target_path="DB_PASSWORD", route_type="env")
+        result = svc.create_proxy_route(
+            name="db-route",
+            source_path="/secrets/db",
+            target_path="DB_PASSWORD",
+            route_type="env",
+        )
         assert result["name"] == "db-route"
         assert result["route_type"] == "env"
 

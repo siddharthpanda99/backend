@@ -3,9 +3,9 @@ Tests for Secrets Manager SSH submodule (SSOT 08).
 
 Tests key pair CRUD, target registration, OTP lifecycle, certificate management.
 """
+
 from __future__ import annotations
 
-import pytest
 from common_lib.modules.secrets_manager.ssh.service import SshService
 
 
@@ -68,15 +68,30 @@ class TestSshService:
         svc = SshService(session=db)
         svc.register_target(hostname="gateway.example.com")
         otp = svc.generate_otp(target_hostname="gateway.example.com")
-        assert svc.validate_otp(otp_code=otp["otp_code"], target_hostname="gateway.example.com") is True
+        assert (
+            svc.validate_otp(
+                otp_code=otp["otp_code"], target_hostname="gateway.example.com"
+            )
+            is True
+        )
 
     def test_validate_otp_one_time_use(self, db):
         """OTP should only be valid once."""
         svc = SshService(session=db)
         svc.register_target(hostname="one-time.example.com")
         otp = svc.generate_otp(target_hostname="one-time.example.com")
-        assert svc.validate_otp(otp_code=otp["otp_code"], target_hostname="one-time.example.com") is True
-        assert svc.validate_otp(otp_code=otp["otp_code"], target_hostname="one-time.example.com") is False
+        assert (
+            svc.validate_otp(
+                otp_code=otp["otp_code"], target_hostname="one-time.example.com"
+            )
+            is True
+        )
+        assert (
+            svc.validate_otp(
+                otp_code=otp["otp_code"], target_hostname="one-time.example.com"
+            )
+            is False
+        )
 
     def test_issue_ssh_certificate(self, db):
         svc = SshService(session=db)
@@ -91,7 +106,9 @@ class TestSshService:
 
     def test_issue_ssh_certificate_ca_not_found(self, db):
         svc = SshService(session=db)
-        result = svc.issue_certificate(key_id="user@test.com", ca_key_pair_name="nonexistent-ca")
+        result = svc.issue_certificate(
+            key_id="user@test.com", ca_key_pair_name="nonexistent-ca"
+        )
         assert "error" in result
 
     def test_revoke_ssh_certificate(self, db):

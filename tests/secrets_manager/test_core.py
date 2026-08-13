@@ -3,11 +3,11 @@ Tests for Secrets Manager Core submodule (SSOT 05, 06).
 
 Tests key management, encrypt/decrypt, encrypt_value pipeline.
 """
+
 from __future__ import annotations
 
 import pytest
 from common_lib.modules.secrets_manager.core.service import EncryptionService
-from common_lib.modules.secrets_manager.core.models import EncryptedBlob
 
 
 class TestEncryptionService:

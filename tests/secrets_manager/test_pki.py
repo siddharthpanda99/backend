@@ -3,9 +3,9 @@ Tests for Secrets Manager PKI submodule (SSOT 07).
 
 Tests CA management, certificate issuance, revocation, expiry monitoring.
 """
+
 from __future__ import annotations
 
-import pytest
 from common_lib.modules.secrets_manager.pki.service import CertificateService
 
 
@@ -34,7 +34,9 @@ class TestCertificateService:
 
     def test_issue_certificate(self, db):
         svc = CertificateService(session=db)
-        svc.create_ca(name="issuer-ca", type="internal", allowed_domains="*.example.com")
+        svc.create_ca(
+            name="issuer-ca", type="internal", allowed_domains="*.example.com"
+        )
         result = svc.issue_certificate(
             common_name="api.example.com",
             ca_name="issuer-ca",
@@ -65,8 +67,12 @@ class TestCertificateService:
     def test_list_certificates_filter_by_status(self, db):
         svc = CertificateService(session=db)
         svc.create_ca(name="status-ca", type="internal")
-        cert1 = svc.issue_certificate(common_name="active.example.com", ca_name="status-ca")
-        cert2 = svc.issue_certificate(common_name="revoke-me.example.com", ca_name="status-ca")
+        svc.issue_certificate(
+            common_name="keep-active.example.com", ca_name="status-ca"
+        )
+        cert2 = svc.issue_certificate(
+            common_name="revoke-me.example.com", ca_name="status-ca"
+        )
         svc.revoke_certificate(serial_number=cert2["serial_number"])
 
         all_certs = svc.list_certificates(ca_name="status-ca")
@@ -78,9 +84,16 @@ class TestCertificateService:
     def test_revoke_certificate(self, db):
         svc = CertificateService(session=db)
         svc.create_ca(name="revoke-ca", type="internal")
-        cert = svc.issue_certificate(common_name="revoke-me.example.com", ca_name="revoke-ca")
+        cert = svc.issue_certificate(
+            common_name="revoke-me.example.com", ca_name="revoke-ca"
+        )
 
-        assert svc.revoke_certificate(serial_number=cert["serial_number"], reason="compromised") is True
+        assert (
+            svc.revoke_certificate(
+                serial_number=cert["serial_number"], reason="compromised"
+            )
+            is True
+        )
 
     def test_revoke_certificate_not_found(self, db):
         svc = CertificateService(session=db)
@@ -89,10 +102,15 @@ class TestCertificateService:
     def test_get_expiring(self, db):
         svc = CertificateService(session=db)
         svc.create_ca(name="expiry-ca", type="internal")
-        svc.issue_certificate(common_name="short.example.com", ca_name="expiry-ca", ttl_seconds=1)
-        svc.issue_certificate(common_name="long.example.com", ca_name="expiry-ca", ttl_seconds=86400)
+        svc.issue_certificate(
+            common_name="short.example.com", ca_name="expiry-ca", ttl_seconds=1
+        )
+        svc.issue_certificate(
+            common_name="long.example.com", ca_name="expiry-ca", ttl_seconds=86400
+        )
 
         import time
+
         time.sleep(1.1)
 
         expiring = svc.get_expiring(days=30)

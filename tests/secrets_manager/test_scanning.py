@@ -3,7 +3,6 @@
 import pytest
 from sqlmodel import Session, create_engine, SQLModel
 from common_lib.modules.secrets_manager.scanning.service import ScanningService
-from common_lib.modules.secrets_manager.scanning.models import ScanTarget, ScanFinding, RemediationAction
 
 
 @pytest.fixture
@@ -19,8 +18,11 @@ def session():
 class TestScanTargets:
     def test_register_target(self, session):
         svc = ScanningService(session)
-        result = svc.register_target(target_type="git_repo", uri="https://github.com/org/repo.git",
-                                      name="Test Repo")
+        result = svc.register_target(
+            target_type="git_repo",
+            uri="https://github.com/org/repo.git",
+            name="Test Repo",
+        )
         assert result["target_type"] == "git_repo"
         assert result["name"] == "Test Repo"
 
@@ -41,21 +43,29 @@ class TestScanning:
     def test_scan_detects_aws_key(self, session):
         svc = ScanningService(session)
         t = svc.register_target("text", "inline")
-        findings = svc.scan_text(target_id=t["id"], text="My AWS key is AKIAIOSFODNN7EXAMPLE3")
+        findings = svc.scan_text(
+            target_id=t["id"], text="My AWS key is AKIAIOSFODNN7EXAMPLE3"
+        )
         aws_findings = [f for f in findings if "AWS" in f.get("provider", "")]
         assert len(aws_findings) >= 1
 
     def test_scan_detects_private_key(self, session):
         svc = ScanningService(session)
         t = svc.register_target("text", "inline")
-        findings = svc.scan_text(target_id=t["id"], text="-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKC")
-        pk_findings = [f for f in findings if "Private Key" in f.get("matched_pattern", "")]
+        findings = svc.scan_text(
+            target_id=t["id"], text="-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKC"
+        )
+        pk_findings = [
+            f for f in findings if "Private Key" in f.get("matched_pattern", "")
+        ]
         assert len(pk_findings) >= 1
 
     def test_scan_clean_text(self, session):
         svc = ScanningService(session)
         t = svc.register_target("text", "inline")
-        findings = svc.scan_text(target_id=t["id"], text="This is a clean text with no secrets")
+        findings = svc.scan_text(
+            target_id=t["id"], text="This is a clean text with no secrets"
+        )
         assert len(findings) == 0
 
     def test_list_findings(self, session):
@@ -70,7 +80,9 @@ class TestRemediation:
     def test_remediate_finding(self, session):
         svc = ScanningService(session)
         t = svc.register_target("text", "inline")
-        findings = svc.scan_text(target_id=t["id"], text="ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        findings = svc.scan_text(
+            target_id=t["id"], text="ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        )
         f_id = findings[0]["id"]
         result = svc.remediate_finding(finding_id=f_id, action_type="rotate")
         assert result["status"] == "remediated"
