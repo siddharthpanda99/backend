@@ -1,12 +1,12 @@
 """MCP tools for Nodes Registry — discover and query all @node wrappers.
 
 Registered under the Cognitive Orchestrator MCP server.
-Wraps common_lib.modules.nodes_registry for node discovery.
+Wraps common_lib.modules.plugins.nodes_registry for node discovery.
 """
 
 import logging
 from typing import List, Dict, Any, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 logger = logging.getLogger("mcp.tools.nodes_registry")
 

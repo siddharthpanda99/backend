@@ -56,7 +56,7 @@ def register_automation_tools(mcp_server):
     def list_macros(workspace_id: Optional[str] = None) -> str:
         """List all automation macros."""
         try:
-            from common_lib.modules.file_browser.macro_service import get_macros
+            from common_lib.modules.file_system.macro_service import get_macros
             macros = get_macros(workspace_id=workspace_id)
             if not macros:
                 return "No macros found."
@@ -72,7 +72,7 @@ def register_automation_tools(mcp_server):
     def execute_macro(macro_id: str, trigger_type: str = "manual") -> str:
         """Execute a specific automation macro."""
         try:
-            from common_lib.modules.file_browser.macro_service import execute_macro as run_macro
+            from common_lib.modules.file_system.macro_service import execute_macro as run_macro
             result = run_macro(macro_id=macro_id, trigger_type=trigger_type)
             if "error" in result:
                 return f"Macro execution failed: {result['error']}"

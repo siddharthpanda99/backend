@@ -6,7 +6,7 @@ Each tool wraps common_lib.modules.doc_processing services.
 
 import logging
 from typing import Any, Dict, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 logger = logging.getLogger("mcp.tools.doc_processing")
 

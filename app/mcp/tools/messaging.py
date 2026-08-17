@@ -8,7 +8,7 @@ needing to know the underlying provider.
 import logging
 from typing import Optional, Dict, Any
 
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 logger = logging.getLogger("mcp.tools.messaging")
 
@@ -46,7 +46,7 @@ def register_messaging_tools(mcp: FastMCP):
             Status message with dispatch result.
         """
         try:
-            from common_lib.modules.messaging import (
+            from common_lib.modules.notification.messaging import (
                 get_messaging_gateway,
                 MessageChannel,
                 MessagePriority,
@@ -86,7 +86,7 @@ def register_messaging_tools(mcp: FastMCP):
         Returns a formatted list of channels that can be used with messaging_send.
         """
         try:
-            from common_lib.modules.messaging import get_messaging_gateway
+            from common_lib.modules.notification.messaging import get_messaging_gateway
 
             gateway = get_messaging_gateway()
             channels = gateway.get_channels()
@@ -121,7 +121,7 @@ def register_messaging_tools(mcp: FastMCP):
             Formatted list of recent messages and their dispatch status.
         """
         try:
-            from common_lib.modules.messaging import get_messaging_gateway
+            from common_lib.modules.notification.messaging import get_messaging_gateway
 
             gateway = get_messaging_gateway()
             messages = gateway.get_recent_messages(limit=min(limit, 50))

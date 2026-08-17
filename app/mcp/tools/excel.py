@@ -6,7 +6,7 @@ Covers workbook creation, editing, data analysis, format conversion, validation.
 
 import logging
 from typing import Any, Dict, List, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 logger = logging.getLogger("mcp.tools.excel")
 

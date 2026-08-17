@@ -1,6 +1,6 @@
 import logging
 from typing import List, Dict, Any, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 logger = logging.getLogger("mcp.tools.file_browser")
 
@@ -19,7 +19,7 @@ def register_file_browser_tools(mcp: FastMCP):
         List files and folders in a specific directory.
         Use 'folder_id' for subdirectories, or leave empty for root.
         """
-        from common_lib.modules.file_browser.service import list_files
+        from common_lib.modules.file_system.service import list_files
         try:
             return list_files(
                 folder_id=folder_id,
@@ -35,7 +35,7 @@ def register_file_browser_tools(mcp: FastMCP):
     @mcp.tool()
     async def file_read(file_id: str) -> Dict[str, Any]:
         """Read metadata and details for a specific file by its unique ID."""
-        from common_lib.modules.file_browser.service import get_file
+        from common_lib.modules.file_system.service import get_file
         file_node = get_file(file_id)
         if not file_node:
             return {"status": "error", "message": "File not found"}
@@ -51,7 +51,7 @@ def register_file_browser_tools(mcp: FastMCP):
         Create or upload a new file with text content.
         Provide the 'name', the 'content', and optionally the 'folder_id'.
         """
-        from common_lib.modules.file_browser.service import upload_file
+        from common_lib.modules.file_system.service import upload_file
         try:
             # We encode content to bytes for upload_file
             data = content.encode("utf-8")
@@ -64,7 +64,7 @@ def register_file_browser_tools(mcp: FastMCP):
     @mcp.tool()
     async def file_search(query: str, folder_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Search for files and folders by name or content."""
-        from common_lib.modules.file_browser.service import search_files_fulltext
+        from common_lib.modules.file_system.service import search_files_fulltext
         try:
             results = search_files_fulltext(query, folder_id=folder_id)
             return results.get("items", [])
@@ -75,7 +75,7 @@ def register_file_browser_tools(mcp: FastMCP):
     @mcp.tool()
     async def folder_create(name: str, parent_id: Optional[str] = None) -> Dict[str, Any]:
         """Create a new folder in the specified parent directory."""
-        from common_lib.modules.file_browser.service import create_folder
+        from common_lib.modules.file_system.service import create_folder
         try:
             return create_folder(name, parent_id)
         except Exception as e:
@@ -85,7 +85,7 @@ def register_file_browser_tools(mcp: FastMCP):
     @mcp.tool()
     async def file_delete(file_id: str, permanent: bool = False) -> Dict[str, Any]:
         """Delete a file or folder by its ID. Set 'permanent=True' for immediate deletion."""
-        from common_lib.modules.file_browser.service import delete_file
+        from common_lib.modules.file_system.service import delete_file
         try:
             ok = delete_file(file_id, permanent=permanent)
             return {"status": "success" if ok else "error"}

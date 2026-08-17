@@ -6,7 +6,7 @@ These tools enable agents to interact with the event-driven runtime layer.
 
 import logging
 from typing import List, Dict, Any, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 from common_lib.modules.governance.hitl.service import get_hitl_service
 
 logger = logging.getLogger("mcp.tools.hooks_triggers")

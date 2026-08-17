@@ -1,6 +1,6 @@
 import logging
 from typing import List, Dict, Any, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 from app.core.common_lib_integration import common_memory, sync_entity_to_fs
 
 logger = logging.getLogger("mcp.tools.workflow_configs")

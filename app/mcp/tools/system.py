@@ -2,7 +2,7 @@ import logging
 import os
 import psutil
 from typing import Dict, Any
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 logger = logging.getLogger("mcp.tools.system")
 

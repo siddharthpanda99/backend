@@ -1,12 +1,12 @@
 """MCP tools for Image Runtime — pipeline managers, VRAM, caching, LoRA, scheduler.
 
 Registered under the Cognitive Orchestrator MCP server.
-Each tool wraps common_lib.modules.image_runtime managers.
+Each tool wraps common_lib.modules.image_processing.runtime managers.
 """
 
 import logging
 from typing import List, Dict, Any, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 logger = logging.getLogger("mcp.tools.image_runtime")
 
@@ -18,7 +18,7 @@ def register_image_runtime_tools(mcp: FastMCP):
     async def imageruntime_list_pipelines() -> List[Dict[str, Any]]:
         """List loaded image pipelines."""
         try:
-            from common_lib.modules.image_runtime.managers.pipeline_manager import PipelineManager
+            from common_lib.modules.image_processing.runtime.managers.pipeline_manager import PipelineManager
             svc = PipelineManager()
             result = svc.list_pipelines() if hasattr(svc, "list_pipelines") else []
             return result if isinstance(result, list) else []
@@ -30,7 +30,7 @@ def register_image_runtime_tools(mcp: FastMCP):
     async def imageruntime_load_pipeline(pipeline_name: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Load an image pipeline by name."""
         try:
-            from common_lib.modules.image_runtime.managers.pipeline_manager import PipelineManager
+            from common_lib.modules.image_processing.runtime.managers.pipeline_manager import PipelineManager
             svc = PipelineManager()
             result = svc.load(pipeline_name, config) if hasattr(svc, "load") else {"name": pipeline_name}
             return result if isinstance(result, dict) else {"name": pipeline_name}
@@ -42,7 +42,7 @@ def register_image_runtime_tools(mcp: FastMCP):
     async def imageruntime_unload_pipeline(pipeline_name: str) -> str:
         """Unload an image pipeline."""
         try:
-            from common_lib.modules.image_runtime.managers.pipeline_manager import PipelineManager
+            from common_lib.modules.image_processing.runtime.managers.pipeline_manager import PipelineManager
             svc = PipelineManager()
             svc.unload(pipeline_name) if hasattr(svc, "unload") else None
             return f"Pipeline {pipeline_name} unloaded"
@@ -54,7 +54,7 @@ def register_image_runtime_tools(mcp: FastMCP):
     async def imageruntime_vram_status() -> Dict[str, Any]:
         """Get VRAM usage status."""
         try:
-            from common_lib.modules.image_runtime.managers.vram_manager import VRAMManager
+            from common_lib.modules.image_processing.runtime.managers.vram_manager import VRAMManager
             svc = VRAMManager()
             result = svc.get_status() if hasattr(svc, "get_status") else {"allocated": 0, "total": 0}
             return result
@@ -66,7 +66,7 @@ def register_image_runtime_tools(mcp: FastMCP):
     async def imageruntime_clear_vram() -> str:
         """Clear VRAM cache."""
         try:
-            from common_lib.modules.image_runtime.managers.vram_manager import VRAMManager
+            from common_lib.modules.image_processing.runtime.managers.vram_manager import VRAMManager
             svc = VRAMManager()
             svc.clear() if hasattr(svc, "clear") else None
             return "VRAM cleared"
@@ -78,7 +78,7 @@ def register_image_runtime_tools(mcp: FastMCP):
     async def imageruntime_list_loras() -> List[Dict[str, Any]]:
         """List available LoRA models."""
         try:
-            from common_lib.modules.image_runtime.managers.lora_manager import LoraManager
+            from common_lib.modules.image_processing.runtime.managers.lora_manager import LoraManager
             svc = LoraManager()
             result = svc.list() if hasattr(svc, "list") else []
             return result if isinstance(result, list) else []
@@ -90,7 +90,7 @@ def register_image_runtime_tools(mcp: FastMCP):
     async def imageruntime_apply_lora(name: str, strength: float = 1.0) -> Dict[str, Any]:
         """Apply a LoRA model."""
         try:
-            from common_lib.modules.image_runtime.managers.lora_manager import LoraManager
+            from common_lib.modules.image_processing.runtime.managers.lora_manager import LoraManager
             svc = LoraManager()
             result = svc.apply(name, strength) if hasattr(svc, "apply") else {"name": name}
             return result if isinstance(result, dict) else {"name": name}
@@ -102,7 +102,7 @@ def register_image_runtime_tools(mcp: FastMCP):
     async def imageruntime_list_schedulers() -> List[Dict[str, Any]]:
         """List available schedulers."""
         try:
-            from common_lib.modules.image_runtime.managers.scheduler_manager import SchedulerManager
+            from common_lib.modules.image_processing.runtime.managers.scheduler_manager import SchedulerManager
             svc = SchedulerManager()
             result = svc.list() if hasattr(svc, "list") else []
             return result if isinstance(result, list) else []
@@ -114,7 +114,7 @@ def register_image_runtime_tools(mcp: FastMCP):
     async def imageruntime_resolve_scheduler(name: str) -> Dict[str, Any]:
         """Resolve a scheduler by name."""
         try:
-            from common_lib.modules.image_runtime.managers.scheduler_manager import SchedulerManager
+            from common_lib.modules.image_processing.runtime.managers.scheduler_manager import SchedulerManager
             svc = SchedulerManager()
             result = svc.resolve(name) if hasattr(svc, "resolve") else {"name": name}
             return result if isinstance(result, dict) else {"name": name}

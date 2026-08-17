@@ -7,15 +7,15 @@ Each tool wraps the corresponding governance REST API service layer.
 import logging
 import json
 from typing import List, Dict, Any, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.rules_engine.models import RuleSetModel, RuleModel, RuleLibraryBlockModel, RuleSetRuleLink, PolicyGroupPolicyLink
+from common_lib.modules.governance.rules_engine.models import RuleSetModel, RuleModel, RuleLibraryBlockModel, RuleSetRuleLink, PolicyGroupPolicyLink
 from common_lib.modules.governance.rbac.service import get_rbac_service
 from common_lib.modules.governance.policy.service import get_policy_service
 from common_lib.modules.governance.models.permissions import Delegation
 from common_lib.modules.governance.models.policies import Policy
 from sqlmodel import select
-from common_lib.modules.entities.service import get_entity_service
+from common_lib.modules.orchestration.entities.service import get_entity_service
 
 logger = logging.getLogger("mcp.tools.governance")
 

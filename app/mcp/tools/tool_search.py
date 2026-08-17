@@ -15,7 +15,7 @@ Usage (MCP agent):
 import logging
 from typing import Any, Dict, List, Optional
 
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 from app.mcp import search_engine
 

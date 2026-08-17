@@ -16,7 +16,7 @@ import logging
 from contextlib import contextmanager
 from typing import Any, Optional
 
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 from common_lib.modules.knowledge_engine.learning_factory import (
     get_learning_instance,

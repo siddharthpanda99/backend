@@ -1,7 +1,7 @@
 import logging
 import asyncio
 from typing import List, Dict, Any, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 from ..mcp_dependencies import (
     resolve_agent_service, 
     resolve_runtime_session, 

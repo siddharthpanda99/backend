@@ -6,7 +6,7 @@ Each tool wraps the corresponding keys_management credentials service.
 
 import logging
 from typing import List, Dict, Any, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 logger = logging.getLogger("mcp.tools.credentials")
 
@@ -18,7 +18,7 @@ def register_credentials_tools(mcp: FastMCP):
     async def credentials_list() -> List[Dict[str, Any]]:
         """List all stored credentials/API keys."""
         try:
-            from common_lib.modules.keys_management.service import KeysManagementService
+            from common_lib.modules.secrets_manager.keys_management.service import KeysManagementService
             svc = KeysManagementService()
             result = svc.list_credentials() if hasattr(svc, "list_credentials") else []
             return result if isinstance(result, list) else []
@@ -30,7 +30,7 @@ def register_credentials_tools(mcp: FastMCP):
     async def credentials_get(credential_id: str) -> Dict[str, Any]:
         """Get a specific credential by ID."""
         try:
-            from common_lib.modules.keys_management.service import KeysManagementService
+            from common_lib.modules.secrets_manager.keys_management.service import KeysManagementService
             svc = KeysManagementService()
             result = svc.get_credential(credential_id) if hasattr(svc, "get_credential") else None
             if result is None:
@@ -44,7 +44,7 @@ def register_credentials_tools(mcp: FastMCP):
     async def credentials_create(name: str, credential_type: str = "api_key", value: str = "", metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Create a new credential."""
         try:
-            from common_lib.modules.keys_management.service import KeysManagementService
+            from common_lib.modules.secrets_manager.keys_management.service import KeysManagementService
             svc = KeysManagementService()
             result = svc.create_credential(name=name, credential_type=credential_type, value=value, metadata=metadata) if hasattr(svc, "create_credential") else {"name": name}
             return result if isinstance(result, dict) else {"name": name}
@@ -56,7 +56,7 @@ def register_credentials_tools(mcp: FastMCP):
     async def credentials_delete(credential_id: str) -> str:
         """Delete a credential by ID."""
         try:
-            from common_lib.modules.keys_management.service import KeysManagementService
+            from common_lib.modules.secrets_manager.keys_management.service import KeysManagementService
             svc = KeysManagementService()
             svc.delete_credential(credential_id) if hasattr(svc, "delete_credential") else None
             return f"Credential {credential_id} deleted"
@@ -68,7 +68,7 @@ def register_credentials_tools(mcp: FastMCP):
     async def credentials_test(credential_id: str) -> Dict[str, Any]:
         """Test a credential connection."""
         try:
-            from common_lib.modules.keys_management.service import KeysManagementService
+            from common_lib.modules.secrets_manager.keys_management.service import KeysManagementService
             svc = KeysManagementService()
             result = svc.test_credential(credential_id) if hasattr(svc, "test_credential") else {"valid": False}
             return result if isinstance(result, dict) else {"credential_id": credential_id, "valid": False}

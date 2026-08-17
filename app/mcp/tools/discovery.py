@@ -1,7 +1,7 @@
 import json
 import logging
 from typing import List, Dict, Any, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 from app.core.common_lib_integration import common_memory
 
 logger = logging.getLogger("mcp.tools.discovery")

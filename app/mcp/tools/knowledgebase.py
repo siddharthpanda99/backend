@@ -27,11 +27,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 from sqlmodel import select
 
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.knowledge_hub.models import (
+from common_lib.modules.knowledge_engine.knowledge_hub.models import (
     IngestionPipelineRecord,
     KnowledgeProjectRecord,
     PacketItemRecord,
@@ -39,9 +39,9 @@ from common_lib.modules.knowledge_hub.models import (
     SourceConfigRecord,
     SourceTypeRecord,
 )
-from common_lib.modules.knowledge_hub.services.packet_service import PacketService
-from common_lib.modules.knowledge_hub.services.project_service import ProjectService
-from common_lib.modules.knowledge_hub.services.source_service import SourceService
+from common_lib.modules.knowledge_engine.knowledge_hub.services.packet_service import PacketService
+from common_lib.modules.knowledge_engine.knowledge_hub.services.project_service import ProjectService
+from common_lib.modules.knowledge_engine.knowledge_hub.services.source_service import SourceService
 
 logger = logging.getLogger("mcp.tools.knowledgebase")
 

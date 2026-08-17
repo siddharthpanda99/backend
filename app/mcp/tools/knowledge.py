@@ -17,7 +17,7 @@ import asyncio
 import logging
 from typing import Any, Optional
 
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 from ..mcp_dependencies import resolve_knowledge_engine_service
 

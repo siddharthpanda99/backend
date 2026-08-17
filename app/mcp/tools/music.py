@@ -1,7 +1,7 @@
 import logging
 from uuid import UUID
 from typing import List, Dict, Any, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 from app.mcp.mcp_dependencies import resolve_daw_service, resolve_db_session
 
 logger = logging.getLogger("mcp.tools.music")
@@ -34,7 +34,7 @@ def register_music_tools(mcp: FastMCP):
         """Add a new musical pattern to a DAW project."""
         service = resolve_daw_service()
         session = resolve_db_session()
-        from common_lib.modules.daw.schemas import PatternCreate
+        from common_lib.modules.audio_processing.daw.schemas import PatternCreate
         pattern = service.create_pattern(session, UUID(project_id), PatternCreate(name=name))
         return pattern.model_dump()
 
@@ -43,7 +43,7 @@ def register_music_tools(mcp: FastMCP):
         """Add a MIDI note to a specific pattern. Pitch is MIDI number (0-127)."""
         service = resolve_daw_service()
         session = resolve_db_session()
-        from common_lib.modules.daw.schemas import NoteCreate
+        from common_lib.modules.audio_processing.daw.schemas import NoteCreate
         note = service.add_note(session, UUID(pattern_id), NoteCreate(
             pitch=pitch, velocity=velocity, start=start, duration=duration
         ))

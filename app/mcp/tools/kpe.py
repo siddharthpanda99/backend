@@ -15,15 +15,15 @@ from __future__ import annotations
 import logging
 from typing import Any, List, Optional
 
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
-from common_lib.modules.kpe.extraction.llm import LLMExtractionService
-from common_lib.modules.kpe.classification.llm import LLMClassificationService
-from common_lib.modules.kpe.summarization.llm import LLMSummarizer
-from common_lib.modules.kpe.quality.llm import LLMQualityService
-from common_lib.modules.kpe.classification.topic import TopicClassifier
-from common_lib.modules.kpe.classification.intent import IntentClassifier
-from common_lib.modules.kpe.embeddings.dense import DenseEmbedder
+from common_lib.modules.knowledge_engine.kpe.extraction.llm import LLMExtractionService
+from common_lib.modules.knowledge_engine.kpe.classification.llm import LLMClassificationService
+from common_lib.modules.knowledge_engine.kpe.summarization.llm import LLMSummarizer
+from common_lib.modules.knowledge_engine.kpe.quality.llm import LLMQualityService
+from common_lib.modules.knowledge_engine.kpe.classification.topic import TopicClassifier
+from common_lib.modules.knowledge_engine.kpe.classification.intent import IntentClassifier
+from common_lib.modules.knowledge_engine.kpe.embeddings.dense import DenseEmbedder
 
 logger = logging.getLogger("mcp.tools.kpe")
 
@@ -143,10 +143,10 @@ def register_kpe_tools(mcp: FastMCP) -> None:
                 elif classifier == "trust":
                     results["trust"] = _classification_service.trust.evaluate(text)
                 elif classifier == "domain":
-                    from common_lib.modules.kpe.classification.domain import classify_domain
+                    from common_lib.modules.knowledge_engine.kpe.classification.domain import classify_domain
                     results["domain"] = classify_domain(text)
                 elif classifier == "risk":
-                    from common_lib.modules.kpe.classification.risk import classify_risk
+                    from common_lib.modules.knowledge_engine.kpe.classification.risk import classify_risk
                     results["risk"] = classify_risk(text)
             except Exception as e:
                 logger.warning("Classifier '%s' failed: %s", classifier, e)
@@ -318,7 +318,7 @@ def register_kpe_tools(mcp: FastMCP) -> None:
             Dict with hallucination detection results including score,
             flagged statements, and verdict.
         """
-        from common_lib.modules.kpe.quality.hallucination import HallucinationDetector
+        from common_lib.modules.knowledge_engine.kpe.quality.hallucination import HallucinationDetector
 
         detector = HallucinationDetector()
         result = detector.detect(source_context, text)
@@ -347,7 +347,7 @@ def register_kpe_tools(mcp: FastMCP) -> None:
             Dict with sensitivity analysis including overall score,
             flagged categories, and detailed breakdown.
         """
-        from common_lib.modules.kpe.quality.sensitivity import SensitivityClassifier
+        from common_lib.modules.knowledge_engine.kpe.quality.sensitivity import SensitivityClassifier
 
         classifier = SensitivityClassifier()
         result = classifier.classify(text)

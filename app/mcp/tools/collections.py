@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 logger = logging.getLogger(__name__)
 
@@ -47,13 +47,13 @@ def register_collection_tools(mcp: FastMCP) -> None:
             Search results as formatted text
         """
         from common_lib.modules.data_storage.database.connection import get_session as get_db
-        from common_lib.modules.knowledge_hub.collections.service import CollectionService
+        from common_lib.modules.knowledge_engine.knowledge_hub.collections.service import CollectionService
 
         try:
             with get_db() as session:
                 # If session_id provided, find attached collection
                 if session_id and not collection_id:
-                    from common_lib.modules.knowledge_hub.collections.models import CollectionRecord
+                    from common_lib.modules.knowledge_engine.knowledge_hub.collections.models import CollectionRecord
                     from sqlmodel import select
                     stmt = select(CollectionRecord).where(
                         CollectionRecord.attached_session_id == session_id
@@ -120,7 +120,7 @@ def register_collection_tools(mcp: FastMCP) -> None:
             Collection tree as formatted text
         """
         from common_lib.modules.data_storage.database.connection import get_session as get_db
-        from common_lib.modules.knowledge_hub.collections.service import CollectionService
+        from common_lib.modules.knowledge_engine.knowledge_hub.collections.service import CollectionService
 
         try:
             with get_db() as session:
@@ -165,7 +165,7 @@ def register_collection_tools(mcp: FastMCP) -> None:
             Flat list of sources as formatted text
         """
         from common_lib.modules.data_storage.database.connection import get_session as get_db
-        from common_lib.modules.knowledge_hub.collections.service import CollectionService
+        from common_lib.modules.knowledge_engine.knowledge_hub.collections.service import CollectionService
 
         try:
             with get_db() as session:

@@ -6,7 +6,7 @@ with proper domain categorization (Projects, Issues, Agile, Goals, Risk, etc.).
 """
 
 import logging
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 logger = logging.getLogger(__name__)
 

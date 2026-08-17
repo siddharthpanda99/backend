@@ -17,9 +17,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
-from common_lib.modules.education.explainer_agent import ExplainerAgent
+from common_lib.modules.knowledge_engine.education.explainer_agent import ExplainerAgent
 
 logger = logging.getLogger("mcp.tools.explainer")
 

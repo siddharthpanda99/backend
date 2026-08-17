@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Any
-from mcp.server.fastmcp import FastMCP
-from common_lib.modules.graph import GraphService
+from app.mcp.fastmcp_compat import FastMCP
+from common_lib.modules.knowledge_engine.graph import GraphService
 
 logger = logging.getLogger("mcp.tools.graph")
 
