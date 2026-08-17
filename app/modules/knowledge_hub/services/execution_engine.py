@@ -23,10 +23,10 @@ import httpx
 
 from sqlmodel import Session
 
-from common_lib.modules.knowledge_hub.models import (
+from common_lib.modules.knowledge_engine.knowledge_hub.models import (
     SourceConfigRecord,
 )
-from common_lib.modules.knowledge_hub.services.source_service import (
+from common_lib.modules.knowledge_engine.knowledge_hub.services.source_service import (
     _simulate_source_execution,
 )
 

@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine
 from sqlalchemy.pool import StaticPool
 
-from common_lib.modules.knowledge_hub.services.scraper_service import (
+from common_lib.modules.knowledge_engine.knowledge_hub.services.scraper_service import (
     ScraperService,
     ScraperError,
 )

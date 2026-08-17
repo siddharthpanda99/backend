@@ -15,14 +15,14 @@ from sqlalchemy.pool import StaticPool
 
 from common_lib.modules.knowledge_engine.models.db_records import KnowledgeChunkRecord
 
-from common_lib.modules.knowledge_hub.models import (
+from common_lib.modules.knowledge_engine.knowledge_hub.models import (
     IngestionPipelineRecord,
     KnowledgeProjectRecord,
     PacketRecord,
     SourceConfigRecord,
     SourceTypeRecord,
 )
-from common_lib.modules.knowledge_hub.seed_data import (
+from common_lib.modules.knowledge_engine.knowledge_hub.seed_data import (
     get_seed_pipelines,
     get_seed_projects,
     get_seed_source_configs,

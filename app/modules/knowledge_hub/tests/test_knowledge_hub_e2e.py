@@ -834,7 +834,7 @@ class TestAIImpactDataObject:
 
     def test_instantiate_data_object(self, db_session: Session) -> None:
         """AIImpactDataObject loads the AI Impact Research project."""
-        from common_lib.modules.knowledge_hub.agent_data_object import (
+        from common_lib.modules.knowledge_engine.knowledge_hub.agent_data_object import (
             AIImpactDataObject,
         )
 
@@ -843,7 +843,7 @@ class TestAIImpactDataObject:
         assert data_obj._project.name == "AI Impact Research"
 
     def test_get_project_summary(self, db_session: Session) -> None:
-        from common_lib.modules.knowledge_hub.agent_data_object import (
+        from common_lib.modules.knowledge_engine.knowledge_hub.agent_data_object import (
             AIImpactDataObject,
         )
 
@@ -855,7 +855,7 @@ class TestAIImpactDataObject:
         assert "available_methods" in summary
 
     def test_search_sources(self, db_session: Session) -> None:
-        from common_lib.modules.knowledge_hub.agent_data_object import (
+        from common_lib.modules.knowledge_engine.knowledge_hub.agent_data_object import (
             AIImpactDataObject,
         )
 
@@ -864,7 +864,7 @@ class TestAIImpactDataObject:
         assert isinstance(results, list)
 
     def test_get_packet_by_name(self, db_session: Session) -> None:
-        from common_lib.modules.knowledge_hub.agent_data_object import (
+        from common_lib.modules.knowledge_engine.knowledge_hub.agent_data_object import (
             AIImpactDataObject,
         )
 
@@ -875,7 +875,7 @@ class TestAIImpactDataObject:
         assert packet["verified"] is True
 
     def test_get_packet_not_found(self, db_session: Session) -> None:
-        from common_lib.modules.knowledge_hub.agent_data_object import (
+        from common_lib.modules.knowledge_engine.knowledge_hub.agent_data_object import (
             AIImpactDataObject,
         )
 
@@ -883,7 +883,7 @@ class TestAIImpactDataObject:
         assert data_obj.get_packet("NonExistent Packet") is None
 
     def test_get_verified_sources(self, db_session: Session) -> None:
-        from common_lib.modules.knowledge_hub.agent_data_object import (
+        from common_lib.modules.knowledge_engine.knowledge_hub.agent_data_object import (
             AIImpactDataObject,
         )
 
@@ -893,7 +893,7 @@ class TestAIImpactDataObject:
         assert all(s["status"] == "verified" for s in sources)
 
     def test_query_academic_papers(self, db_session: Session) -> None:
-        from common_lib.modules.knowledge_hub.agent_data_object import (
+        from common_lib.modules.knowledge_engine.knowledge_hub.agent_data_object import (
             AIImpactDataObject,
         )
 
@@ -902,7 +902,7 @@ class TestAIImpactDataObject:
         assert isinstance(papers, list)
 
     def test_query_news(self, db_session: Session) -> None:
-        from common_lib.modules.knowledge_hub.agent_data_object import (
+        from common_lib.modules.knowledge_engine.knowledge_hub.agent_data_object import (
             AIImpactDataObject,
         )
 
@@ -911,7 +911,7 @@ class TestAIImpactDataObject:
         assert isinstance(articles, list)
 
     def test_test_connection(self, db_session: Session) -> None:
-        from common_lib.modules.knowledge_hub.agent_data_object import (
+        from common_lib.modules.knowledge_engine.knowledge_hub.agent_data_object import (
             AIImpactDataObject,
         )
 
@@ -922,7 +922,7 @@ class TestAIImpactDataObject:
         assert "sample_data" in result
 
     def test_get_methods_schema(self, db_session: Session) -> None:
-        from common_lib.modules.knowledge_hub.agent_data_object import (
+        from common_lib.modules.knowledge_engine.knowledge_hub.agent_data_object import (
             AIImpactDataObject,
         )
 
@@ -933,7 +933,7 @@ class TestAIImpactDataObject:
         assert "test_connection" in schema
 
     def test_to_dict(self, db_session: Session) -> None:
-        from common_lib.modules.knowledge_hub.agent_data_object import (
+        from common_lib.modules.knowledge_engine.knowledge_hub.agent_data_object import (
             AIImpactDataObject,
         )
 

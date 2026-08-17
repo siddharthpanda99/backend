@@ -22,8 +22,8 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session
 
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.knowledge_hub.models import ScraperConfigRecord
-from common_lib.modules.knowledge_hub.services.scraper_service import (
+from common_lib.modules.knowledge_engine.knowledge_hub.models import ScraperConfigRecord
+from common_lib.modules.knowledge_engine.knowledge_hub.services.scraper_service import (
     ScraperService,
     ScraperError,
 )
