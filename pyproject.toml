@@ -66,6 +66,7 @@ nexus = "app.cli:main"
 dev = "app.cli:dev_server"
 db-up = "app.cli:db_up"
 node-server = "app.mcp.standalone_node_server:main"
+platform-mcp = "common_lib.modules.platform_mcp.server:main"
 
 [build-system]
 requires = ["hatchling"]

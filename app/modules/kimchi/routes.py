@@ -145,7 +145,7 @@ async def create_scope(req: ScopeRequest) -> Dict[str, Any]:
 
         # Provision the database if requested
         if req.database_type:
-            from common_lib.modules.db_provisioning.service import db_provisioner
+            from common_lib.modules.data_storage.db_provisioning.service import db_provisioner
             try:
                 db_url = db_provisioner.provision_db(project.name, req.database_type)
                 if db_url:

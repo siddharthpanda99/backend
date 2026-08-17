@@ -24,6 +24,12 @@ if str(BACKEND_ROOT) not in sys.path:
 # Register base PM SQLModel tables so FK references resolve in filtered create_all
 from common_lib.modules.project_management.models import Project, Issue, Team
 
+# pm_people_resources.user_id has FK to users.id — import User so the table is registered
+try:
+    from common_lib.modules.users.models import User  # noqa: F401
+except ImportError:
+    pass
+
 
 @pytest.fixture(autouse=True)
 def patch_get_session():

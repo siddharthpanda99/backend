@@ -229,7 +229,7 @@ lifecycle_modules = [
     "common_lib.modules.memory.config",
     "common_lib.modules.memory.service",
     "common_lib.vectorstores.factory",
-    "common_lib.modules.scheduler.service",
+    "common_lib.modules.core_infrastructure.scheduler.service",
     "app.modules.memories.dependencies",
     "app.modules.knowledge.models",
     "common_lib.templates.node_definitions.loader",

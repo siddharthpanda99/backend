@@ -7,6 +7,13 @@ import os
 import sys
 from pathlib import Path
 
+# Load environment variables from .env
+try:
+    import dotenv
+    dotenv.load_dotenv()
+except ImportError:
+    pass
+
 REPO_ROOT = Path(__file__).parent.parent.parent.resolve()
 COMMON_LIB_SRC = str(REPO_ROOT / "Python Libs" / "common_lib" / "src")
 if COMMON_LIB_SRC not in sys.path:
@@ -32,6 +39,8 @@ except ImportError:
     RICH_AVAILABLE = False
 
 from cli import agents
+from cli import orchestration
+from cli import workflows
 
 
 @click.group()
@@ -42,7 +51,9 @@ def cli():
 
 
 # Register subcommand groups
-cli.add_command(agents.cli, name="agent")
+cli.add_command(agents.cli, name="agent-template")
+cli.add_command(orchestration.cli, name="agent")
+cli.add_command(workflows.cli, name="workflow")
 
 
 # ============================================================
@@ -70,7 +81,7 @@ def sync_cmd(action):
                     memory_store=common_memory, templates_root=str(COMMON_LIB_TEMPLATES)
                 )
                 sync.sync_complete()
-            console.print("[bold green]✓[/bold green] Sync complete")
+            console.print("[bold green][OK][/bold green] Sync complete")
         else:
             click.echo("Syncing entities to database...")
             from common_lib.modules.orchestration.context.memory.services import (
@@ -428,98 +439,6 @@ def model_download(model_id):
     click.echo(f"Downloading {model_id}...")
     svc.download_model(model_id)
     click.echo("[OK] Download complete")
-
-
-# ============================================================
-# WORKFLOW
-# ============================================================
-@cli.group(name="workflow")
-def workflow_cmd():
-    """Manage workflows."""
-    pass
-
-
-@workflow_cmd.command(name="list")
-def workflow_list():
-    """List workflows."""
-    from common_lib.modules.orchestration.registry.search import WorkflowRegistry
-
-    registry = WorkflowRegistry()
-    workflows = registry.list_workflows()
-
-    if RICH_AVAILABLE:
-        table = Table(
-            title=f"Workflows ({len(workflows)} total)",
-            show_header=True,
-            header_style="bold cyan",
-        )
-        table.add_column("ID", style="green")
-        table.add_column("Name")
-        table.add_column("Category")
-        for w in workflows:
-            table.add_row(w.get("id", ""), w.get("name", ""), w.get("category", ""))
-        console.print(table)
-    else:
-        click.echo(f"Workflows: {len(workflows)}")
-        for w in workflows:
-            click.echo(f"  - {w.get('id')} ({w.get('category')})")
-
-
-@workflow_cmd.command(name="run")
-@click.argument("workflow_id")
-@click.option("--input", "-i", default="{}", help="Input JSON")
-@click.option("--stream", "-s", is_flag=True, help="Stream output")
-def workflow_run(workflow_id, input, stream):
-    """Run a workflow.
-
-    Examples:
-        nexus workflow run sd15 --input '{"prompt": "a cat"}'
-        nexus workflow run sd15 -i '{"prompt": "landscape"}' --stream
-    """
-    import json
-
-    base_url = os.environ.get("NEXUS_API_URL", "http://localhost:8000")
-    input_data = json.loads(input) if isinstance(input, str) else input
-
-    if RICH_AVAILABLE:
-        with console.status(f"[bold cyan]Running workflow: {workflow_id}..."):
-            try:
-                response = requests.post(
-                    f"{base_url}/api/v1/workflows/run",
-                    json={"workflow_id": workflow_id, "inputs": input_data},
-                    timeout=300,
-                )
-
-                if response.status_code == 200:
-                    result = response.json()
-                    console.print(f"[bold green]✓[/bold green] Workflow completed")
-                    if result.get("data"):
-                        console.print(
-                            Panel(
-                                str(result.get("data", {}))[:500],
-                                title="Result",
-                                border_style="cyan",
-                            )
-                        )
-                else:
-                    console.print(f"[bold red]Error:[/bold red] {response.status_code}")
-            except Exception as e:
-                console.print(f"[bold red]Error:[/bold red] {e}")
-    else:
-        click.echo(f"Running workflow: {workflow_id}...")
-        try:
-            response = requests.post(
-                f"{base_url}/api/v1/workflows/run",
-                json={"workflow_id": workflow_id, "inputs": input_data},
-                timeout=300,
-            )
-            if response.status_code == 200:
-                click.echo("[OK] Workflow completed")
-            else:
-                click.echo(f"Error: {response.status_code}")
-        except Exception as e:
-            click.echo(f"Error: {e}")
-
 
 # ============================================================
 # SESSION - Agent chat sessions

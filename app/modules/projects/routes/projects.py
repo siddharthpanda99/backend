@@ -2,12 +2,12 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import Session
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.projects.schemas import (
+from common_lib.modules.project_management.projects_core.schemas import (
     ProjectRead,
     ProjectCreate,
     ProjectUpdate,
 )
-from common_lib.modules.projects.service import ProjectService
+from common_lib.modules.project_management.projects_core.service import ProjectService
 from common_lib.modules.auth.authorization import PlatformIdentity, log_crud_mutation
 from app.modules.auth.dependencies import require_permission, require_tenant
 
@@ -69,7 +69,7 @@ def create_project(
     
     # Provision the database if requested
     if project_in.database_type:
-        from common_lib.modules.db_provisioning.service import db_provisioner
+        from common_lib.modules.data_storage.db_provisioning.service import db_provisioner
         try:
             db_url = db_provisioner.provision_db(result.slug, project_in.database_type)
             # We would update the project record here with the db_url

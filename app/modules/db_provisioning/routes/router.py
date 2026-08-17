@@ -1,6 +1,6 @@
 """DB Provisioning module API routes — Database provisioning via Docker/SQLite.
 
-Thin routing layer that delegates to common_lib.modules.db_provisioning.service.
+Thin routing layer that delegates to common_lib.modules.data_storage.db_provisioning.service.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ class ProvisionRequest(BaseModel):
 
 
 def _get_service():
-    from common_lib.modules.db_provisioning.service import DatabaseProvisionerService
+    from common_lib.modules.data_storage.db_provisioning.service import DatabaseProvisionerService
     return DatabaseProvisionerService()
 
 

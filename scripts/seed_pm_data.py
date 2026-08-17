@@ -12,7 +12,7 @@ from common_lib.modules.data_storage.database.connection import get_session
 from common_lib.modules.project_management.models import (
     Organization, Workspace, Portfolio, IssueType, WorkflowStatus, Issue
 )
-from common_lib.modules.projects.models import Project
+from common_lib.modules.project_management.projects_core.models import Project
 
 def seed_pm_data():
     db = next(get_session())

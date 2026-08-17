@@ -767,6 +767,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "faster-whisper", marker = "extra == 'audio'", specifier = ">=1.0.0" },
     { name = "fpdf2", specifier = ">=2.8.7" },
+    { name = "fpdf2", marker = "extra == 'reporting'", specifier = ">=2.8.7" },
     { name = "hf-xet", marker = "extra == 'vision'" },
     { name = "httpx", specifier = ">=0.25.0" },
     { name = "huggingface-hub", marker = "extra == 'vision'", specifier = ">=0.20.0" },
@@ -774,6 +775,7 @@ requires-dist = [
     { name = "influxdb-client", marker = "extra == 'etl'", specifier = ">=1.38.0" },
     { name = "insightface", marker = "extra == 'vision'", specifier = "==0.7.3" },
     { name = "jinja2", specifier = ">=3.1.2" },
+    { name = "jinja2", marker = "extra == 'reporting'", specifier = ">=3.1.2" },
     { name = "jmespath" },
     { name = "joblib", marker = "extra == 'vision'", specifier = ">=1.3.0" },
     { name = "langchain-core", specifier = ">=1.2.9" },
@@ -786,6 +788,8 @@ requires-dist = [
     { name = "librosa", marker = "extra == 'audio'", specifier = ">=0.10.0" },
     { name = "litellm", marker = "extra == 'agents'", specifier = ">=1.40.0" },
     { name = "llama-cpp-python", marker = "extra == 'agents'", specifier = ">=0.2.0" },
+    { name = "markdown", marker = "extra == 'reporting'", specifier = ">=3.5.0" },
+    { name = "matplotlib", marker = "extra == 'reporting'", specifier = ">=3.7.0" },
     { name = "mediapipe", marker = "extra == 'vision'", specifier = ">=0.10.0" },
     { name = "midiutil", marker = "extra == 'audio'", specifier = ">=1.2.1" },
     { name = "mido", marker = "extra == 'audio'", specifier = ">=1.3.0" },
@@ -799,6 +803,7 @@ requires-dist = [
     { name = "onnxruntime-gpu", marker = "extra == 'vision'", specifier = ">=1.17.0", index = "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/" },
     { name = "opencv-contrib-python", specifier = ">=4.10.0.84,<6.0.0" },
     { name = "opencv-contrib-python-headless", marker = "extra == 'vision'", specifier = ">=4.8.0,<5.0.0" },
+    { name = "openpyxl", marker = "extra == 'reporting'", specifier = ">=3.1.0" },
     { name = "opentelemetry-api", specifier = ">=1.27.0" },
     { name = "opentelemetry-api", marker = "extra == 'observability'", specifier = ">=1.20.0" },
     { name = "opentelemetry-exporter-jaeger", marker = "extra == 'observability'", specifier = ">=1.20.0" },
@@ -836,9 +841,11 @@ requires-dist = [
     { name = "pyrubberband", marker = "extra == 'audio'", specifier = ">=0.4.0" },
     { name = "pytesseract", marker = "extra == 'vision'", specifier = ">=0.3.10" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "python-docx", marker = "extra == 'reporting'", specifier = ">=1.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "python-jose", extras = ["cryptography"], specifier = ">=3.3.0" },
     { name = "python-json-logger", specifier = ">=2.0.0" },
+    { name = "python-pptx", marker = "extra == 'reporting'", specifier = ">=0.6.23" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "qrcode", extras = ["pil"] },
     { name = "rawpy" },
@@ -871,7 +878,7 @@ requires-dist = [
     { name = "xformers", marker = "extra == 'vision'", specifier = ">=0.0.21" },
     { name = "youtube-transcript-api", marker = "extra == 'connectors'", specifier = ">=0.6.1" },
 ]
-provides-extras = ["database", "agents", "vision", "audio", "observability", "connectors", "etl", "security", "denoising", "audio-ml", "aura-full", "etl-all", "all"]
+provides-extras = ["reporting", "database", "agents", "vision", "audio", "observability", "connectors", "etl", "security", "denoising", "audio-ml", "aura-full", "etl-all", "all"]
 
 [package.metadata.requires-dev]
 dev = [
