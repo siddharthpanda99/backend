@@ -1,6 +1,6 @@
 """Module 28 — API Layer, WebSocket & MCP Integration MCP tools."""
 from typing import Any, Dict, List, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 from common_lib.modules.db_studio.api_integration.service import ApiIntegrationService
 

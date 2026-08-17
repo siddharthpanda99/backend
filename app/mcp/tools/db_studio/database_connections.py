@@ -1,6 +1,6 @@
 import logging
 from typing import List, Dict, Any, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 logger = logging.getLogger("mcp.tools.database_connections")
 

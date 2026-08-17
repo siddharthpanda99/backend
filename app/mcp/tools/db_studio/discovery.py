@@ -4,7 +4,7 @@ Agent-facing tools for search, catalog, glossary, tags, relationships,
 recommendations, and dashboard.
 """
 from typing import Any, Dict, List, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 from common_lib.modules.db_studio.discovery.service import DiscoveryService
 

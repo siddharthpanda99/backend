@@ -1,6 +1,6 @@
 """Module 29 — Backend Architecture & Folder Structure MCP tools."""
 from typing import Any, Dict, List, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 from common_lib.modules.db_studio.backend_architecture.service import ArchitectureService
 

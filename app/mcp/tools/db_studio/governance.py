@@ -4,7 +4,7 @@ Agent-facing tools for lineage graph, policies, classifications,
 ownership, stewardship, compliance, retention, and impact analysis.
 """
 from typing import Any, Dict, List, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 from common_lib.modules.db_studio.governance.service import GovernanceService
 

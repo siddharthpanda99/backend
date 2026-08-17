@@ -1,6 +1,6 @@
 """Module 30 — Frontend Architecture & Design System MCP tools."""
 from typing import Any, Dict, List, Optional
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 from common_lib.modules.db_studio.frontend_design.service import DesignSystemService
 
