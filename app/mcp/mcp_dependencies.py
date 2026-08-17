@@ -3,7 +3,7 @@ from common_lib.modules.agents.service import agent_service
 from common_lib.modules.memory.service import MemoryService
 from common_lib.modules.system.service import SystemService
 from common_lib.modules.ai_models.container import AIModelsContainer
-from common_lib.modules.projects.service import ProjectService
+from common_lib.modules.project_management.projects_core.service import ProjectService
 from common_lib.modules.data_storage.database.connection import get_session
 
 
@@ -128,7 +128,7 @@ def resolve_notification_service():
 
 def resolve_daw_service():
     """Helper to get DAW service."""
-    from common_lib.modules.daw.service import daw_service
+    from common_lib.modules.audio_processing.daw.service import daw_service
 
     return daw_service
 
@@ -142,7 +142,7 @@ def resolve_dip_service():
 
 def resolve_user_service():
     """Helper to get user service."""
-    from common_lib.modules.users.service import UserService
+    from common_lib.modules.auth.users.service import UserService
 
     return UserService
 

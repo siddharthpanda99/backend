@@ -13,7 +13,7 @@ Usage:
 
 import logging
 
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 from app.mcp.node_bridge import register_dynamic_node_tools
 
@@ -40,7 +40,7 @@ def _ensure_nodes() -> None:
     if _NODES:
         return
     try:
-        from common_lib.modules.nodes_registry import discover_nodes
+        from common_lib.modules.plugins.nodes_registry import discover_nodes
 
         _NODES[:] = [n.to_dict() for n in discover_nodes()]
     except Exception as exc:

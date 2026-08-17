@@ -113,7 +113,7 @@ async def lifespan(app: FastAPI):
                 traceback.print_exc()
 
             try:
-                from common_lib.modules.keys_management.service import (
+                from common_lib.modules.secrets_manager.keys_management.service import (
                     KeyManagementService,
                 )
 
@@ -172,10 +172,10 @@ async def lifespan(app: FastAPI):
                     from common_lib.modules.plugins.connectors.models.db import (
                         ConnectionRecord,
                     )
-                    from common_lib.modules.keys_management.service import (
+                    from common_lib.modules.secrets_manager.keys_management.service import (
                         KeyManagementService,
                     )
-                    from common_lib.modules.keys_management.schemas import (
+                    from common_lib.modules.secrets_manager.keys_management.schemas import (
                         ApiKeyCreate,
                         KeyProvider,
                     )
@@ -257,7 +257,7 @@ async def lifespan(app: FastAPI):
 
             # --- SEED: Knowledge Hub initial data ---
             try:
-                from common_lib.modules.knowledge_hub.seed_data import seed_all
+                from common_lib.modules.knowledge_engine.knowledge_hub.seed_data import seed_all
                 from sqlmodel import Session as KHSession
 
                 with KHSession(engine) as kh_seed:
@@ -275,7 +275,7 @@ async def lifespan(app: FastAPI):
 
             # --- SEED: Rules Engine default rules ---
             try:
-                from common_lib.modules.rules_engine.definition.registry import (
+                from common_lib.modules.governance.rules_engine.definition.registry import (
                     seed_default_rules,
                 )
 
@@ -990,7 +990,7 @@ async def lifespan(app: FastAPI):
 
     # Start scheduler cron loops
     try:
-        from common_lib.modules.scheduler.service import get_scheduler_service
+        from common_lib.modules.core_infrastructure.scheduler.service import get_scheduler_service
 
         scheduler = get_scheduler_service()
         scheduler.load_from_disk()
@@ -1158,7 +1158,7 @@ async def lifespan(app: FastAPI):
 
     # Stop scheduler cron loops
     try:
-        from common_lib.modules.scheduler.service import get_scheduler_service
+        from common_lib.modules.core_infrastructure.scheduler.service import get_scheduler_service
 
         scheduler = get_scheduler_service()
         await scheduler.stop_all()

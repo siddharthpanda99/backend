@@ -82,6 +82,12 @@ def _team_router():
     return router
 
 
+def _reporting_router():
+    from app.modules.reporting.routes import router
+
+    return router
+
+
 def _orchestration_router():
     from app.modules.orchestration import router
 
@@ -114,6 +120,18 @@ def _kimchi_router():
 
 def _ferment_router():
     from app.modules.ferment.routes.router import router
+
+    return router
+
+
+def _reasoning_router():
+    from app.modules.reasoning.routes import router
+
+    return router
+
+
+def _agentic_pipelines_router():
+    from app.modules.agentic_pipelines.routes import router
 
     return router
 
@@ -264,7 +282,10 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.dip.routes.embeddings import router as dip_embeddings_router
     from app.modules.dip.routes.extraction import router as dip_extraction_router
     from app.modules.file_browser import router as file_browser_router
-    from app.modules.file_browser.macro_routes import router as macro_router
+    try:
+        from app.modules.file_browser.macro_routes import router as macro_router
+    except ImportError:
+        macro_router = None  # macro_service not yet implemented
     from app.modules.notification.routes import router as notification_router
     from app.modules.wildcards.routes import router as wildcards_router
     from app.modules.sam3.routes import router as sam3_router
@@ -552,6 +573,11 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
         return router
 
+    def _toolchain_router():
+        from app.modules.toolchain import router
+
+        return router
+
     def _secrets_manager_routers() -> list:
         """Build router entries for the Secrets Manager multi-router package."""
         from app.modules.secrets_manager.routes import (
@@ -566,6 +592,14 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             proxy_router,
             kubernetes_router,
             cloud_router,
+            seal_router,
+            engine_router,
+            event_router,
+            scanning_router,
+            replication_router,
+            plugin_router,
+            monitoring_router,
+            import_export_router,
         )
 
         return [
@@ -633,6 +667,56 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
                 "router": cloud_router,
                 "prefix": "/secrets",
                 "tags": ["Secrets Manager — Cloud"],
+                "auth": True,
+            },
+            # Self-baked routers — define full /secrets/* paths themselves,
+            # so they must be mounted with prefix="" (NOT "/secrets").
+            {
+                "router": seal_router,
+                "prefix": "",
+                "tags": ["Secrets Manager — Seal"],
+                "auth": True,
+            },
+            {
+                "router": engine_router,
+                "prefix": "",
+                "tags": ["Secrets Manager — Engines"],
+                "auth": True,
+            },
+            {
+                "router": event_router,
+                "prefix": "",
+                "tags": ["Secrets Manager — Events"],
+                "auth": True,
+            },
+            {
+                "router": scanning_router,
+                "prefix": "",
+                "tags": ["Secrets Manager — Scanning"],
+                "auth": True,
+            },
+            {
+                "router": replication_router,
+                "prefix": "",
+                "tags": ["Secrets Manager — Replication"],
+                "auth": True,
+            },
+            {
+                "router": plugin_router,
+                "prefix": "",
+                "tags": ["Secrets Manager — Plugins"],
+                "auth": True,
+            },
+            {
+                "router": monitoring_router,
+                "prefix": "",
+                "tags": ["Secrets Manager — Monitoring"],
+                "auth": True,
+            },
+            {
+                "router": import_export_router,
+                "prefix": "",
+                "tags": ["Secrets Manager — Import/Export"],
                 "auth": True,
             },
         ]
@@ -1109,12 +1193,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["file-browser"],
             "auth": True,
         },
-        {
-            "router": macro_router,
-            "prefix": "/file-browser",
-            "tags": ["macros"],
-            "auth": True,
-        },
+        *([{"router": macro_router, "prefix": "/file-browser", "tags": ["macros"], "auth": True}] if macro_router is not None else []),
         # ── Marketplace & Graph ────────────────────────────────────
         {
             "router": marketplace_router,
@@ -1204,6 +1283,27 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["Ferment"],
             "auth": True,
         },
+        # ── Reasoning Mode (requirements & plan checklist) ─────────
+        {
+            "router": _reasoning_router(),
+            "prefix": "/reasoning",
+            "tags": ["Reasoning"],
+            "auth": True,
+        },
+        # ── Toolchain Builder (routing visualizer) ──────────────────
+        {
+            "router": _toolchain_router(),
+            "prefix": "/toolchain",
+            "tags": ["Toolchain Builder"],
+            "auth": True,
+        },
+        # ── Agentic Pipelines (runnable agentic workflows) ──────────
+        {
+            "router": _agentic_pipelines_router(),
+            "prefix": "/agentic-pipelines",
+            "tags": ["Agentic Pipelines"],
+            "auth": True,
+        },
         # ── DAW ────────────────────────────────────────────────────
         {"router": daw_router, "prefix": "/daw", "tags": ["DAW"], "auth": True},
         # ── Sync ───────────────────────────────────────────────────
@@ -1244,6 +1344,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         },
         # ── Team ───────────────────────────────────────────────────
         {"router": _team_router(), "prefix": "", "tags": ["Team"], "auth": True},
+        # ── Reporting (Universal Reporting Platform) ───────────────
+        {
+            "router": _reporting_router(),
+            "prefix": "/reporting",
+            "tags": ["Reporting"],
+            "auth": True,
+        },
         # ── HITL Policy Builder ────────────────────────────────────
         {
             "router": _hitl_router(),
@@ -1579,6 +1686,15 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         },
         # ── Secrets Manager ───────────────────────────
         *_secrets_manager_routers(),
+        # ── Image Intelligence Platform ───────────────────────────
+        {
+            "router": __import__(
+                "app.routers.image_router", fromlist=["router"]
+            ).router,
+            "prefix": "",
+            "tags": ["Image Intelligence Platform"],
+            "auth": True,
+        },
     ]
 
     for entry in ROUTER_DEFINITIONS:

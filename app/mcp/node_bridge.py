@@ -16,7 +16,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Union, get_args, get_origin
 
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 logger = logging.getLogger("node_bridge")
 
@@ -247,7 +247,7 @@ def register_dynamic_node_tools(mcp: FastMCP, limit: Optional[int] = None) -> in
         Number of tools successfully registered.
     """
     try:
-        from common_lib.modules.nodes_registry import discover_nodes as _discover
+        from common_lib.modules.plugins.nodes_registry import discover_nodes as _discover
     except ImportError as e:
         logger.error("Cannot import discover_nodes: %s", e)
         return 0
