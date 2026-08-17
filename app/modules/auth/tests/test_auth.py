@@ -432,7 +432,7 @@ class TestAuthRoutes:
 
     def test_logout_route(self):
         """POST /auth/logout revokes tokens for authenticated user."""
-        from common_lib.modules.users.models import User
+        from common_lib.modules.auth.users.models import User
         from fastapi.testclient import TestClient
 
         mock_session = MagicMock()
@@ -457,7 +457,7 @@ class TestAuthRoutes:
 
     def test_me_route(self):
         """GET /auth/me returns current user profile."""
-        from common_lib.modules.users.models import User
+        from common_lib.modules.auth.users.models import User
         from fastapi.testclient import TestClient
 
         mock_session = MagicMock()
@@ -492,7 +492,7 @@ class TestAuthRoutes:
 
     def test_change_password_route(self):
         """POST /auth/change-password updates password for authenticated user."""
-        from common_lib.modules.users.models import User
+        from common_lib.modules.auth.users.models import User
         from fastapi.testclient import TestClient
 
         mock_session = MagicMock()
@@ -524,7 +524,7 @@ class TestAuthRoutes:
 
     def test_change_password_mismatch(self):
         """POST /auth/change-password returns 400 when new passwords don't match."""
-        from common_lib.modules.users.models import User
+        from common_lib.modules.auth.users.models import User
         from fastapi.testclient import TestClient
 
         mock_session = MagicMock()
@@ -590,7 +590,7 @@ class TestAuthRoutes:
 
     def test_admin_only_route(self):
         """GET /auth/admin-only is behind RoleChecker — returns 403 for non-admin."""
-        from common_lib.modules.users.models import User
+        from common_lib.modules.auth.users.models import User
         from fastapi.testclient import TestClient
 
         mock_session = MagicMock()

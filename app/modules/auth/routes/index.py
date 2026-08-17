@@ -18,7 +18,7 @@ from common_lib.modules.auth.schemas import (
 )
 from common_lib.modules.auth.service import auth_service
 from app.modules.auth.dependencies import get_current_active_user, RoleChecker
-from common_lib.modules.users.models import User
+from common_lib.modules.auth.users.models import User
 from fastapi.security import OAuth2PasswordRequestForm
 
 router = APIRouter()

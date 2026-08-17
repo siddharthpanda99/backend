@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from common_lib.modules.data_storage.database.connection import get_session
 from app.modules.auth.dependencies import get_current_active_user
-from common_lib.modules.users.models import User
+from common_lib.modules.auth.users.models import User
 
 logger = logging.getLogger(__name__)
 

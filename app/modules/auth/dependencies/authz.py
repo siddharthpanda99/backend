@@ -2,7 +2,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 from sqlmodel import Session
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.users.models import User
+from common_lib.modules.auth.users.models import User
 from common_lib.modules.auth.authorization import (
     AuthzChecker,
     PlatformIdentity,
@@ -23,9 +23,11 @@ async def get_current_active_user(
 ) -> User:
     auth_header = request.headers.get("Authorization", "")
     from app.core.settings import get_settings
-    
-    # DEV BYPASS: If no auth header or DISABLE_AUTH is set, fallback to User 1
-    if get_settings().DISABLE_AUTH or not auth_header.startswith("Bearer "):
+
+    # DEV BYPASS: Only when auth is explicitly disabled (DISABLE_AUTH=True).
+    # When auth is enabled, a missing/malformed Authorization header must
+    # resolve to 401 — NOT silently fall back to a dev user (security hole).
+    if get_settings().DISABLE_AUTH:
         user = session.get(User, 1)
         if not user:
             user = User(id=1, email="dev@example.com", username="dev_user", is_active=True, full_name="Dev User")
@@ -39,6 +41,12 @@ async def get_current_active_user(
             email=user.email,
         )
         return user
+
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
 
     token = auth_header[7:]
     try:
