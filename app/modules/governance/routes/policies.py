@@ -7,7 +7,7 @@ from common_lib.modules.governance.policy.service import get_policy_service
 from common_lib.modules.governance.models.policies import Policy, Rule
 from sqlmodel import Session, select
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.rules_engine.models import (
+from common_lib.modules.governance.rules_engine.models import (
     PolicyGroupModel,
     PolicyGroupPolicyLink,
     PolicyModel

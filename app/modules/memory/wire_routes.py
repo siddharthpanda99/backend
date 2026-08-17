@@ -77,7 +77,7 @@ router.include_router(enrichment_router)
 wildcard_routes = []
 static_routes = []
 for r in router.routes:
-    if r.path == "/{memory_id}":
+    if getattr(r, "path", None) == "/{memory_id}":
         wildcard_routes.append(r)
     else:
         static_routes.append(r)

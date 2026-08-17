@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.modules.common.types.index import APIResponse
-from common_lib.modules.sam3.service import get_sam3_service, check_sam3_status
+from common_lib.modules.image_processing.sam3.service import get_sam3_service, check_sam3_status
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +184,7 @@ async def model_status():
 @router.get("/features", response_model=APIResponse)
 async def list_features():
     """Return the full catalog of 150+ SAM3 segmentation features organized by category."""
-    from common_lib.modules.sam3.features_catalog import FEATURES_CATALOG
+    from common_lib.modules.image_processing.sam3.features_catalog import FEATURES_CATALOG
 
     return APIResponse(
         status="success",

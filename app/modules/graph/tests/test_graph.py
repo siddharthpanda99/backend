@@ -37,7 +37,7 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from common_lib.modules.graph.schemas import GraphNode, GraphEdge, GraphResponse
+from common_lib.modules.knowledge_engine.graph.schemas import GraphNode, GraphEdge, GraphResponse
 
 
 # ── Sample data ────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Query, HTTPException, Body
 from typing import Optional, List, Dict
 
-from common_lib.modules.file_browser.macro_service import (
+from common_lib.modules.file_system.macro_service import (
     create_macro,
     get_macro,
     get_macros,
@@ -26,7 +26,7 @@ from common_lib.modules.file_browser.macro_service import (
     get_macro_categories,
     get_macro_stats,
 )
-from common_lib.modules.file_browser.macro_types import (
+from common_lib.modules.file_system.macro_types import (
     MacroCreate,
     MacroUpdate,
     MacroResponse,
@@ -45,7 +45,7 @@ from common_lib.modules.file_browser.macro_types import (
     BulkMacroDelete,
     BulkMacroEnable,
 )
-from common_lib.modules.file_browser.types import ApiResponse
+from common_lib.modules.file_system.types import ApiResponse
 
 router = APIRouter(prefix="/macros", tags=["macros"])
 

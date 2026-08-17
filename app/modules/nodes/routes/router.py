@@ -3,7 +3,7 @@ Nodes Catalog API
 
 Unified endpoint for node definitions with rich metadata for Nodes Studio.
 Surfaces **every** @node-decorated function across the codebase via the global
-node registry (common_lib.modules.nodes_registry), which AST-scans all modules
+node registry (common_lib.modules.plugins.nodes_registry), which AST-scans all modules
 and aggregates nodes regardless of package.
 """
 
@@ -35,11 +35,11 @@ async def nodes_catalog(
     """
     Return the full catalog of **all** discovered @node functions with rich metadata.
 
-    Powered by the global node registry (common_lib.modules.nodes_registry), which
+    Powered by the global node registry (common_lib.modules.plugins.nodes_registry), which
     scans every module — so nodes defined outside image_processing (scaffolder,
     data_pipeline, memory, workflows, plugins, ...) are included too.
     """
-    from common_lib.modules.nodes_registry import get_node_registry
+    from common_lib.modules.plugins.nodes_registry import get_node_registry
 
     try:
         registry = get_node_registry()
@@ -87,7 +87,7 @@ async def node_detail(node_id: str):
     """
     Return detailed metadata for a specific node.
     """
-    from common_lib.modules.nodes_registry import get_node_registry
+    from common_lib.modules.plugins.nodes_registry import get_node_registry
 
     try:
         registry = get_node_registry()
@@ -141,7 +141,7 @@ async def node_detail(node_id: str):
 @router.get("/categories", response_model=NodeCatalogResponse)
 async def node_categories():
     """Return all node categories with node counts."""
-    from common_lib.modules.nodes_registry import get_node_registry
+    from common_lib.modules.plugins.nodes_registry import get_node_registry
 
     try:
         registry = get_node_registry()

@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.modules.common.types.index import APIResponse
-from common_lib.modules.prompts.services.prompt_import_service import (
+from common_lib.modules.prompt_studio.prompts.services.prompt_import_service import (
     PromptImportService,
 )
 from common_lib.modules.image_processing.functions.text.dynamic_engine.services.wildcard_resolver import (

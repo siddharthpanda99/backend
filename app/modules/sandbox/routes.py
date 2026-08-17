@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from common_lib.modules.sandbox.sandbox_service import get_sandbox_service
+from common_lib.modules.core_infrastructure.sandbox.sandbox_service import get_sandbox_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sandbox", tags=["Sandbox"])

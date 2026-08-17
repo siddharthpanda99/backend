@@ -5,8 +5,8 @@ from sqlmodel import Session
 
 from app.modules.common.types.index import APIResponse
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.credentials.models import Credential
-from common_lib.modules.credentials.service import CredentialsService
+from common_lib.modules.security.credentials.models import Credential
+from common_lib.modules.security.credentials.service import CredentialsService
 
 logger = logging.getLogger(__name__)
 

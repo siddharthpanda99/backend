@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, delete as sql_delete
 
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.events.delivery_engine import DeliveryEngine
+from common_lib.modules.integration.events.delivery_engine import DeliveryEngine
 from ..models import WebhookDeliveryRecord, WebhookEndpointRecord
 from ..schemas import (
     DeliveryCreate,

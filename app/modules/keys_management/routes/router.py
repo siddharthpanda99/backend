@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import select
 
 from app.modules.common.types.index import APIResponse
-from common_lib.modules.keys_management.models import Settings, Model
-from common_lib.modules.keys_management import (
+from common_lib.modules.secrets_manager.keys_management.models import Settings, Model
+from common_lib.modules.secrets_manager.keys_management import (
     KeyManagementService,
     ApiKeyCreate,
     ApiKeyUpdate,

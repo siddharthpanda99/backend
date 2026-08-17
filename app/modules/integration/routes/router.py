@@ -119,7 +119,7 @@ async def integration_status(
             get_trigger_integration,
         )
         from common_lib.modules.hooks.integration_adapter import get_hook_integration
-        from common_lib.modules.rules_engine.integration_adapter import (
+        from common_lib.modules.governance.rules_engine.integration_adapter import (
             get_rules_integration,
         )
 
@@ -370,7 +370,7 @@ async def rule_stats(
 ):
     """Get rules integration statistics."""
     try:
-        from common_lib.modules.rules_engine.integration_adapter import (
+        from common_lib.modules.governance.rules_engine.integration_adapter import (
             get_rules_integration,
         )
 

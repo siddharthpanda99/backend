@@ -18,7 +18,7 @@ from common_lib.modules.settings.settings_storage import (
     get_settings_service,
 )
 from common_lib.modules.settings.rate_limiter import get_log_viewer_limiter
-from common_lib.modules.users.models import User
+from common_lib.modules.auth.users.models import User
 from common_lib.modules.settings.log_service import get_log_levels, set_log_level
 from common_lib.modules.settings.team_service import (
     get_all_members,

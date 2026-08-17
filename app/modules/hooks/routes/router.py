@@ -261,7 +261,7 @@ _dlq_engine = None
 def get_dlq_engine():
     global _dlq_engine
     if _dlq_engine is None:
-        from common_lib.modules.rules_engine.resilience.retry import DLQEngine
+        from common_lib.modules.governance.rules_engine.resilience.retry import DLQEngine
         _dlq_engine = DLQEngine()
         # Seed default/mock entries to populate the DLQ in the UI
         _dlq_engine.add(

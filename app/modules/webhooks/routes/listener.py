@@ -17,12 +17,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.events.event_models import (
+from common_lib.modules.integration.events.event_models import (
     PlatformEvent,
     EventSource,
     EventSeverity,
 )
-from common_lib.modules.events.workflow_mapper import get_workflow_mapper
+from common_lib.modules.integration.events.workflow_mapper import get_workflow_mapper
 from common_lib.modules.integration.core.event_router import get_event_router
 from ..models import WebhookEndpointRecord, WebhookDeliveryRecord
 from ..schemas import InboundEventRequest, InboundEventResponse

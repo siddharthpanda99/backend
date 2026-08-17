@@ -378,7 +378,7 @@ async def fetch_mcp_tools(app_id: str, server_url: str = "", timeout_seconds: in
         raise HTTPException(status_code=400, detail="server_url is required")
 
     # Try MCP client
-    from common_lib.modules.tools.registry import get_tool_registry
+    from common_lib.modules.core_infrastructure.tools.registry import get_tool_registry
 
     try:
         registry = await get_tool_registry()

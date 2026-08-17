@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 import json
 
-from common_lib.modules.file_browser.service import (
+from common_lib.modules.file_system.service import (
     list_files,
     get_file,
     create_folder,
@@ -75,7 +75,7 @@ from common_lib.modules.file_browser.service import (
     _row_to_file,
     _engine,
 )
-from common_lib.modules.file_browser.types import (
+from common_lib.modules.file_system.types import (
     FileListResponse,
     FileNodeResponse,
     DirectoryNode,
@@ -297,7 +297,7 @@ async def upload_alias_handler(
 @router.get("/upload/{session_id}/status")
 async def get_upload_status_handler(session_id: str):
     """Get upload session status with chunk info."""
-    from common_lib.modules.file_browser.service import get_upload_session_status
+    from common_lib.modules.file_system.service import get_upload_session_status
 
     status = get_upload_session_status(session_id)
     if not status:
@@ -308,7 +308,7 @@ async def get_upload_status_handler(session_id: str):
 @router.get("/upload/{session_id}/resume")
 async def resume_upload_handler(session_id: str):
     """Get info about which chunks are missing for resuming."""
-    from common_lib.modules.file_browser.service import resume_upload_session
+    from common_lib.modules.file_system.service import resume_upload_session
 
     return resume_upload_session(session_id)
 
@@ -583,7 +583,7 @@ async def get_storage_stats_handler():
 @router.get("/tags")
 async def get_tags_handler():
     """Get all tags."""
-    from common_lib.modules.file_browser.service import get_all_tags
+    from common_lib.modules.file_system.service import get_all_tags
 
     return get_all_tags()
 
@@ -591,7 +591,7 @@ async def get_tags_handler():
 @router.get("/labels")
 async def get_labels_handler():
     """Get all labels."""
-    from common_lib.modules.file_browser.service import get_all_labels
+    from common_lib.modules.file_system.service import get_all_labels
 
     return get_all_labels()
 
@@ -875,7 +875,7 @@ class CommentRequest(BaseModel):
 
 @router.post("/files/{file_id}/comments")
 async def add_comment_handler(file_id: str, request: CommentRequest):
-    from common_lib.modules.file_browser.service import add_file_comment
+    from common_lib.modules.file_system.service import add_file_comment
 
     result = add_file_comment(file_id, request.user_id, request.content)
     return result
@@ -883,7 +883,7 @@ async def add_comment_handler(file_id: str, request: CommentRequest):
 
 @router.get("/files/{file_id}/comments")
 async def list_comments_handler(file_id: str):
-    from common_lib.modules.file_browser.service import get_file_comments
+    from common_lib.modules.file_system.service import get_file_comments
 
     return get_file_comments(file_id)
 
@@ -898,21 +898,21 @@ class LockRequest(BaseModel):
 
 @router.post("/files/{file_id}/lock")
 async def lock_file_handler(file_id: str, request: LockRequest):
-    from common_lib.modules.file_browser.service import lock_file
+    from common_lib.modules.file_system.service import lock_file
 
     return lock_file(file_id, request.user_id, request.reason)
 
 
 @router.delete("/files/{file_id}/lock")
 async def unlock_file_handler(file_id: str, user_id: str = "anonymous"):
-    from common_lib.modules.file_browser.service import unlock_file
+    from common_lib.modules.file_system.service import unlock_file
 
     return unlock_file(file_id, user_id)
 
 
 @router.get("/files/{file_id}/lock")
 async def get_lock_handler(file_id: str):
-    from common_lib.modules.file_browser.service import get_file_lock
+    from common_lib.modules.file_system.service import get_file_lock
 
     result = get_file_lock(file_id)
     if not result:
@@ -925,7 +925,7 @@ async def get_lock_handler(file_id: str):
 
 @router.post("/files/{file_id}/encrypt")
 async def encrypt_file_handler(file_id: str):
-    from common_lib.modules.file_browser.service import encrypt_file
+    from common_lib.modules.file_system.service import encrypt_file
 
     result = encrypt_file(file_id)
     if not result:
@@ -935,7 +935,7 @@ async def encrypt_file_handler(file_id: str):
 
 @router.post("/files/{file_id}/decrypt")
 async def decrypt_file_handler(file_id: str):
-    from common_lib.modules.file_browser.service import decrypt_file
+    from common_lib.modules.file_system.service import decrypt_file
 
     result = decrypt_file(file_id)
     if not result:

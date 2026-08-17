@@ -2,8 +2,8 @@
 import pytest
 from uuid import uuid4
 
-from common_lib.modules.grid.models import GridConfig
-from common_lib.modules.grid.service import grid_service, NotFoundError
+from common_lib.modules.data_storage.grid.models import GridConfig
+from common_lib.modules.data_storage.grid.service import grid_service, NotFoundError
 from common_lib.modules.data_storage.database.connection import get_session
 
 

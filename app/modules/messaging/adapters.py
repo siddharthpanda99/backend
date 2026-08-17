@@ -12,7 +12,7 @@ Usage (in app startup):
 import logging
 from typing import Dict, Any
 
-from common_lib.modules.messaging import (
+from common_lib.modules.notification.messaging import (
     get_messaging_gateway,
     MessageChannel,
     Message,

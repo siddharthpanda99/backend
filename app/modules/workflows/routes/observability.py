@@ -104,6 +104,78 @@ def get_trace_node_metrics(trace_id: str, session: Session = Depends(get_session
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.get("/executions/{trace_id}/export")
+def export_execution(trace_id: str, format: str = "json", session: Session = Depends(get_session)):
+    from common_lib.modules.workflows.standard.models.observability import WorkflowExecution, WorkflowEvent
+    from fastapi.responses import StreamingResponse
+    import json
+    import yaml
+    
+    exec_info = session.get(WorkflowExecution, trace_id)
+    if not exec_info:
+        raise HTTPException(status_code=404, detail=f"Execution not found: {trace_id}")
+    
+    events_stmt = select(WorkflowEvent).where(WorkflowEvent.trace_id == trace_id).order_by(WorkflowEvent.timestamp)
+    events = session.exec(events_stmt).all()
+    
+    payload = {
+        "trace_id": exec_info.trace_id,
+        "workflow_id": exec_info.workflow_id,
+        "workflow_name": exec_info.workflow_name,
+        "status": exec_info.status,
+        "started_at": exec_info.started_at.isoformat() if exec_info.started_at else None,
+        "completed_at": exec_info.completed_at.isoformat() if exec_info.completed_at else None,
+        "duration_ms": exec_info.duration_ms,
+        "inputs": exec_info.inputs,
+        "outputs": exec_info.outputs,
+        "events": [
+            {
+                "event_type": e.event_type,
+                "timestamp": e.timestamp.isoformat(),
+                "node_id": e.node_id,
+                "node_config": e.node_config,
+                "node_output": e.node_output,
+                "event_metadata": e.event_metadata,
+            }
+            for e in events
+        ]
+    }
+    
+    if format.lower() == "yaml":
+        return StreamingResponse(
+            iter([yaml.dump(payload)]),
+            media_type="application/x-yaml",
+            headers={"Content-Disposition": f"attachment; filename=execution_{trace_id}.yaml"}
+        )
+    elif format.lower() in ("text", "markdown", "md"):
+        report = []
+        report.append(f"# WORKFLOW EXECUTION REPORT")
+        report.append(f"**Trace ID:** {exec_info.trace_id}")
+        report.append(f"**Workflow Name / ID:** {exec_info.workflow_name or 'Unnamed'} ({exec_info.workflow_id})")
+        report.append(f"**Status:** {exec_info.status.upper()}")
+        report.append(f"**Duration:** {exec_info.duration_ms or 0.0:.2f} ms")
+        report.append("")
+        report.append(f"## Inputs")
+        report.append(f"```json\n{json.dumps(exec_info.inputs, indent=2)}\n```")
+        report.append("")
+        report.append(f"## Outputs")
+        report.append(f"```json\n{json.dumps(exec_info.outputs, indent=2)}\n```")
+        report.append("")
+        report.append(f"## Execution Log Events")
+        for idx, event in enumerate(payload["events"]):
+            report.append(f"{idx+1}. **[{event['timestamp']}] {event['event_type']}** (Node: {event['node_id'] or 'System'})")
+            if event["node_output"]:
+                report.append(f"   - **Output:** {json.dumps(event['node_output'])}")
+        
+        return StreamingResponse(
+            iter(["\n".join(report)]),
+            media_type="text/markdown",
+            headers={"Content-Disposition": f"attachment; filename=execution_{trace_id}.md"}
+        )
+    else:
+        return payload
+
+
 @router.get("/stats", response_model=APIResponse[Dict[str, Any]])
 def get_observability_stats(session: Session = Depends(get_session)):
     data = get_stats(session)
@@ -111,3 +183,4 @@ def get_observability_stats(session: Session = Depends(get_session)):
 
 
 __all__ = ["router"]
+

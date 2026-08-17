@@ -2,7 +2,7 @@ import logging
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Query, BackgroundTasks
 
-from common_lib.modules.sync import SyncService
+from common_lib.modules.orchestration.entities.sync import SyncService
 
 logger = logging.getLogger(__name__)
 

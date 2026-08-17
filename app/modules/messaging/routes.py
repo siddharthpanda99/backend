@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
 
-from common_lib.modules.messaging import (
+from common_lib.modules.notification.messaging import (
     get_messaging_gateway,
     MessageChannel,
     MessagePriority,

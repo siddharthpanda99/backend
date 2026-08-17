@@ -1,6 +1,6 @@
 """Rules Engine module API routes — Rule registry, policy engine, scoring, resilience.
 
-Thin routing layer that delegates to common_lib.modules.rules_engine services.
+Thin routing layer that delegates to common_lib.modules.governance.rules_engine services.
 """
 
 from __future__ import annotations
@@ -40,12 +40,12 @@ class EvaluateRequest(BaseModel):
 
 
 def _get_registry():
-    from common_lib.modules.rules_engine.registry import RuleRegistry
+    from common_lib.modules.governance.rules_engine.registry import RuleRegistry
     return RuleRegistry()
 
 
 def _get_engine():
-    from common_lib.modules.rules_engine.engine import RulesEngine
+    from common_lib.modules.governance.rules_engine.engine import RulesEngine
     return RulesEngine()
 
 

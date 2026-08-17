@@ -730,7 +730,7 @@ async def _send_notification(
     Falls back to logger if the messaging gateway is unavailable.
     """
     try:
-        from common_lib.modules.messaging import (
+        from common_lib.modules.notification.messaging import (
             get_messaging_gateway,
             MessageChannel,
             MessagePriority,

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
-from common_lib.modules.scaffolder.service import ScaffolderService
-from common_lib.modules.scaffolder.template_service import ScaffoldTemplateService
+from common_lib.modules.core_infrastructure.scaffolder.service import ScaffolderService
+from common_lib.modules.core_infrastructure.scaffolder.template_service import ScaffoldTemplateService
 
 router = APIRouter()
 _service = ScaffolderService()

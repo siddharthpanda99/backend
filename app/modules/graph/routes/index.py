@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any, List
 from fastapi import APIRouter, Query, HTTPException
 
-from common_lib.modules.graph import GraphService, GraphNode, GraphEdge, GraphResponse
+from common_lib.modules.knowledge_engine.graph import GraphService, GraphNode, GraphEdge, GraphResponse
 
 logger = logging.getLogger(__name__)
 

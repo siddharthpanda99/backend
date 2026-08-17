@@ -158,3 +158,4 @@ async def run_workflow_stream(
                 yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(sse_wrapper(), media_type="text/event-stream")
+

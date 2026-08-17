@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 
-from common_lib.modules.proxy_routing import (
+from common_lib.modules.ai_models.proxy_routing import (
     get_proxy_service,
     get_router,
     get_rate_limiter,
@@ -17,7 +17,7 @@ from common_lib.modules.proxy_routing import (
     FallbackTokenUsage,
     ProxyModelCatalog,
 )
-from common_lib.modules.keys_management.service import KeyManagementService
+from common_lib.modules.secrets_manager.keys_management.service import KeyManagementService
 from common_lib.modules.data_storage.database.connection import get_engine
 from sqlmodel import Session, text
 
