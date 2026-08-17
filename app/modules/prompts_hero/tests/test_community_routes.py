@@ -12,8 +12,8 @@ from sqlalchemy.pool import NullPool
 from common_lib.modules.data_storage.database.connection import (
     get_session as get_db_session,
 )
-from common_lib.modules.prompts_hero.models.generation_models import PromptGeneration
-from common_lib.modules.prompts_hero.models.community_models import (
+from common_lib.modules.prompt_studio.prompts_hero.models.generation_models import PromptGeneration
+from common_lib.modules.prompt_studio.prompts_hero.models.community_models import (
     PromptLike,
     PromptComment,
     PromptCollection,

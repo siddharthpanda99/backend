@@ -12,7 +12,7 @@ from sqlalchemy.pool import NullPool
 from common_lib.modules.data_storage.database.connection import (
     get_session as get_db_session,
 )
-from common_lib.modules.prompts_hero.models.tool_models import PromptTool
+from common_lib.modules.prompt_studio.prompts_hero.models.tool_models import PromptTool
 
 _db_file = os.path.join(tempfile.gettempdir(), "test_ph_tool_api.db")
 _test_engine = create_engine(

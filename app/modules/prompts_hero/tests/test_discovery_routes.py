@@ -12,8 +12,8 @@ from sqlalchemy.pool import NullPool
 from common_lib.modules.data_storage.database.connection import (
     get_session as get_db_session,
 )
-from common_lib.modules.prompts_hero.models.generation_models import PromptGeneration
-from common_lib.modules.prompts_hero.models.share_models import PromptShare
+from common_lib.modules.prompt_studio.prompts_hero.models.generation_models import PromptGeneration
+from common_lib.modules.prompt_studio.prompts_hero.models.share_models import PromptShare
 
 _db_file = os.path.join(tempfile.gettempdir(), "test_ph_discovery_api.db")
 _test_engine = create_engine(

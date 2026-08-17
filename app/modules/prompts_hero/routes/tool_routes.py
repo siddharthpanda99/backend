@@ -33,7 +33,7 @@ class ToolUpdateRequest(BaseModel):
 
 
 def _svc():
-    from common_lib.modules.prompts_hero.services.tool_registry_service import (
+    from common_lib.modules.prompt_studio.prompts_hero.services.tool_registry_service import (
         ToolRegistryService,
     )
 

@@ -19,7 +19,7 @@ class ShareRequest(BaseModel):
 
 
 def _svc():
-    from common_lib.modules.prompts_hero.services.discovery_service import (
+    from common_lib.modules.prompt_studio.prompts_hero.services.discovery_service import (
         DiscoveryService,
     )
 
