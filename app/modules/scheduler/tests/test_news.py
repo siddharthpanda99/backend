@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 
-from common_lib.modules.scheduler.news_archive import (
+from common_lib.modules.core_infrastructure.scheduler.news_archive import (
     NewsArchive,
     get_news_archive,
     _archive,
@@ -157,7 +157,7 @@ class TestNewsAPI:
         app = FastAPI()
         app.include_router(news_router)
 
-        import common_lib.modules.scheduler.news_archive as na
+        import common_lib.modules.core_infrastructure.scheduler.news_archive as na
 
         na._archive = temp_archive
         temp_archive.add_articles(sample_articles)

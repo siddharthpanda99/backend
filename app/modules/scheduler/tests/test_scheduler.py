@@ -14,15 +14,15 @@ from pathlib import Path
 
 import pytest
 
-from common_lib.modules.scheduler.workflow_registry import (
+from common_lib.modules.core_infrastructure.scheduler.workflow_registry import (
     register_workflow,
     get_workflow,
     list_workflows,
     execute_workflow,
     _registry,
 )
-from common_lib.modules.scheduler.store import JobStore
-from common_lib.modules.scheduler.service import (
+from common_lib.modules.core_infrastructure.scheduler.store import JobStore
+from common_lib.modules.core_infrastructure.scheduler.service import (
     CronJobConfig,
     CronJobStatus,
     CronTriggerType,

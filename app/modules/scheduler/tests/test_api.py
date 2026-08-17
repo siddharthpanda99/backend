@@ -12,13 +12,13 @@ from fastapi.testclient import TestClient
 from fastapi import FastAPI
 
 from app.modules.scheduler.routes import router as scheduler_router
-from common_lib.modules.scheduler.service import (
+from common_lib.modules.core_infrastructure.scheduler.service import (
     SchedulerService,
     get_scheduler_service,
     reset_scheduler_service,
 )
-from common_lib.modules.scheduler.store import JobStore
-from common_lib.modules.scheduler.workflow_registry import register_workflow, _registry
+from common_lib.modules.core_infrastructure.scheduler.store import JobStore
+from common_lib.modules.core_infrastructure.scheduler.workflow_registry import register_workflow, _registry
 
 
 @pytest.fixture(autouse=True)
@@ -64,7 +64,7 @@ def app(temp_store, mock_workflows):
     _scheduler_override = service
 
     original = get_scheduler_service
-    import common_lib.modules.scheduler.service as svc
+    import common_lib.modules.core_infrastructure.scheduler.service as svc
 
     svc._scheduler = service
 

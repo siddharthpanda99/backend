@@ -30,7 +30,7 @@ async def list_articles(
 ):
     """Search and browse SD News articles."""
     try:
-        from common_lib.modules.scheduler.news_archive import get_news_archive
+        from common_lib.modules.core_infrastructure.scheduler.news_archive import get_news_archive
 
         archive = get_news_archive()
         result = archive.search(
@@ -51,7 +51,7 @@ async def list_articles(
 async def news_stats():
     """Get archive statistics."""
     try:
-        from common_lib.modules.scheduler.news_archive import get_news_archive
+        from common_lib.modules.core_infrastructure.scheduler.news_archive import get_news_archive
 
         archive = get_news_archive()
         return {"status": "ok", "stats": archive.get_stats()}
@@ -64,7 +64,7 @@ async def news_stats():
 async def archive_articles(request: ArchiveArticlesRequest):
     """Add articles to the archive (called by SD News workflow)."""
     try:
-        from common_lib.modules.scheduler.news_archive import get_news_archive
+        from common_lib.modules.core_infrastructure.scheduler.news_archive import get_news_archive
 
         archive = get_news_archive()
         archive.add_articles(request.articles, source=request.source)
@@ -78,7 +78,7 @@ async def archive_articles(request: ArchiveArticlesRequest):
 async def clear_archive():
     """Clear all articles from the archive."""
     try:
-        from common_lib.modules.scheduler.news_archive import get_news_archive
+        from common_lib.modules.core_infrastructure.scheduler.news_archive import get_news_archive
 
         archive = get_news_archive()
         archive.save_all([])

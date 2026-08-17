@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from common_lib.modules.scheduler.service import get_scheduler_service
+from common_lib.modules.core_infrastructure.scheduler.service import get_scheduler_service
 
 router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 logger = logging.getLogger(__name__)
@@ -188,7 +188,7 @@ async def scheduler_stats():
 
 @router.get("/workflows")
 async def list_available_workflows():
-    from common_lib.modules.scheduler.workflow_registry import list_workflows
+    from common_lib.modules.core_infrastructure.scheduler.workflow_registry import list_workflows
 
     service = _get_service()
     workflows = list_workflows()
