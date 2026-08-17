@@ -276,7 +276,7 @@ class TestDismissConflict:
     def test_21_create_conflict_for_dismiss(self, client: TestClient, db_session) -> None:
         """Add a new conflict to the DB for dismissal testing."""
         from datetime import datetime, timezone
-        from common_lib.modules.knowledge_hub.models import ConflictRecord
+        from common_lib.modules.knowledge_engine.knowledge_hub.models import ConflictRecord
 
         rec = ConflictRecord(
             id="e2e-conf-to-dismiss-004",

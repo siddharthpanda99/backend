@@ -16,7 +16,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from sqlalchemy.pool import StaticPool
 
 from app.modules.knowledge.routes import router as knowledge_router
-from common_lib.modules.knowledge_hub.models import ConflictRecord
+from common_lib.modules.knowledge_engine.knowledge_hub.models import ConflictRecord
 
 # ── In-memory SQLite engine ────────────────────────────────────────
 

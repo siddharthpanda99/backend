@@ -465,7 +465,7 @@ async def ingest_document(
             )
             stored_ids.append(cid)
 
-        from common_lib.modules.knowledge_hub.services.conflict_service import (
+        from common_lib.modules.knowledge_engine.knowledge_hub.services.conflict_service import (
             KBConflictService,
         )
 

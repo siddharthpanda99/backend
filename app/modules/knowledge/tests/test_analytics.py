@@ -27,7 +27,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app.modules.knowledge.routes import router as knowledge_router
-from common_lib.modules.knowledge_hub.services.analytics_service import (
+from common_lib.modules.knowledge_engine.knowledge_hub.services.analytics_service import (
     AnalyticsService,
 )
 

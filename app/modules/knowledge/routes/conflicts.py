@@ -17,7 +17,7 @@ from sqlmodel import Session
 
 from common_lib.modules.data_storage.database.connection import get_session
 from common_lib.modules.data_storage.database.repository import NotFoundError
-from common_lib.modules.knowledge_hub.models import ConflictRecord
+from common_lib.modules.knowledge_engine.knowledge_hub.models import ConflictRecord
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ _conflict_service_instance: Optional[Any] = None
 def _get_conflict_service() -> Any:
     global _conflict_service_instance
     if _conflict_service_instance is None:
-        from common_lib.modules.knowledge_hub.services.conflict_service import (
+        from common_lib.modules.knowledge_engine.knowledge_hub.services.conflict_service import (
             KBConflictService,
         )
 
