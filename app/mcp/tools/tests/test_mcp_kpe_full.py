@@ -23,7 +23,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 from app.mcp.tools.kpe import register_kpe_tools
 
@@ -465,9 +465,9 @@ class TestKpeDetectHallucination:
     """kpe_detect_hallucination — response shape and dispatch."""
 
     # Note: HallucinationDetector is lazily imported inside the tool function body
-    # (from common_lib.modules.kpe.quality.hallucination), so we patch the source
+    # (from common_lib.modules.knowledge_engine.kpe.quality.hallucination), so we patch the source
     # module rather than app.mcp.tools.kpe where it's NOT a module-level name.
-    HALLUC_PATH = "common_lib.modules.kpe.quality.hallucination.HallucinationDetector"
+    HALLUC_PATH = "common_lib.modules.knowledge_engine.kpe.quality.hallucination.HallucinationDetector"
 
     @staticmethod
     def _run(params: dict, detect_result: dict | None = None) -> dict:
@@ -535,9 +535,9 @@ class TestKpeCheckSensitivity:
     """kpe_check_sensitivity — response shape and dispatch."""
 
     # Note: SensitivityClassifier is lazily imported inside the tool function body
-    # (from common_lib.modules.kpe.quality.sensitivity), so we patch the source
+    # (from common_lib.modules.knowledge_engine.kpe.quality.sensitivity), so we patch the source
     # module rather than app.mcp.tools.kpe.
-    SENS_PATH = "common_lib.modules.kpe.quality.sensitivity.SensitivityClassifier"
+    SENS_PATH = "common_lib.modules.knowledge_engine.kpe.quality.sensitivity.SensitivityClassifier"
 
     @staticmethod
     def _run(params: dict, result: dict | None = None) -> dict:
@@ -669,8 +669,8 @@ class TestRegistration:
             patch("app.mcp.tools.kpe._quality_service.check_all") as qa,
             patch("app.mcp.tools.kpe._topic_classifier.classify") as tc,
             patch("app.mcp.tools.kpe._intent_classifier.classify") as ic,
-            patch("common_lib.modules.kpe.quality.hallucination.HallucinationDetector") as hd,
-            patch("common_lib.modules.kpe.quality.sensitivity.SensitivityClassifier") as sc,
+            patch("common_lib.modules.knowledge_engine.kpe.quality.hallucination.HallucinationDetector") as hd,
+            patch("common_lib.modules.knowledge_engine.kpe.quality.sensitivity.SensitivityClassifier") as sc,
             patch("app.mcp.tools.kpe.DenseEmbedder") as de,
         ):
             # Configure mocks

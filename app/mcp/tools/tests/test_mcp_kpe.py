@@ -20,7 +20,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 from app.mcp.tools.kpe import register_kpe_tools
 

@@ -15,7 +15,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mcp.server.fastmcp import FastMCP
+from app.mcp.fastmcp_compat import FastMCP
 
 from app.mcp.tools.knowledgebase import register_knowledgebase_tools
 
@@ -92,7 +92,7 @@ class TestKbListProjects:
         return extract_call_tool_data(result)
 
     @patch(
-        "common_lib.modules.knowledge_hub.services.project_service.ProjectService.list_projects"
+        "common_lib.modules.knowledge_engine.knowledge_hub.services.project_service.ProjectService.list_projects"
     )
     def test_list_projects(self, mock_list: MagicMock) -> None:
         mock_list.return_value = [
@@ -116,7 +116,7 @@ class TestKbListProjects:
         assert data["projects"][0]["name"] == "Test Project"
 
     @patch(
-        "common_lib.modules.knowledge_hub.services.project_service.ProjectService.list_projects"
+        "common_lib.modules.knowledge_engine.knowledge_hub.services.project_service.ProjectService.list_projects"
     )
     def test_list_projects_empty(self, mock_list: MagicMock) -> None:
         mock_list.return_value = []
@@ -128,7 +128,7 @@ class TestKbListProjects:
         assert data["total"] == 0
 
     @patch(
-        "common_lib.modules.knowledge_hub.services.project_service.ProjectService.list_projects"
+        "common_lib.modules.knowledge_engine.knowledge_hub.services.project_service.ProjectService.list_projects"
     )
     def test_list_projects_no_session(self, mock_list: MagicMock) -> None:
         mock_list.return_value = []
@@ -678,7 +678,7 @@ class TestFastMCPSmoke:
     def test_list_projects_e2e_smoke(self) -> None:
         """kb_list_projects end-to-end through FastMCP call_tool."""
         with patch(
-            "common_lib.modules.knowledge_hub.services.project_service.ProjectService.list_projects",
+            "common_lib.modules.knowledge_engine.knowledge_hub.services.project_service.ProjectService.list_projects",
             return_value=[self._project],
         ), patch(
             "app.mcp.tools.knowledgebase.get_session", return_value=iter([self._session])
@@ -797,7 +797,7 @@ class TestTenantIsolation:
         """List projects respects status filter for tenant isolation."""
         session = MagicMock()
         with patch(
-            "common_lib.modules.knowledge_hub.services.project_service.ProjectService.list_projects",
+            "common_lib.modules.knowledge_engine.knowledge_hub.services.project_service.ProjectService.list_projects",
             return_value=[],
         ), patch(
             "app.mcp.tools.knowledgebase.get_session", return_value=iter([session])
@@ -1005,7 +1005,7 @@ class TestEdgeCases:
             created_at=None,
         )
         with patch(
-            "common_lib.modules.knowledge_hub.services.project_service.ProjectService.list_projects",
+            "common_lib.modules.knowledge_engine.knowledge_hub.services.project_service.ProjectService.list_projects",
             return_value=[mock_project],
         ), patch(
             "app.mcp.tools.knowledgebase.get_session", return_value=iter([session])
