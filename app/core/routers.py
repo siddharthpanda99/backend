@@ -1695,6 +1695,51 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["Image Intelligence Platform"],
             "auth": True,
         },
+        # ── Data Storage ──────────────────────────────────────────
+        {
+            "router": __import__(
+                "app.modules.data_storage.routes.router", fromlist=["router"]
+            ).router,
+            "prefix": "/data-storage",
+            "tags": ["Data Storage"],
+            "auth": True,
+        },
+        # ── Education ────────────────────────────────────────────
+        {
+            "router": __import__(
+                "app.modules.education.routes.router", fromlist=["router"]
+            ).router,
+            "prefix": "/education",
+            "tags": ["Education"],
+            "auth": True,
+        },
+        # ── DB Provisioning ──────────────────────────────────────
+        {
+            "router": __import__(
+                "app.modules.db_provisioning.routes.router", fromlist=["router"]
+            ).router,
+            "prefix": "/db-provisioning",
+            "tags": ["DB Provisioning"],
+            "auth": True,
+        },
+        # ── Image Runtime ────────────────────────────────────────
+        {
+            "router": __import__(
+                "app.modules.image_runtime.routes.router", fromlist=["router"]
+            ).router,
+            "prefix": "/image-runtime",
+            "tags": ["Image Runtime"],
+            "auth": True,
+        },
+        # ── File System ──────────────────────────────────────────
+        {
+            "router": __import__(
+                "app.modules.file_system.routes.router", fromlist=["router"]
+            ).router,
+            "prefix": "/file-system",
+            "tags": ["File System"],
+            "auth": True,
+        },
     ]
 
     for entry in ROUTER_DEFINITIONS:
