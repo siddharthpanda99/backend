@@ -5,7 +5,7 @@ from typing import List, Annotated
 from sqlmodel import Session
 
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.daw.schemas import (
+from common_lib.modules.audio_processing.daw.schemas import (
     DAWProjectCreate,
     DAWProjectUpdate,
     DAWProjectResponse,
@@ -23,7 +23,7 @@ from common_lib.modules.daw.schemas import (
     ClipResponse,
     DAWExport,
 )
-from common_lib.modules.daw.service import daw_service, NotFoundError
+from common_lib.modules.audio_processing.daw.service import daw_service, NotFoundError
 
 MOCK_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 

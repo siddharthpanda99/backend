@@ -3,7 +3,7 @@ import pytest
 from uuid import uuid4
 
 # Import from common_lib
-from common_lib.modules.daw.models import (
+from common_lib.modules.audio_processing.daw.models import (
     Project,
     Channel,
     Pattern,
@@ -16,7 +16,7 @@ from common_lib.modules.daw.models import (
     time_signature_from_string,
     time_signature_to_string,
 )
-from common_lib.modules.daw.schemas import (
+from common_lib.modules.audio_processing.daw.schemas import (
     DAWProjectCreate,
     DAWProjectUpdate,
     ChannelCreate,
@@ -30,7 +30,7 @@ from common_lib.modules.daw.schemas import (
     ProjectStatus as SchemaProjectStatus,
     ChannelType as SchemaChannelType,
 )
-from common_lib.modules.daw.service import daw_service
+from common_lib.modules.audio_processing.daw.service import daw_service
 from common_lib.modules.data_storage.database.connection import get_session
 
 
@@ -233,7 +233,7 @@ class TestDAWService:
 
     def test_update_nonexistent_project(self, test_session):
         """Test updating nonexistent project raises error"""
-        from common_lib.modules.daw.service import NotFoundError
+        from common_lib.modules.audio_processing.daw.service import NotFoundError
 
         update = DAWProjectUpdate(name="Test")
         with pytest.raises(NotFoundError):

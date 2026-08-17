@@ -28,7 +28,7 @@ from common_lib.modules.dip.ingestion.controller import (
     update_ingestion_source,
     sync_ingestion_source,
 )
-from common_lib.modules.dip.document_vault import (
+from common_lib.modules.dip.vault_storage import (
     list_documents,
     get_document,
     delete_document,

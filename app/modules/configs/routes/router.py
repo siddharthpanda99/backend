@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.configs.service import ConfigsService, record_to_schema
+from common_lib.modules.vision.configs.service import ConfigsService, record_to_schema
 from common_lib.modules.vision.schemas import (
     VisionPresetSchema,
     VisionPresetCreateRequest,

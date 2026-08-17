@@ -1,6 +1,6 @@
 """Education module API routes — Diff explanation, file analysis, concept mapping.
 
-Thin routing layer that delegates to common_lib.modules.education services.
+Thin routing layer that delegates to common_lib.modules.knowledge_engine.education services.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ class ConceptMapRequest(BaseModel):
 
 
 def _get_service():
-    from common_lib.modules.education.service import ExplainerAgent
+    from common_lib.modules.knowledge_engine.education.service import ExplainerAgent
     return ExplainerAgent()
 
 

@@ -51,6 +51,9 @@ async def stream_agent_generator(
     model_path: Optional[str] = None,
     provider: Optional[str] = None,
     loop_id: Optional[str] = None,
+    reasoning_mode: bool = False,
+    reasoning_plan_id: Optional[str] = None,
+    reasoning_level: str = "brief",
 ) -> AsyncGenerator[str, None]:
     """
     Stream LangGraph ``astream_events`` as SSE-formatted trace events.
@@ -395,6 +398,126 @@ async def stream_agent_generator(
             "transition", f"▶ Agent started ({VERSION_ID})", f'Input: "{message}"'
         )
 
+        # ── Reasoning Mode: load (or derive) the requirement plan and emit
+        # brief `reasoning` SSE events while the agent works through it. ----
+        reasoning_state: Optional[Dict[str, Any]] = None
+
+        def reasoning_event(
+            phase: str, text: str, plan_step_id: Optional[str] = None
+        ) -> str:
+            # Persist every reasoning step (incl. explain_step briefs, tool
+            # act/result) into the trace payloads table so the TraceInspector
+            # can show the full reasoning trail for a request.
+            if TRACE_FULL_PAYLOADS:
+                try:
+                    trace_recorder.record_payload(
+                        session_id=session_id,
+                        trace_id=trace_id,
+                        payload_type="reasoning_step",
+                        payload_name=f"reasoning_{phase}_{step}",
+                        payload={
+                            "phase": phase,
+                            "text": text,
+                            "level": reasoning_level,
+                            "plan_step_id": plan_step_id,
+                        },
+                        step_number=step,
+                        agent_id=agent_id,
+                        correlation_id=correlation_id,
+                    )
+                except Exception as _re_err:
+                    logger.warning(
+                        "[Streaming] Reasoning step payload failed: %s", _re_err
+                    )
+            return _enc(
+                {
+                    "event_type": "reasoning",
+                    "phase": phase,
+                    "text": text,
+                    "level": reasoning_level,
+                    "plan_step_id": plan_step_id,
+                    "step": step,
+                }
+            )
+
+        # Feature-flag gate: when `reasoning.mode` is off, no plan is loaded and
+        # no reasoning events are emitted even if the client sent reasoning_mode.
+        # When `reasoning.levels` is off, only the brief level is produced.
+        try:
+            from common_lib.modules.reasoning.features import (  # noqa: lazy
+                FLAG_LEVELS as _FLAG_LEVELS,
+                FLAG_MODE as _FLAG_MODE,
+                get_reasoning_flags as _get_reasoning_flags,
+            )
+
+            _flags_enabled = _get_reasoning_flags().is_enabled(_FLAG_MODE)
+            if not _flags_enabled:
+                reasoning_level = "brief"
+            elif not _get_reasoning_flags().is_enabled(_FLAG_LEVELS):
+                reasoning_level = "brief"
+        except Exception:
+            _flags_enabled = True
+        if reasoning_mode and not _flags_enabled:
+            reasoning_mode = False
+        if reasoning_mode:
+            try:
+                from common_lib.modules.reasoning.service import (  # noqa: lazy
+                    ReasoningPlannerService,
+                )
+
+                _rsvc = ReasoningPlannerService()
+                _plan = None
+                if reasoning_plan_id:
+                    _plan = _rsvc.get_plan(reasoning_plan_id)
+                if _plan is None:
+                    # No persisted plan — derive a lightweight template plan on
+                    # the fly so reasoning events still have structure.
+                    _plan = _rsvc.create_plan(
+                        message, session_id, context={}, use_llm=False
+                    )
+                if _plan and not _plan.get("error"):
+                    reasoning_state = {
+                        "plan": _plan,
+                        "step_index": 0,
+                        "current_step_id": None,
+                    }
+                    _reqs = _plan.get("requirements", []) or []
+                    yield reasoning_event(
+                        "orient",
+                        f"Captured {len(_reqs)} requirement(s) in the plan — "
+                        "working through them step by step.",
+                    )
+                    # Record the reasoning context as a trace payload so the
+                    # trace inspector can show the under-prompt / instructions.
+                    if TRACE_FULL_PAYLOADS:
+                        try:
+                            trace_recorder.record_payload(
+                                session_id=session_id,
+                                trace_id=trace_id,
+                                payload_type="reasoning_context",
+                                payload_name="reasoning_plan_context",
+                                payload={
+                                    "plan_id": _plan.get("id"),
+                                    "summary": _plan.get("summary", ""),
+                                    "level": reasoning_level,
+                                    "instructions": _plan.get("instructions") or [],
+                                    "requirements": (_reqs or [])[:10],
+                                    "plan": (_plan.get("plan") or [])[:10],
+                                },
+                                step_number=step,
+                                agent_id=agent_id,
+                                correlation_id=correlation_id,
+                            )
+                        except Exception as _rc_err:
+                            logger.warning(
+                                "[Streaming] Reasoning context payload failed: %s",
+                                _rc_err,
+                            )
+            except Exception as _reasoning_err:
+                logger.warning(
+                    "[Streaming] Reasoning mode init failed: %s", _reasoning_err
+                )
+
         event_count = 0
         async for ev in stream:
             kind = ev.get("event", "")
@@ -434,6 +557,25 @@ async def stream_agent_generator(
                     f"📤 LLM Payload (~{len(prompt_content) // 4} tokens)",
                     prompt_content,
                 )
+                # Full untruncated payload (for the trace inspector's detail view)
+                full_prompt = _full_prompt(ev)
+                # Reasoning Mode: level-aware "what am I about to do" line.
+                if reasoning_state:
+                    _steps = reasoning_state["plan"].get("plan", []) or []
+                    _idx = reasoning_state["step_index"] % max(len(_steps), 1)
+                    _cur = _steps[_idx] if _steps else {}
+                    _title = _cur.get("title", "process this step")
+                    _desc = (_cur.get("description") or "")[:140]
+                    _tools = _cur.get("tools") or []
+                    reasoning_state["step_index"] = (_idx + 1) % max(len(_steps), 1)
+                    reasoning_state["current_step_id"] = _cur.get("id")
+                    yield reasoning_event(
+                        "reason",
+                        _reasoning_step_text(
+                            reasoning_level, _title, _desc, _tools
+                        ),
+                        _cur.get("id"),
+                    )
                 # Record LLM start trace event
                 trace_recorder.record_llm_start(
                     session_id=session_id,
@@ -447,13 +589,13 @@ async def stream_agent_generator(
                     correlation_id=correlation_id,
                 )
                 # Record full LLM prompt payload (for the tracing UI detail view)
-                if TRACE_FULL_PAYLOADS and prompt_content:
+                if TRACE_FULL_PAYLOADS and full_prompt:
                     trace_recorder.record_payload(
                         session_id=session_id,
                         trace_id=trace_id,
                         payload_type="llm_prompt",
                         payload_name=f"llm_{llm_call_count}_prompt",
-                        payload=prompt_content,
+                        payload=full_prompt,
                         step_number=step,
                         agent_id=agent_id,
                         correlation_id=correlation_id,
@@ -688,12 +830,23 @@ async def stream_agent_generator(
                     inp,
                     {"tool_name": name},
                 )
+                # Reasoning Mode: level-aware "why this tool" line, tied to the
+                # plan step currently being executed so the Step-Executor panel
+                # can render step → tool → result chains.
+                if reasoning_state:
+                    yield reasoning_event(
+                        "act",
+                        _reasoning_tool_text(reasoning_level, name),
+                        reasoning_state.get("current_step_id"),
+                    )
 
             elif kind == "on_tool_end":
                 out = ev.get("data", {}).get("output", "")
                 if not isinstance(out, str):
                     out = json.dumps(out, default=str)
-                yield _enc({"event_type": "tool_end", "tool_name": name, "content": str(out)})
+                yield _enc(
+                    {"event_type": "tool_end", "tool_name": name, "content": str(out)}
+                )
                 yield trace(
                     "tool_result", f"📥 Result: {name}", str(out), {"tool_name": name}
                 )
@@ -737,6 +890,14 @@ async def stream_agent_generator(
                     agent_id=agent_id,
                     correlation_id=correlation_id,
                 )
+                # Reasoning Mode: brief result event so the Step-Executor panel
+                # can close the step → tool → result chain.
+                if reasoning_state:
+                    yield reasoning_event(
+                        "result",
+                        _reasoning_result_text(reasoning_level, name, out),
+                        reasoning_state.get("current_step_id"),
+                    )
 
             elif kind == "on_chain_start" and name in ALLOWED_NODES:
                 inputs = ev.get("data", {}).get("input", {})
@@ -914,6 +1075,10 @@ async def stream_agent_generator(
                     "[Streaming] Context payload recording failed: %s", ctx_err
                 )
 
+        # Reasoning Mode: final verify pass against the requirements checklist.
+        if reasoning_state:
+            _reqs = reasoning_state["plan"].get("requirements", []) or []
+            yield reasoning_event(
                 "verify",
                 f"Final check: reviewing the {len(_reqs)} requirement(s) against the result.",
             )
@@ -962,6 +1127,58 @@ async def stream_agent_generator(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Reasoning Mode text builders (deterministic — no LLM on the hot path)
+# ---------------------------------------------------------------------------
+
+
+def _reasoning_step_text(
+    level: str, title: str, description: str, tools: list = None
+) -> str:
+    """Level-aware brief explanation for the upcoming plan step."""
+    tools = tools or []
+    if level == "final":
+        return (
+            f"Decision: proceed with {title} — {description[:100]}"
+            if description
+            else f"Decision: proceed with {title}"
+        )
+    if level == "detailed":
+        parts = [f"Next step: {title}."]
+        if description:
+            parts.append(f"It {description[:180]}")
+        if tools:
+            parts.append("May use: " + ", ".join(str(t) for t in tools[:6]) + ".")
+        return " ".join(parts)
+    return (
+        f"Reasoning: {title} — {description}" if description else f"Reasoning: {title}"
+    )
+
+
+def _reasoning_tool_text(level: str, tool_name: str) -> str:
+    """Level-aware brief explanation for the tool about to be called."""
+    if level == "final":
+        return f"Using '{tool_name}' to advance."
+    if level == "detailed":
+        return (
+            f"Using '{tool_name}' now — it is the right tool for this step "
+            "and maps to the plan's tool requirement."
+        )
+    return f"Using '{tool_name}' now — it is the right tool to advance this step."
+
+
+def _reasoning_result_text(level: str, tool_name: str, output: str) -> str:
+    """Level-aware brief summary of a tool result (Step-Executor panel)."""
+    out_s = str(output or "").strip()
+    if len(out_s) > 140:
+        out_s = out_s[:140].rstrip() + "…"
+    if level == "final":
+        return f"'{tool_name}' finished — result recorded."
+    if level == "detailed" and out_s:
+        return f"'{tool_name}' returned: {out_s}"
+    return f"'{tool_name}' completed." + (f" Result: {out_s}" if out_s else "")
+
+
 def _enc(payload: dict) -> str:
     return f"data: {json.dumps(payload, default=str)}\n\n"
 
@@ -973,41 +1190,48 @@ def _clean(d: dict) -> dict:
     }
 
 
-def _prompt_preview(ev: dict) -> str:
-    """Extract and format the full prompt sent to LLM with colored output."""
+def _prompt_messages(ev: dict) -> list:
+    """Extract the ordered ``[SYSTEM]/[USER]/[AI]`` message parts from an LLM start event."""
     inputs = ev.get("data", {}).get("input", {})
     if not isinstance(inputs, dict):
-        return ""
-
-    # Build the full prompt for visibility
+        return []
     parts = []
-
-    # Extract messages
     for msgs in inputs.get("messages", []):
         lst = msgs if isinstance(msgs, list) else [msgs]
         for m in lst:
             c = getattr(m, "content", None) or (
                 m.get("content", "") if isinstance(m, dict) else ""
             )
-            if c:
-                # Identify message type
-                if hasattr(m, "type"):
-                    role = m.type
-                elif isinstance(m, dict):
-                    role = m.get("type", "message")
-                else:
-                    role = "message"
+            if not c:
+                continue
+            if hasattr(m, "type"):
+                role = m.type
+            elif isinstance(m, dict):
+                role = m.get("type", "message")
+            else:
+                role = "message"
+            parts.append((role, str(c)))
+    return parts
 
-                if role == "system":
-                    parts.append(f"[SYSTEM]\n{c}")
-                elif role in ("human", "user"):
-                    parts.append(f"[USER]\n{c}")
-                elif role == "ai":
-                    parts.append(f"[AI]\n{c}")
-                else:
-                    parts.append(f"[{role.upper()}]\n{c}")
 
-    full_prompt = "\n\n".join(parts)
+def _full_prompt(ev: dict) -> str:
+    """Full, untruncated prompt sent to the LLM (for the trace payloads table)."""
+    parts = []
+    for role, content in _prompt_messages(ev):
+        if role == "system":
+            parts.append(f"[SYSTEM]\n{content}")
+        elif role in ("human", "user"):
+            parts.append(f"[USER]\n{content}")
+        elif role == "ai":
+            parts.append(f"[AI]\n{content}")
+        else:
+            parts.append(f"[{role.upper()}]\n{content}")
+    return "\n\n".join(parts)
+
+
+def _prompt_preview(ev: dict) -> str:
+    """Extract and format the full prompt sent to LLM with colored output."""
+    full_prompt = _full_prompt(ev)
 
     # Log with ANSI colors to console for visibility
     import sys
@@ -1022,5 +1246,5 @@ def _prompt_preview(ev: dict) -> str:
     print(f"\033[93m{full_prompt}\033[0m", file=sys.stderr)
     print(f"\033[96m{'=' * 70}\033[0m\n", file=sys.stderr)
 
-    # Return full prompt for UI display (truncate at 2000 chars for trace)
+    # Return preview for SSE trace (truncate at 2000 chars for trace)
     return full_prompt[:2000] + ("..." if len(full_prompt) > 2000 else "")

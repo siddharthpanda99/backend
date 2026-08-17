@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session, select, func
 
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.document_vault.db_models import (
+from common_lib.modules.dip.document_vault.db_models import (
     DocumentVault as DocumentVaultModel,
     DocumentFiles as DocumentFilesModel,
     DocumentMetadata as DocumentMetadataModel,

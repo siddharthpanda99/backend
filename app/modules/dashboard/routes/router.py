@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlmodel import Session
 from app.modules.common.types.index import APIResponse
 from common_lib.modules.data_storage.database.connection import get_engine
-from common_lib.modules.dashboard.service import DashboardService
+from common_lib.modules.app_ops.dashboard.service import DashboardService
 
 router = APIRouter()
 

@@ -26,7 +26,7 @@ _audit_logger_cls = None
 def _get_loggers():
     global _activity_logger_cls, _audit_logger_cls
     if _activity_logger_cls is None:
-        from common_lib.modules.control_center.service import ActivityLogger, AuditLogger
+        from common_lib.modules.observability.control_center.service import ActivityLogger, AuditLogger
         _activity_logger_cls = ActivityLogger
         _audit_logger_cls = AuditLogger
     return _activity_logger_cls, _audit_logger_cls

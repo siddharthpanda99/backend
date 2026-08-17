@@ -61,7 +61,7 @@ def _get_session():
 
 
 def _get_event_service():
-    from common_lib.modules.events.service import EventService
+    from common_lib.modules.integration.events.service import EventService
     return EventService
 
 

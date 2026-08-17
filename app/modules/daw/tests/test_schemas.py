@@ -2,7 +2,7 @@
 import pytest
 from uuid import uuid4
 
-from common_lib.modules.daw.schemas import (
+from common_lib.modules.audio_processing.daw.schemas import (
     DAWProjectCreate,
     DAWProjectUpdate,
     DAWProjectResponse,

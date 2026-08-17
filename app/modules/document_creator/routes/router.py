@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from common_lib.modules.document_creator.service import get_document_creator
+from common_lib.modules.doc_processing.document_creator.service import get_document_creator
 
 logger = logging.getLogger(__name__)
 

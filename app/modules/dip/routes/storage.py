@@ -12,7 +12,7 @@ import logging
 from fastapi import APIRouter, Depends, Query
 
 from app.modules.knowledge.dependencies import get_knowledge_engine_service
-from common_lib.modules.dip.document_vault import list_documents
+from common_lib.modules.dip.vault_storage import list_documents
 from common_lib.modules.knowledge_engine.service import KnowledgeEngineService
 
 logger = logging.getLogger(__name__)

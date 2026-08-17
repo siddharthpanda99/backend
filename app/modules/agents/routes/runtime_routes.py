@@ -98,6 +98,17 @@ class StreamRequest(BaseModel):
     system_prompt: Optional[str] = None
     model_path: Optional[str] = None
     loop_id: Optional[str] = None
+    # ── Reasoning Mode ──────────────────────────────────────────
+    reasoning_mode: Optional[bool] = False
+    reasoning_plan_id: Optional[str] = None
+    # ``brief`` (default) | ``final`` | ``detailed`` — verbosity of the
+    # per-step ``reasoning`` SSE events.
+    reasoning_level: Optional[str] = "brief"
+    # ── Comprehensive chat settings object ──────────────────────
+    # Optional inline settings object. When omitted, the persisted per-
+    # session chat settings are used (see GET/PUT /settings). Inline values
+    # win over persisted ones for this single turn.
+    settings: Optional[Dict[str, Any]] = None
 
 
 class StateUpdateRequest(BaseModel):
@@ -125,6 +136,50 @@ class HITLModeRequest(BaseModel):
 async def set_hitl_mode(req: HITLModeRequest):
     set_human_feedback_mode(req.enabled)
     return {"status": "success", "human_feedback_mode": req.enabled}
+
+
+# ── Comprehensive chat settings object ──────────────────────────────────────
+# GET/PUT/DELETE the full per-session chat settings object so the same
+# configuration is identically available via UI, API and CLI.
+
+
+@router.get("/settings/{session_id}")
+async def get_chat_settings(session_id: str):
+    """Get the full chat settings object for a session (or defaults)."""
+    from common_lib.modules.agents.chat_settings.service import (
+        get_chat_settings_service,
+    )
+
+    return get_chat_settings_service().get_settings(session_id)
+
+
+@router.put("/settings/{session_id}")
+async def put_chat_settings(session_id: str, req: Dict[str, Any]):
+    """Update (merge) the chat settings object for a session.
+
+    Body: a partial ChatSettings payload — only the provided fields change.
+    Returns the merged, persisted settings object.
+    """
+    from common_lib.modules.agents.chat_settings.schemas import ChatSettingsUpdate
+    from common_lib.modules.agents.chat_settings.service import (
+        get_chat_settings_service,
+    )
+
+    update = ChatSettingsUpdate(**dict(req or {}))
+    result = get_chat_settings_service().set_settings(session_id, update)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.delete("/settings/{session_id}")
+async def reset_chat_settings(session_id: str):
+    """Reset a session's chat settings object to the defaults."""
+    from common_lib.modules.agents.chat_settings.service import (
+        get_chat_settings_service,
+    )
+
+    return get_chat_settings_service().reset_settings(session_id)
 
 
 @router.post("/deploy")
@@ -287,16 +342,41 @@ async def clear_session(req: ClearSessionRequest):
 
 @router.post("/stream")
 async def stream(req: StreamRequest):
+    # Merge the comprehensive chat settings object into this turn: persisted
+    # per-session settings first, then the inline (per-request) overrides.
+    from common_lib.modules.agents.chat_settings.service import (
+        apply_settings_to_request,
+        get_chat_settings_service,
+    )
+
+    persisted = get_chat_settings_service().get_settings(req.session_id)
+    merged = apply_settings_to_request(persisted, req.settings or {})
+    # The explicit StreamRequest fields ALWAYS win over the settings object
+    # (both persisted and inline). ``is not None`` guards let callers turn a
+    # persisted ``true`` off or downgrade a persisted level explicitly.
+    if req.reasoning_mode is not None:
+        merged["reasoning_mode"] = bool(req.reasoning_mode)
+    if req.reasoning_plan_id is not None:
+        merged["reasoning_plan_id"] = req.reasoning_plan_id
+    if req.reasoning_level is not None:
+        merged["reasoning_level"] = req.reasoning_level
+
     return StreamingResponse(
         stream_agent_generator(
             req.message,
             req.session_id,
             decision=req.decision,
-            agent_id=req.agent_id,
-            system_prompt=req.system_prompt,
+            # Explicit request fields take precedence over persisted settings
+            # (persisted defaults like ``agent_id="master_agent"`` must never
+            # silently override an explicit caller value).
+            agent_id=req.agent_id or merged.get("agent_id"),
+            system_prompt=req.system_prompt or merged.get("system_prompt"),
             model_path=req.model_path,
-            provider=req.provider,
+            provider=req.provider or merged.get("provider"),
             loop_id=req.loop_id,
+            reasoning_mode=bool(merged.get("reasoning_mode", False)),
+            reasoning_plan_id=req.reasoning_plan_id,
+            reasoning_level=str(merged.get("reasoning_level") or "brief"),
         ),
         media_type="text/event-stream",
     )

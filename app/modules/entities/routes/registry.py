@@ -16,7 +16,7 @@ from app.modules.agents.runtime.core import get_engine_manager
 from app.modules.agents.runtime.tools.registry import BUILTIN_TOOL_REGISTRY
 from app.modules.entities.services.vector_search import get_search_service
 
-from common_lib.modules.entities.registry_service import (
+from common_lib.modules.orchestration.entities.registry_service import (
     EntityRegistryService,
     normalize_description,
 )

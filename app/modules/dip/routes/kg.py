@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query, HTTPException, Body
 from typing import List, Dict, Any, Optional
 import os
-from common_lib.modules.graph import GraphService
+from common_lib.modules.knowledge_engine.graph import GraphService
 from common_lib.paths import get_repo_root
 
 _graph_svc = GraphService()

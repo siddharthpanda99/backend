@@ -38,11 +38,11 @@ from app.mcp.tools.chatgpt import (
     _parse_conversations_file,
     run_import_pipeline,
 )
-from common_lib.modules.chatgpt_mcp.models import (
+from common_lib.modules.connectors.chatgpt_mcp.models import (
     ChatGPTConversationRecord,
     ChatGPTImportSession,
 )
-from common_lib.modules.chatgpt_mcp.adapters import registry as provider_registry
+from common_lib.modules.connectors.chatgpt_mcp.adapters import registry as provider_registry
 
 logger = logging.getLogger(__name__)
 

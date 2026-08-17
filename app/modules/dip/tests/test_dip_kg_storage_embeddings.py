@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient
 from app.modules.dip.routes.kg import router as dip_kg_router
 from app.modules.dip.routes.storage import router as dip_storage_router
 from app.modules.dip.routes.embeddings import router as dip_embeddings_router
-from common_lib.modules.graph import GraphNode, GraphEdge, GraphResponse
+from common_lib.modules.knowledge_engine.graph import GraphNode, GraphEdge, GraphResponse
 
 
 # ── Sample data ──────────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ def storage_client() -> TestClient:
     """Create a sync TestClient with the DIP Storage router.
 
     The storage routes call list_documents() from document_vault.
-    We patch common_lib.modules.dip.document_vault.list_documents.
+    We patch common_lib.modules.dip.vault_storage.list_documents.
     """
     app = FastAPI()
     app.include_router(dip_storage_router, prefix="/api/v1")

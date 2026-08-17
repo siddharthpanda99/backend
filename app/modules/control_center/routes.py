@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DbSession
 
-from common_lib.modules.control_center.service import ControlCenterService
+from common_lib.modules.observability.control_center.service import ControlCenterService
 
 router = APIRouter(prefix="/control-center", tags=["control-center"])
 

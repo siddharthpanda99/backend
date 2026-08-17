@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlmodel import Session
 
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.entities.instance_service import get_instance_service
+from common_lib.modules.orchestration.entities.instance_service import get_instance_service
 
 router = APIRouter(prefix="/instances", tags=["entity-instances"])
 logger = logging.getLogger(__name__)

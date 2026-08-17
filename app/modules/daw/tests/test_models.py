@@ -3,7 +3,7 @@ import pytest
 from uuid import uuid4
 from datetime import datetime
 
-from common_lib.modules.daw.models import (
+from common_lib.modules.audio_processing.daw.models import (
     Project,
     Channel,
     Pattern,
