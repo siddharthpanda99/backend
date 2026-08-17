@@ -1,6 +1,6 @@
 """KPE Document Routes — Thin FastAPI wrappers delegating to common_lib.
 
-All CRUD logic lives in common_lib.modules.kpe.services.DocumentService.
+All CRUD logic lives in common_lib.modules.knowledge_engine.kpe.services.DocumentService.
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from common_lib.modules.kpe.schemas.document import DocumentCreate, DocumentResponse
-from common_lib.modules.kpe.services.document_service import DocumentService
+from common_lib.modules.knowledge_engine.kpe.schemas.document import DocumentCreate, DocumentResponse
+from common_lib.modules.knowledge_engine.kpe.services.document_service import DocumentService
 
 logger = logging.getLogger(__name__)
 

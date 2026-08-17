@@ -11,8 +11,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from common_lib.modules.kpe.processing.llm import LLMProcessingService
-from common_lib.modules.kpe.processing.service import ProcessingService
+from common_lib.modules.knowledge_engine.kpe.processing.llm import LLMProcessingService
+from common_lib.modules.knowledge_engine.kpe.processing.service import ProcessingService
 
 logger = logging.getLogger(__name__)
 

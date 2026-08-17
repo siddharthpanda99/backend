@@ -1,7 +1,7 @@
 """KPE — Aggregated Router.
 
 Collects all KPE sub-routers into a single APIRouter for registration.
-All routes are thin wrappers delegating to common_lib.modules.kpe.
+All routes are thin wrappers delegating to common_lib.modules.knowledge_engine.kpe.
 """
 
 from fastapi import APIRouter

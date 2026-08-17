@@ -1,6 +1,6 @@
 """KPE Ingestion Route — Thin FastAPI wrapper delegating to common_lib.
 
-All logic lives in common_lib.modules.kpe.services.IngestionService.
+All logic lives in common_lib.modules.knowledge_engine.kpe.services.IngestionService.
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from common_lib.modules.kpe.schemas.ingest import IngestRequest, IngestResponse
-from common_lib.modules.kpe.services.ingestion_service import IngestionService
+from common_lib.modules.knowledge_engine.kpe.schemas.ingest import IngestRequest, IngestResponse
+from common_lib.modules.knowledge_engine.kpe.services.ingestion_service import IngestionService
 
 logger = logging.getLogger(__name__)
 

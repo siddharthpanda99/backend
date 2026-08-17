@@ -12,9 +12,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from common_lib.modules.kpe.classification.llm import LLMClassificationService as LLMClassificationSvc
-from common_lib.modules.kpe.classification.topic import TopicClassifier
-from common_lib.modules.kpe.classification.intent import IntentClassifier
+from common_lib.modules.knowledge_engine.kpe.classification.llm import LLMClassificationService as LLMClassificationSvc
+from common_lib.modules.knowledge_engine.kpe.classification.topic import TopicClassifier
+from common_lib.modules.knowledge_engine.kpe.classification.intent import IntentClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +73,10 @@ async def run_classification(payload: ClassificationRequest):
                 elif classifier == "trust":
                     classifications["trust"] = _llm_service.trust.evaluate(text)
                 elif classifier == "domain":
-                    from common_lib.modules.kpe.classification.domain import classify_domain
+                    from common_lib.modules.knowledge_engine.kpe.classification.domain import classify_domain
                     classifications["domain"] = classify_domain(text)
                 elif classifier == "risk":
-                    from common_lib.modules.kpe.classification.risk import classify_risk
+                    from common_lib.modules.knowledge_engine.kpe.classification.risk import classify_risk
                     classifications["risk"] = classify_risk(text)
 
         else:

@@ -12,9 +12,9 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from common_lib.modules.kpe.quality.llm import LLMQualityService
-from common_lib.modules.kpe.quality.hallucination import HallucinationDetector
-from common_lib.modules.kpe.quality.sensitivity import SensitivityClassifier
+from common_lib.modules.knowledge_engine.kpe.quality.llm import LLMQualityService
+from common_lib.modules.knowledge_engine.kpe.quality.hallucination import HallucinationDetector
+from common_lib.modules.knowledge_engine.kpe.quality.sensitivity import SensitivityClassifier
 
 logger = logging.getLogger(__name__)
 

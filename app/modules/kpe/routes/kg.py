@@ -12,8 +12,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from common_lib.modules.kpe.knowledge_graph.llm import LLMKnowledgeGraphService
-from common_lib.modules.kpe.knowledge_graph.analytics import analyze_graph
+from common_lib.modules.knowledge_engine.kpe.knowledge_graph.llm import LLMKnowledgeGraphService
+from common_lib.modules.knowledge_engine.kpe.knowledge_graph.analytics import analyze_graph
 
 logger = logging.getLogger(__name__)
 

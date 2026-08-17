@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from common_lib.modules.kpe.embeddings.dense import DenseEmbedder
+from common_lib.modules.knowledge_engine.kpe.embeddings.dense import DenseEmbedder
 
 logger = logging.getLogger(__name__)
 

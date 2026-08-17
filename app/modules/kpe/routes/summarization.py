@@ -12,8 +12,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from common_lib.modules.kpe.summarization.llm import LLMSummarizer
-from common_lib.modules.kpe.summarization.extractive import ExtractiveSummarizer
+from common_lib.modules.knowledge_engine.kpe.summarization.llm import LLMSummarizer
+from common_lib.modules.knowledge_engine.kpe.summarization.extractive import ExtractiveSummarizer
 
 logger = logging.getLogger(__name__)
 

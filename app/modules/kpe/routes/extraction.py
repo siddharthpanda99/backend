@@ -12,8 +12,8 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from common_lib.modules.kpe.services.extraction_service import ExtractionService
-from common_lib.modules.kpe.extraction.llm import LLMExtractionService as LLMExtractionSvc
+from common_lib.modules.knowledge_engine.kpe.services.extraction_service import ExtractionService
+from common_lib.modules.knowledge_engine.kpe.extraction.llm import LLMExtractionService as LLMExtractionSvc
 
 logger = logging.getLogger(__name__)
 

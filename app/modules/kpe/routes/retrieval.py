@@ -13,10 +13,10 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from common_lib.modules.kpe.retrieval.llm import LLMQueryRewriter, LLMContextualEnricher, LLMReranker
-from common_lib.modules.kpe.retrieval.bm25 import BM25Retriever
-from common_lib.modules.kpe.retrieval.hybrid import HybridRetriever
-from common_lib.modules.kpe.retrieval.dense import DenseRetriever
+from common_lib.modules.knowledge_engine.kpe.retrieval.llm import LLMQueryRewriter, LLMContextualEnricher, LLMReranker
+from common_lib.modules.knowledge_engine.kpe.retrieval.bm25 import BM25Retriever
+from common_lib.modules.knowledge_engine.kpe.retrieval.hybrid import HybridRetriever
+from common_lib.modules.knowledge_engine.kpe.retrieval.dense import DenseRetriever
 
 logger = logging.getLogger(__name__)
 
