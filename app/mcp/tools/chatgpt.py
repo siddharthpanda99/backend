@@ -25,7 +25,7 @@ from app.mcp.fastmcp_compat import FastMCP
 from sqlmodel import Session, select, text
 from sqlalchemy import delete, func
 
-from common_lib.modules.connectors.chatgpt_mcp.adapters import registry as provider_registry
+from common_lib.modules.plugins.connectors.chatgpt_mcp.adapters import registry as provider_registry
 
 logger = logging.getLogger("mcp.tools.chatgpt")
 
@@ -329,7 +329,7 @@ def register_chatgpt_tools(mcp: FastMCP) -> None:
         Returns:
             Dict with results list, query info, and total count.
         """
-        from common_lib.modules.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
+        from common_lib.modules.plugins.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
         from common_lib.modules.data_storage.database.connection import get_engine
 
         engine = get_engine()
@@ -401,7 +401,7 @@ def register_chatgpt_tools(mcp: FastMCP) -> None:
         Returns:
             Full conversation with messages, metadata, and entities.
         """
-        from common_lib.modules.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
+        from common_lib.modules.plugins.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
         from common_lib.modules.data_storage.database.connection import get_engine
 
         engine = get_engine()
@@ -439,7 +439,7 @@ def register_chatgpt_tools(mcp: FastMCP) -> None:
         Returns:
             Summary with key discussion points, topics, and statistics.
         """
-        from common_lib.modules.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
+        from common_lib.modules.plugins.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
         from common_lib.modules.data_storage.database.connection import get_engine
 
         engine = get_engine()
@@ -504,7 +504,7 @@ def register_chatgpt_tools(mcp: FastMCP) -> None:
         Returns:
             List of action items with description, source, and confidence.
         """
-        from common_lib.modules.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
+        from common_lib.modules.plugins.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
         from common_lib.modules.data_storage.database.connection import get_engine
 
         engine = get_engine()
@@ -547,7 +547,7 @@ def register_chatgpt_tools(mcp: FastMCP) -> None:
         Returns:
             List of conversation snippets where the entity was mentioned.
         """
-        from common_lib.modules.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
+        from common_lib.modules.plugins.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
         from common_lib.modules.data_storage.database.connection import get_engine
 
         engine = get_engine()
@@ -591,7 +591,7 @@ def register_chatgpt_tools(mcp: FastMCP) -> None:
         Returns:
             Timeline of key discussion points and sentiment shifts.
         """
-        from common_lib.modules.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
+        from common_lib.modules.plugins.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
         from common_lib.modules.data_storage.database.connection import get_engine
 
         tf_days = {"last_30_days": 30, "last_3_months": 90, "last_year": 365}
@@ -638,7 +638,7 @@ def register_chatgpt_tools(mcp: FastMCP) -> None:
         Returns:
             Matches with relevance scores.
         """
-        from common_lib.modules.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
+        from common_lib.modules.plugins.connectors.chatgpt_mcp.models import ChatGPTConversationRecord
         from common_lib.modules.data_storage.database.connection import get_engine
 
         engine = get_engine()
@@ -692,7 +692,7 @@ def register_chatgpt_tools(mcp: FastMCP) -> None:
         Returns:
             List of import records with timestamp, provider, conversation count, and source tag.
         """
-        from common_lib.modules.connectors.chatgpt_mcp.models import ChatGPTImportSession
+        from common_lib.modules.plugins.connectors.chatgpt_mcp.models import ChatGPTImportSession
         from common_lib.modules.data_storage.database.connection import get_engine
 
         engine = get_engine()
@@ -726,7 +726,7 @@ def register_chatgpt_tools(mcp: FastMCP) -> None:
         Returns:
             Status of deletion operation.
         """
-        from common_lib.modules.connectors.chatgpt_mcp.models import (
+        from common_lib.modules.plugins.connectors.chatgpt_mcp.models import (
             ChatGPTImportSession, ChatGPTConversationRecord,
         )
         from common_lib.modules.data_storage.database.connection import get_engine

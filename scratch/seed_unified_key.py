@@ -3,7 +3,7 @@ import secrets
 from datetime import datetime
 from sqlmodel import Session, select
 from common_lib.modules.data_storage.database.connection import get_engine
-from common_lib.modules.keys_management.models import Settings
+from common_lib.modules.secrets_manager.keys_management.models import Settings
 
 engine = get_engine()
 

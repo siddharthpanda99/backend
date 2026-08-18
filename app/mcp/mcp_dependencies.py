@@ -1,9 +1,9 @@
 from app.modules.memories.dependencies import get_memory_service
-from common_lib.modules.agents.service import agent_service
+from common_lib.modules.agents.crud.service import agent_service
 from common_lib.modules.memory.service import MemoryService
 from common_lib.modules.system.service import SystemService
 from common_lib.modules.ai_models.container import AIModelsContainer
-from common_lib.modules.project_management.projects_core.service import ProjectService
+from common_lib.modules.project_management.projects.service import ProjectService
 from common_lib.modules.data_storage.database.connection import get_session
 
 
@@ -156,7 +156,7 @@ def resolve_session_service():
 
 def resolve_agent_service():
     """Helper to get agent service."""
-    from common_lib.modules.agents.service import agent_service
+    from common_lib.modules.agents.crud.service import agent_service
 
     return agent_service
 
@@ -189,6 +189,3 @@ def resolve_mcp_auth_provider():
     )
 
     return get_mcp_auth_provider()
-
-
-

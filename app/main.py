@@ -234,7 +234,7 @@ async def lifespan(app: FastAPI):
 
             # --- SEED: Connections YAML Data ---
             try:
-                from common_lib.modules.connectors.bootstrap import (
+                from common_lib.modules.plugins.connectors.bootstrap import (
                     seed_connections_from_yaml,
                 )
                 from sqlmodel import Session as SQLSession

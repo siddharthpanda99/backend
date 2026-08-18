@@ -20,7 +20,7 @@ def seed_pm_data():
     
     print("  [1/2] Clearing existing PM data...")
     # Ensure user 1 exists for foreign key references
-    from common_lib.modules.users.models import User
+    from common_lib.modules.auth.users.models import User
     if not db.get(User, 1):
         db.add(User(id=1, email="dev@example.com", username="dev_user", is_active=True, full_name="Dev User", hashed_password="dummy_password"))
         db.commit()

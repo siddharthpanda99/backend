@@ -26,7 +26,7 @@ from common_lib.modules.project_management.models import Project, Issue, Team
 
 # pm_people_resources.user_id has FK to users.id — import User so the table is registered
 try:
-    from common_lib.modules.users.models import User  # noqa: F401
+    from common_lib.modules.auth.users.models import User  # noqa: F401
 except ImportError:
     pass
 
