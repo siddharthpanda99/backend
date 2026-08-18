@@ -1822,12 +1822,13 @@ async def async_job_stream(job_id: str):
     try:
         from fastapi.responses import StreamingResponse
 
-        from common_lib.modules.doc_processing.excel.async_ops import SSEStreamer
-        from common_lib.modules.doc_processing.excel.service._async_ops import (
-            _job_manager,
+        from common_lib.modules.doc_processing.excel.async_ops import (
+            SSEStreamer,
+            _get_job_manager,
         )
 
-        stream = SSEStreamer.event_stream(job_id, _job_manager)
+        job_manager = _get_job_manager()
+        stream = SSEStreamer.event_stream(job_id, job_manager)
         return StreamingResponse(stream, media_type="text/event-stream")
     except Exception as e:
         raise HTTPException(500, detail=str(e))

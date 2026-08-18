@@ -210,7 +210,7 @@ async def trigger_webhook(request: WebhookTriggerRequest):
 @router.get("/templates/")
 async def list_templates(category: Optional[str] = None):
     """List hook templates."""
-    from common_lib.modules.orchestration.hooks.templates import get_default_templates
+    from common_lib.modules.hooks.templates import get_default_templates
 
     templates = get_default_templates()
 
@@ -233,7 +233,7 @@ async def list_templates(category: Optional[str] = None):
 @router.post("/templates/{template_id}/instantiate")
 async def instantiate_template(template_id: str, parameters: dict):
     """Create hook from template."""
-    from common_lib.modules.orchestration.hooks.templates import TemplateLibrary
+    from common_lib.modules.hooks.templates import TemplateLibrary
 
     library = TemplateLibrary()
 
@@ -258,10 +258,14 @@ async def list_schemas():
 
 _dlq_engine = None
 
+
 def get_dlq_engine():
     global _dlq_engine
     if _dlq_engine is None:
-        from common_lib.modules.governance.rules_engine.resilience.retry import DLQEngine
+        from common_lib.modules.governance.rules_engine.resilience.retry import (
+            DLQEngine,
+        )
+
         _dlq_engine = DLQEngine()
         # Seed default/mock entries to populate the DLQ in the UI
         _dlq_engine.add(
@@ -269,14 +273,14 @@ def get_dlq_engine():
             event_id="evt_09812",
             payload={"phase_name": "Initialization", "project": "demo"},
             error="ConnectionTimeoutError: Failed to reach agent memory endpoint",
-            attempts=3
+            attempts=3,
         )
         _dlq_engine.add(
             hook_id="PhaseMemoryCaptureHook",
             event_id="evt_09815",
             payload={"phase_name": "CodeReview", "project": "demo"},
             error="ValidationError: Missing 'grade' field in critique output",
-            attempts=2
+            attempts=2,
         )
     return _dlq_engine
 
@@ -318,7 +322,7 @@ async def replay_dlq_entry(entry_id: str):
         engine = get_hooks_engine()
         # Execute hook again with the stored payload
         result = await engine.execute(entry.hook_id, entry.payload)
-        
+
         # If successfully processed, delete from DLQ
         dlq.delete(entry_id)
         return {

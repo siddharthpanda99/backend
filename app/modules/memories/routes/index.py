@@ -458,7 +458,7 @@ async def get_agent_budget(
     agent_id: str, service: MemoryService = Depends(get_memory_service)
 ):
     """Get agent memory budget status."""
-    from common_lib.modules.memory.memory_economics import BudgetManager
+    from common_lib.modules.memory.memory_economics.budget import BudgetManager
 
     manager = BudgetManager()
     status = await manager.get_budget_status(agent_id)
@@ -472,7 +472,7 @@ async def set_agent_budget(
     service: MemoryService = Depends(get_memory_service),
 ):
     """Set agent memory budget limit."""
-    from common_lib.modules.memory.memory_economics import BudgetManager
+    from common_lib.modules.memory.memory_economics.budget import BudgetManager
 
     manager = BudgetManager()
     await manager.set_budget_limit(agent_id, limit)
@@ -671,7 +671,9 @@ async def prune_memories(
         get_error_handler,
         ErrorSeverity,
     )
-    from common_lib.modules.integration.context_propagation import create_trace_context
+    from common_lib.modules.integration.core.context_propagation import (
+        create_trace_context,
+    )
 
     trace_ctx = create_trace_context(source="api", operation="memory.prune")
 
@@ -716,7 +718,9 @@ async def preview_prune(
     service: MemoryService = Depends(get_memory_service),
 ):
     """Preview memory pruning candidates without executing."""
-    from common_lib.modules.integration.context_propagation import create_trace_context
+    from common_lib.modules.integration.core.context_propagation import (
+        create_trace_context,
+    )
 
     trace_ctx = create_trace_context(source="api", operation="memory.prune.preview")
     result = await service.prune_memories(
@@ -748,7 +752,9 @@ async def clear_embedding_cache(
 ):
     """Clear the embedding cache (delegates to common_lib)."""
     from common_lib.modules.integration import get_event_router
-    from common_lib.modules.integration.context_propagation import create_trace_context
+    from common_lib.modules.integration.core.context_propagation import (
+        create_trace_context,
+    )
 
     trace_ctx = create_trace_context(
         source="api", operation="memory.cache.embedding.clear"

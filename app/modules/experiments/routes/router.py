@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.modules.common.types.index import APIResponse
-from common_lib.modules.observability.experiment_tracker import (
+from common_lib.modules.observability.experiments.experiment_tracker import (
     ExperimentTracker,
     list_experiments,
     get_experiment,

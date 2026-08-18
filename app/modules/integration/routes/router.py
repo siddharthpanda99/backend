@@ -524,7 +524,7 @@ async def memory_bridge_stats(
 ):
     """Get memory bridge integration statistics."""
     try:
-        from common_lib.modules.integration.memory_bridge import get_memory_bridge
+        from common_lib.modules.integration.services.memory_bridge import get_memory_bridge
 
         bridge = get_memory_bridge()
         s = bridge.get_stats()
@@ -632,7 +632,7 @@ async def integration_openapi_v2_json():
 async def fire_memory_bridge_event(payload: Dict[str, Any] = Body(...)):
     """Fire a memory event through the integration bridge."""
     try:
-        from common_lib.modules.integration.memory_bridge import (
+        from common_lib.modules.integration.services.memory_bridge import (
             get_memory_bridge,
             MemoryEventType,
         )

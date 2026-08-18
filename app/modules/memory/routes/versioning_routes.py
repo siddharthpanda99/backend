@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 @router.get("/{memory_id}/timeline")
 async def get_timeline(memory_id: str):
     try:
-        from common_lib.modules.memory.versioning.service import get_versioning_service
+        from common_lib.modules.memory.memory_versioning.service import (
+            get_versioning_service,
+        )
 
         svc = get_versioning_service()
         timeline = await svc.get_timeline(memory_id=memory_id)
@@ -34,7 +36,7 @@ async def compute_diff(
     to_version: str = Body(...),
 ):
     try:
-        from common_lib.modules.memory.versioning.diff import get_diff_service
+        from common_lib.modules.memory.memory_versioning.diff import get_diff_engine
 
         svc = get_diff_service()
         return await svc.compute_diff(
@@ -52,7 +54,9 @@ async def restore(
     version: str = Body(...),
 ):
     try:
-        from common_lib.modules.memory.versioning.service import get_versioning_service
+        from common_lib.modules.memory.memory_versioning.service import (
+            get_versioning_service,
+        )
 
         svc = get_versioning_service()
         return await svc.restore(memory_id=memory_id, version=version)
@@ -63,7 +67,9 @@ async def restore(
 @router.get("/branches")
 async def get_branches(agent_id: Optional[str] = Query(None)):
     try:
-        from common_lib.modules.memory.versioning.branches import get_branch_service
+        from common_lib.modules.memory.memory_versioning.branches import (
+            get_branch_service,
+        )
 
         svc = get_branch_service()
         return await svc.list_branches(agent_id=agent_id)
@@ -78,7 +84,9 @@ async def create_branch(
     agent_id: Optional[str] = Body(None),
 ):
     try:
-        from common_lib.modules.memory.versioning.branches import get_branch_service
+        from common_lib.modules.memory.memory_versioning.branches import (
+            get_branch_service,
+        )
 
         svc = get_branch_service()
         return await svc.create_branch(
@@ -97,7 +105,9 @@ async def merge_branch(
     strategy: str = Body("recursive"),
 ):
     try:
-        from common_lib.modules.memory.versioning.branches import get_branch_service
+        from common_lib.modules.memory.memory_versioning.branches import (
+            get_branch_service,
+        )
 
         svc = get_branch_service()
         return await svc.merge(
@@ -116,7 +126,7 @@ async def get_version_history(
     offset: int = Query(0),
 ):
     try:
-        from common_lib.modules.memory.versioning.history import (
+        from common_lib.modules.memory.memory_versioning.history import (
             get_version_history_service,
         )
 

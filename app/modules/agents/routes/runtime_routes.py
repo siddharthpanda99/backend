@@ -41,7 +41,7 @@ from common_lib.modules.ai_models.llm.vllm_fleet_manager import (
 from app.modules.agents.runtime.tools.registry import BUILTIN_TOOL_REGISTRY
 from app.modules.agents.runtime.utils.logging import get_logger
 
-from common_lib.modules.agents.runtime_service import (
+from common_lib.modules.agents.runtime.service import (
     build_model_config,
     list_available_tools as _list_tools,
     list_available_workflows as _list_workflows,

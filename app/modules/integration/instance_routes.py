@@ -153,9 +153,9 @@ async def _wire_instance_bridge(
     """
     actions = []
     try:
-        from common_lib.modules.integration.memory_bridge import get_memory_bridge
-        from common_lib.modules.integration.cross_module_bridge import CrossModuleBridge
-        from common_lib.modules.integration.event_router import get_event_router
+        from common_lib.modules.integration.services.memory_bridge import get_memory_bridge
+        from common_lib.modules.integration.bridges.cross_module import CrossModuleBridge
+        from common_lib.modules.integration.core.event_router import get_event_router
 
         bridge = get_memory_bridge()
         event_router = get_event_router()
@@ -170,7 +170,7 @@ async def _wire_instance_bridge(
                 actions.append(f"Wired {pattern} → rules")
 
                 # Register a hook binding for this pattern
-                from common_lib.modules.integration.event_router import HookBinding
+                from common_lib.modules.integration.core.event_router import HookBinding
                 event_router.bind_hook(
                     HookBinding(
                         event_pattern=pattern,
@@ -207,8 +207,8 @@ async def _unwire_instance_bridge(instance_id: str) -> List[str]:
     """
     actions = []
     try:
-        from common_lib.modules.integration.event_router import get_event_router
-        from common_lib.modules.integration.context_propagation import (
+        from common_lib.modules.integration.core.event_router import get_event_router
+        from common_lib.modules.integration.core.context_propagation import (
             get_context_propagation,
         )
 
@@ -411,7 +411,7 @@ async def get_instance(
         # Fetch recent events
         recent_events = []
         try:
-            from common_lib.modules.integration.event_router import get_event_router
+            from common_lib.modules.integration.core.event_router import get_event_router
             router = get_event_router()
             history = router.get_event_history(limit=50)
             # Filter events related to this instance's patterns
@@ -562,7 +562,7 @@ async def get_instance_events(
             )
 
         try:
-            from common_lib.modules.integration.event_router import get_event_router
+            from common_lib.modules.integration.core.event_router import get_event_router
             router = get_event_router()
             history = router.get_event_history(limit=limit)
             instance_patterns = _resolve_event_patterns(instance.connected_modules)

@@ -67,7 +67,9 @@ async def run_ab_test(
     n_queries: int = Body(50),
 ):
     try:
-        from common_lib.modules.memory.memory_testing.ab_test import get_ab_test_service
+        from common_lib.modules.memory.memory_testing.ab_testing import (
+            get_ab_test_service,
+        )
 
         svc = get_ab_test_service()
         return await svc.run_ab_test(
@@ -85,7 +87,7 @@ async def get_evaluation_history(
     offset: int = Query(0),
 ):
     try:
-        from common_lib.modules.memory.memory_testing.history import (
+        from common_lib.modules.memory.memory_testing.evaluation import (
             get_evaluation_history_service,
         )
 

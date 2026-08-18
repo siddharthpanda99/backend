@@ -3,6 +3,7 @@ PM Workflow Routes — Thin API layer.
 
 Registered at: /api/v1/jira/workflows/
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,16 +16,22 @@ from app.modules.auth.dependencies import require_permission
 
 def _get_session():
     from common_lib.modules.integration.adapters.database_adapter import get_db_port
+
     engine = get_db_port().get_engine()
     return Session(engine)
 
 
 from common_lib.modules.project_management.workflows.service import WorkflowService
 from common_lib.modules.project_management.schemas import (
-    WorkflowCreate, WorkflowRead,
-    WorkflowStatusCreate, WorkflowStatusRead,
-    WorkflowTransitionCreate, WorkflowTransitionRead,
-    AutomationTemplateCreate, AutomationTemplateUpdate, AutomationTemplateInstantiate,
+    WorkflowCreate,
+    WorkflowRead,
+    WorkflowStatusCreate,
+    WorkflowStatusRead,
+    WorkflowTransitionCreate,
+    WorkflowTransitionRead,
+    AutomationTemplateCreate,
+    AutomationTemplateUpdate,
+    AutomationTemplateInstantiate,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,10 +52,11 @@ def list_workflows(
     """List workflows for a project."""
     svc = WorkflowService(session)
     from sqlmodel import select
-    from common_lib.modules.project_management.models import PMWorkflow
-    return list(session.exec(
-        select(PMWorkflow).where(PMWorkflow.project_id == project_id)
-    ).all())
+    from common_lib.modules.project_management.workflows.models import Workflow
+
+    return list(
+        session.exec(select(Workflow).where(Workflow.project_id == project_id)).all()
+    )
 
 
 @router.post("/", response_model=WorkflowRead, status_code=201)
@@ -92,7 +100,9 @@ def list_statuses(
     return svc.list_statuses(workflow_id)
 
 
-@router.post("/{workflow_id}/statuses", response_model=WorkflowStatusRead, status_code=201)
+@router.post(
+    "/{workflow_id}/statuses", response_model=WorkflowStatusRead, status_code=201
+)
 def create_status(
     workflow_id: str,
     data: WorkflowStatusCreate,
@@ -120,7 +130,9 @@ def list_transitions(
     return svc.list_transitions(workflow_id)
 
 
-@router.post("/{workflow_id}/transitions", response_model=WorkflowTransitionRead, status_code=201)
+@router.post(
+    "/{workflow_id}/transitions", response_model=WorkflowTransitionRead, status_code=201
+)
 def create_transition(
     workflow_id: str,
     data: WorkflowTransitionCreate,
@@ -183,8 +195,11 @@ def list_automation_templates(
     """List automation templates with optional filters."""
     svc = WorkflowService(session)
     templates = svc.list_automation_templates(
-        project_id=project_id, category=category,
-        is_global=is_global, limit=limit, offset=offset,
+        project_id=project_id,
+        category=category,
+        is_global=is_global,
+        limit=limit,
+        offset=offset,
     )
     return {"items": [t.model_dump() for t in templates], "total": len(templates)}
 
@@ -212,7 +227,9 @@ def update_automation_template(
 ):
     """Update an automation template."""
     svc = WorkflowService(session)
-    template = svc.update_automation_template(template_id, data.model_dump(exclude_unset=True))
+    template = svc.update_automation_template(
+        template_id, data.model_dump(exclude_unset=True)
+    )
     if not template:
         raise HTTPException(status_code=404, detail="Automation template not found")
     return template

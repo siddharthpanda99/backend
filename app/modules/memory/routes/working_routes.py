@@ -17,7 +17,7 @@ async def push(
     priority: int = Body(0),
 ):
     try:
-        from common_lib.modules.memory.working.service import get_working_memory_service
+        from common_lib.modules.memory.memory_working import get_working_memory_service
 
         svc = get_working_memory_service()
         return await svc.push(
@@ -37,7 +37,7 @@ async def set_focus(
     session_id: Optional[str] = Body(None),
 ):
     try:
-        from common_lib.modules.memory.working.focus import get_focus_service
+        from common_lib.modules.memory.memory_working import get_focus_service
 
         svc = get_focus_service()
         return await svc.set_focus(
@@ -52,7 +52,7 @@ async def set_focus(
 @router.get("/focus/{session_id}")
 async def get_focus(session_id: str):
     try:
-        from common_lib.modules.memory.working.focus import get_focus_service
+        from common_lib.modules.memory.memory_working import get_focus_service
 
         svc = get_focus_service()
         focus = await svc.get_focus(session_id=session_id)
@@ -74,7 +74,7 @@ async def get_buffer(
     offset: int = Query(0),
 ):
     try:
-        from common_lib.modules.memory.working.buffer import get_buffer_service
+        from common_lib.modules.memory.memory_working import get_buffer_service
 
         svc = get_buffer_service()
         return await svc.get_buffer(
@@ -93,7 +93,7 @@ async def promote(
     agent_id: Optional[str] = Body(None),
 ):
     try:
-        from common_lib.modules.memory.working.promotion import get_promotion_service
+        from common_lib.modules.memory.memory_working import get_promotion_service
 
         svc = get_promotion_service()
         return await svc.promote(
@@ -111,7 +111,7 @@ async def clear(
     agent_id: Optional[str] = Body(None),
 ):
     try:
-        from common_lib.modules.memory.working.service import get_working_memory_service
+        from common_lib.modules.memory.memory_working import get_working_memory_service
 
         svc = get_working_memory_service()
         return await svc.clear(
@@ -125,7 +125,7 @@ async def clear(
 @router.get("/buffers/{agent_id}")
 async def list_buffers(agent_id: str):
     try:
-        from common_lib.modules.memory.working.buffer import get_buffer_service
+        from common_lib.modules.memory.memory_working import get_buffer_service
 
         svc = get_buffer_service()
         return await svc.list_buffers(agent_id=agent_id)

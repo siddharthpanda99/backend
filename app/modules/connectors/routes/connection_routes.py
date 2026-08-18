@@ -14,7 +14,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from common_lib.modules.connectors.schemas import (
+from common_lib.modules.plugins.connectors.schemas import (
     ConnectionCreate,
     ConnectionUpdate,
     ConnectionResponse,
@@ -27,7 +27,7 @@ from common_lib.modules.connectors.schemas import (
     AuditEntryResponse,
     AuditListResponse,
 )
-from common_lib.modules.connectors.connection_service import ConnectionService
+from common_lib.modules.plugins.connectors.connection_service import ConnectionService
 from app.modules.connectors.execute_engine import get_execution_engine
 
 logger = logging.getLogger(__name__)

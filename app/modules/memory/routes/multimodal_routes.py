@@ -17,7 +17,9 @@ async def store_image(
     session_id: Optional[str] = Body(None),
 ):
     try:
-        from common_lib.modules.memory.multimodal.service import get_multimodal_service
+        from common_lib.modules.memory.memory_multimodal.service import (
+            get_multimodal_service,
+        )
 
         svc = get_multimodal_service()
         return await svc.store_image(
@@ -38,7 +40,9 @@ async def store_audio(
     session_id: Optional[str] = Body(None),
 ):
     try:
-        from common_lib.modules.memory.multimodal.service import get_multimodal_service
+        from common_lib.modules.memory.memory_multimodal.service import (
+            get_multimodal_service,
+        )
 
         svc = get_multimodal_service()
         return await svc.store_audio(
@@ -59,7 +63,9 @@ async def store_video(
     session_id: Optional[str] = Body(None),
 ):
     try:
-        from common_lib.modules.memory.multimodal.service import get_multimodal_service
+        from common_lib.modules.memory.memory_multimodal.service import (
+            get_multimodal_service,
+        )
 
         svc = get_multimodal_service()
         return await svc.store_video(
@@ -79,7 +85,7 @@ async def cross_modal_search(
     limit: int = Body(20),
 ):
     try:
-        from common_lib.modules.memory.multimodal.search import (
+        from common_lib.modules.memory.memory_multimodal.search import (
             get_multimodal_search_service,
         )
 
@@ -96,7 +102,7 @@ async def cross_modal_search(
 @router.get("/assets/{memory_id}")
 async def list_assets(memory_id: str):
     try:
-        from common_lib.modules.memory.multimodal.assets import get_asset_service
+        from common_lib.modules.memory.memory_multimodal.assets import get_asset_service
 
         svc = get_asset_service()
         assets = await svc.list_assets(memory_id=memory_id)

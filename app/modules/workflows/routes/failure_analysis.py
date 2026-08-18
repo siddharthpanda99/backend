@@ -14,7 +14,7 @@ from common_lib.modules.integration import (
     get_error_handler,
     ErrorSeverity,
 )
-from common_lib.modules.integration.context_propagation import create_trace_context
+from common_lib.modules.integration.core.context_propagation import create_trace_context
 from common_lib.modules.workflows.standard.history.failure_analysis import (
     FailureAnalyzer,
     FailureAnalyzerTracker,

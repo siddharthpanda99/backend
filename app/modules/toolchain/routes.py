@@ -74,24 +74,16 @@ async def build_plan(req: PlanRequest) -> Dict[str, Any]:
     """
     try:
         if req.execute:
-            result = await _builder().execute(
-                req.query, context=req.context or {}
-            )
+            result = await _builder().execute(req.query, context=req.context or {})
             return {
                 "query": req.query,
                 "executed": True,
                 "coordination_id": result.coordination_id,
                 "decision": (
-                    result.decision.model_dump(mode="json")
-                    if result.decision
-                    else None
+                    result.decision.model_dump(mode="json") if result.decision else None
                 ),
-                "plan": (
-                    result.plan.model_dump(mode="json") if result.plan else None
-                ),
-                "tasks": [
-                    t.model_dump(mode="json") for t in (result.tasks or [])
-                ],
+                "plan": (result.plan.model_dump(mode="json") if result.plan else None),
+                "tasks": [t.model_dump(mode="json") for t in (result.tasks or [])],
                 "final_result": result.final_result,
                 "trace": [t.model_dump(mode="json") for t in (result.trace or [])],
                 "duration_ms": result.duration_ms,
@@ -99,7 +91,9 @@ async def build_plan(req: PlanRequest) -> Dict[str, Any]:
             }
         # Dry-run: route + plan only.
         decision = await _router().route(req.query, context=req.context or {})
-        plan = await _builder().plan(req.query, decision=decision, context=req.context or {})
+        plan = await _builder().plan(
+            req.query, decision=decision, context=req.context or {}
+        )
         return {
             "query": req.query,
             "executed": False,
@@ -118,11 +112,12 @@ async def get_trace(coordination_id: str) -> Dict[str, Any]:
     """Fetch a persisted toolchain execution trace by coordination id."""
     try:
         from common_lib.modules.orchestration.toolchain.tracing import (
-            ToolchainTracing,
+            ToolchainTracer,
         )
 
-        trace = ToolchainTracing().get_trace(coordination_id)
-        if trace is None:
+        tracer = ToolchainTracer()
+        trace = tracer.to_trace()
+        if not trace:
             raise HTTPException(
                 status_code=404, detail=f"Trace {coordination_id} not found"
             )

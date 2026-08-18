@@ -19,7 +19,7 @@ from common_lib.modules.notification.controller import (
     Channels,
     Priority,
 )
-from common_lib.modules.integration.context_propagation import (
+from common_lib.modules.integration.core.context_propagation import (
     get_context_propagation,
     create_trace_context,
 )
@@ -65,7 +65,10 @@ def check_rate_limit(request: Request):
     if not allowed:
         return JSONResponse(
             status_code=429,
-            content={"detail": "Rate limit exceeded", "retry_after": round(retry_after, 1)},
+            content={
+                "detail": "Rate limit exceeded",
+                "retry_after": round(retry_after, 1),
+            },
             headers={"Retry-After": str(int(retry_after + 1))},
         )
     return None
@@ -199,12 +202,14 @@ async def store_memory(
     ) as span:
         start = time.time()
         try:
-            sanitized = sanitize_input({
-                "content": request.content,
-                "memory_type": request.memory_type,
-                "agent_id": request.agent_id or "",
-                "session_id": request.session_id or "",
-            })
+            sanitized = sanitize_input(
+                {
+                    "content": request.content,
+                    "memory_type": request.memory_type,
+                    "agent_id": request.agent_id or "",
+                    "session_id": request.session_id or "",
+                }
+            )
 
             svc = _get_memory_service()
             mem_id = svc.store_memory(
@@ -270,7 +275,12 @@ async def retrieve_memory(
     trace_ctx = _create_request_context(req, "memory.retrieve")
     obs = get_observability()
 
-    with obs.start_span("memory.retrieve", trace_id=trace_ctx.trace_id, parent_span_id=trace_ctx.parent_span_id, attributes={"memory_id": memory_id}) as span:
+    with obs.start_span(
+        "memory.retrieve",
+        trace_id=trace_ctx.trace_id,
+        parent_span_id=trace_ctx.parent_span_id,
+        attributes={"memory_id": memory_id},
+    ) as span:
         start = time.time()
         try:
             from common_lib.modules.memory.api import get_sanitizer
@@ -290,7 +300,11 @@ async def retrieve_memory(
 
             await notify(
                 "memory.retrieve",
-                {"memory_id": sanitized_id, "found": True, "latency_ms": round(latency * 1000, 2)},
+                {
+                    "memory_id": sanitized_id,
+                    "found": True,
+                    "latency_ms": round(latency * 1000, 2),
+                },
                 channel=Channels.MEMORY_RETRIEVE,
                 correlation_id=trace_ctx.correlation_id,
                 trace_id=trace_ctx.trace_id,
@@ -358,7 +372,13 @@ async def list_memories(request: ListMemoriesRequest):
         collector = get_metrics_collector()
         collector.increment("memory.list.total")
         collector.observe("memory.list.latency", time.time() - start)
-        return {"status": "ok", "data": memories, "count": len(memories), "skip": request.skip, "limit": request.limit}
+        return {
+            "status": "ok",
+            "data": memories,
+            "count": len(memories),
+            "skip": request.skip,
+            "limit": request.limit,
+        }
     except Exception as e:
         logger.error(f"Failed to list memories: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -381,17 +401,28 @@ async def search_memories(
     trace_ctx = _create_request_context(req, "memory.search")
     obs = get_observability()
 
-    with obs.start_span("memory.search", trace_id=trace_ctx.trace_id, parent_span_id=trace_ctx.parent_span_id, attributes={
-        "query_length": len(request.query), "memory_type": request.memory_type or "", "limit": request.limit,
-    }) as span:
+    with obs.start_span(
+        "memory.search",
+        trace_id=trace_ctx.trace_id,
+        parent_span_id=trace_ctx.parent_span_id,
+        attributes={
+            "query_length": len(request.query),
+            "memory_type": request.memory_type or "",
+            "limit": request.limit,
+        },
+    ) as span:
         start = time.time()
         try:
             from common_lib.modules.memory.api import get_sanitizer
 
             sanitizer = get_sanitizer()
             sanitized_query = sanitizer.sanitize_string(request.query, "query")
-            sanitized_agent = sanitizer.sanitize_string(request.agent_id or "", "agent_id")
-            sanitized_session = sanitizer.sanitize_string(request.session_id or "", "session_id")
+            sanitized_agent = sanitizer.sanitize_string(
+                request.agent_id or "", "agent_id"
+            )
+            sanitized_session = sanitizer.sanitize_string(
+                request.session_id or "", "session_id"
+            )
 
             adapter = _get_adapter()
             results = await adapter.search(
@@ -403,11 +434,18 @@ async def search_memories(
                 limit=request.limit,
             )
             latency = time.time() - start
-            obs.record_search(latency, result_count=len(results), trace_id=trace_ctx.trace_id)
+            obs.record_search(
+                latency, result_count=len(results), trace_id=trace_ctx.trace_id
+            )
             span.set_attribute("latency_ms", round(latency * 1000, 2))
             span.set_attribute("result_count", len(results))
 
-            return {"status": "ok", "data": results, "count": len(results), "query": request.query}
+            return {
+                "status": "ok",
+                "data": results,
+                "count": len(results),
+                "query": request.query,
+            }
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
@@ -422,11 +460,15 @@ async def vector_search(
     threshold: float = Body(0.0),
 ):
     try:
-        from common_lib.modules.memory.memory_storage.adapters.pgvector_adapter import PgVectorAdapter
+        from common_lib.modules.memory.memory_storage.adapters.pgvector_adapter import (
+            PgVectorAdapter,
+        )
         from app.core.settings import get_settings
 
         adapter = PgVectorAdapter(get_settings().SQLALCHEMY_DATABASE_URI)
-        results = await adapter.similarity_search(query_embedding, top_k=top_k, threshold=threshold)
+        results = await adapter.similarity_search(
+            query_embedding, top_k=top_k, threshold=threshold
+        )
         return {"status": "ok", "data": results, "count": len(results)}
     except Exception as e:
         logger.error(f"Vector search failed: {e}", exc_info=True)
@@ -439,18 +481,29 @@ async def vector_search(
 
 
 @router.get("/session/{session_id}")
-async def get_session_memories(session_id: str, skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)):
+async def get_session_memories(
+    session_id: str, skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)
+):
     try:
         adapter = _get_adapter()
         memories = await adapter.get_by_session(session_id, skip=skip, limit=limit)
-        return {"status": "ok", "data": memories, "count": len(memories), "session_id": session_id}
+        return {
+            "status": "ok",
+            "data": memories,
+            "count": len(memories),
+            "session_id": session_id,
+        }
     except Exception as e:
         logger.error(f"Failed to get session memories: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/session/{session_id}/state")
-async def get_session_state(session_id: str, include_content: bool = Query(True), max_memories: int = Query(10, ge=1, le=100)):
+async def get_session_state(
+    session_id: str,
+    include_content: bool = Query(True),
+    max_memories: int = Query(10, ge=1, le=100),
+):
     try:
         adapter = _get_adapter()
         memories = await adapter.get_by_session(session_id)
@@ -459,7 +512,9 @@ async def get_session_state(session_id: str, include_content: bool = Query(True)
             "data": {
                 "session_id": session_id,
                 "memory_count": len(memories),
-                "memories": memories[:max_memories] if include_content else [{"id": m.get("id")} for m in memories[:max_memories]],
+                "memories": memories[:max_memories]
+                if include_content
+                else [{"id": m.get("id")} for m in memories[:max_memories]],
             },
         }
     except Exception as e:
@@ -468,11 +523,18 @@ async def get_session_state(session_id: str, include_content: bool = Query(True)
 
 
 @router.get("/agent/{agent_id}")
-async def get_agent_memories(agent_id: str, skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)):
+async def get_agent_memories(
+    agent_id: str, skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)
+):
     try:
         adapter = _get_adapter()
         memories = await adapter.get_by_agent(agent_id, skip=skip, limit=limit)
-        return {"status": "ok", "data": memories, "count": len(memories), "agent_id": agent_id}
+        return {
+            "status": "ok",
+            "data": memories,
+            "count": len(memories),
+            "agent_id": agent_id,
+        }
     except Exception as e:
         logger.error(f"Failed to get agent memories: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -486,14 +548,23 @@ async def get_agent_memories(agent_id: str, skip: int = Query(0, ge=0), limit: i
 @router.post("/pii/redact", response_model=PIIResponse)
 async def redact_pii(request: PIIRequest):
     try:
-        from common_lib.modules.security.pii.unified_detector import get_unified_pii_detector
+        from common_lib.modules.security.pii.unified_detector import (
+            get_unified_pii_detector,
+        )
 
         detector = get_unified_pii_detector(use_presidio=request.use_presidio)
         result = detector.detect(request.content)
-        scrubbed = detector.scrub(request.content, strategy=request.strategy) if result.entities else request.content
+        scrubbed = (
+            detector.scrub(request.content, strategy=request.strategy)
+            if result.entities
+            else request.content
+        )
         return PIIResponse(
             scrubbed_content=scrubbed,
-            pii_entities=[{"type": e.entity_type, "value": e.text, "start": e.start, "end": e.end} for e in result.entities],
+            pii_entities=[
+                {"type": e.entity_type, "value": e.text, "start": e.start, "end": e.end}
+                for e in result.entities
+            ],
             entity_count=len(result.entities),
         )
     except Exception as e:
@@ -522,7 +593,9 @@ async def gdpr_right_to_forget(
 
         return GDPRResponse(
             deleted_count=count,
-            export_path=f"/tmp/gdpr_export_{sanitized_agent_id}.json" if request.export_first else "",
+            export_path=f"/tmp/gdpr_export_{sanitized_agent_id}.json"
+            if request.export_first
+            else "",
             success=True,
         )
     except ValueError as e:
@@ -546,6 +619,7 @@ async def memory_metrics(format: str = Query("json")):
         collector.evaluate_alerts()
         if format == "prometheus":
             from fastapi.responses import PlainTextResponse
+
             return PlainTextResponse(content=collector.export_prometheus())
         return {"status": "ok", "data": collector.get_all_metrics()}
     except Exception as e:
@@ -594,10 +668,26 @@ async def get_memory_config():
         return {
             "status": "ok",
             "config": {
-                "database": {"url": config.database.url, "pool_size": config.database.pool_size, "max_overflow": config.database.max_overflow},
-                "embedding": {"model_name": config.embedding.model_name, "device": config.embedding.device, "batch_size": config.embedding.batch_size},
-                "rate_limit": {"enabled": config.rate_limit.enabled, "requests_per_minute": config.rate_limit.requests_per_minute, "requests_per_hour": config.rate_limit.requests_per_hour},
-                "security": {"pii_scan_enabled": config.security.pii_scan_enabled, "max_content_length": config.security.max_content_length, "gdpr_retention_days": config.security.gdpr_retention_days},
+                "database": {
+                    "url": config.database.url,
+                    "pool_size": config.database.pool_size,
+                    "max_overflow": config.database.max_overflow,
+                },
+                "embedding": {
+                    "model_name": config.embedding.model_name,
+                    "device": config.embedding.device,
+                    "batch_size": config.embedding.batch_size,
+                },
+                "rate_limit": {
+                    "enabled": config.rate_limit.enabled,
+                    "requests_per_minute": config.rate_limit.requests_per_minute,
+                    "requests_per_hour": config.rate_limit.requests_per_hour,
+                },
+                "security": {
+                    "pii_scan_enabled": config.security.pii_scan_enabled,
+                    "max_content_length": config.security.max_content_length,
+                    "gdpr_retention_days": config.security.gdpr_retention_days,
+                },
                 "feature_flags": {
                     "vector_search": config.feature_flags.vector_search,
                     "semantic_clustering": config.feature_flags.semantic_clustering,
@@ -614,4 +704,3 @@ async def get_memory_config():
     except Exception as e:
         logger.error(f"Failed to get config: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-

@@ -461,7 +461,7 @@ async def stream_agent_generator(
             reasoning_mode = False
         if reasoning_mode:
             try:
-                from common_lib.modules.reasoning.service import (  # noqa: lazy
+                from common_lib.modules.reasoning import (  # noqa: lazy
                     ReasoningPlannerService,
                 )
 
@@ -571,9 +571,7 @@ async def stream_agent_generator(
                     reasoning_state["current_step_id"] = _cur.get("id")
                     yield reasoning_event(
                         "reason",
-                        _reasoning_step_text(
-                            reasoning_level, _title, _desc, _tools
-                        ),
+                        _reasoning_step_text(reasoning_level, _title, _desc, _tools),
                         _cur.get("id"),
                     )
                 # Record LLM start trace event
@@ -688,10 +686,14 @@ async def stream_agent_generator(
                     # Capture the model's response content (assistant message)
                     response_content = ""
                     if msg_list:
-                        last_msg = msg_list[-1] if isinstance(msg_list, list) else msg_list
+                        last_msg = (
+                            msg_list[-1] if isinstance(msg_list, list) else msg_list
+                        )
                         if hasattr(last_msg, "content"):
                             response_content = (
-                                last_msg.content if isinstance(last_msg.content, str) else str(last_msg.content or "")
+                                last_msg.content
+                                if isinstance(last_msg.content, str)
+                                else str(last_msg.content or "")
                             )
                         elif isinstance(last_msg, dict):
                             response_content = str(last_msg.get("content", ""))

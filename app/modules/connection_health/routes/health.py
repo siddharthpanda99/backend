@@ -16,8 +16,8 @@ from sqlalchemy import select, desc
 
 from common_lib.modules.data_storage.database.connection import get_session
 from common_lib.modules.plugins.connectors.models.db import ConnectionRecord
-from common_lib.modules.connectors.connection_service import ConnectionService
-from common_lib.modules.connectors.schemas import ConnectionListResponse
+from common_lib.modules.plugins.connectors.connection_service import ConnectionService
+from common_lib.modules.plugins.connectors.schemas import ConnectionListResponse
 from common_lib.modules.exceptions import NotFoundError
 
 from ..models import ConnectionHealthRecord, ConnectionHealthConfig

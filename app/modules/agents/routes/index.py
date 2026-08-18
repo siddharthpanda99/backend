@@ -1,7 +1,7 @@
 from typing import List
 from fastapi import APIRouter, HTTPException, Depends
-from common_lib.modules.agents.schemas import AgentRead, AgentCreate, AgentUpdate
-from common_lib.modules.agents.service import agent_service, NotFoundError
+from common_lib.modules.agents.crud.schemas import AgentRead, AgentCreate, AgentUpdate
+from common_lib.modules.agents.crud.service import agent_service, NotFoundError
 from app.modules.common.types.index import APIResponse
 from app.modules.auth.dependencies.index import get_current_active_user
 from app.modules.agents.routes.registry import router as registry_router

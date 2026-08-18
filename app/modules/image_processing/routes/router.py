@@ -46,7 +46,7 @@ class FaceSwapRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 def _get_image_service():
-    from common_lib.modules.image_processing.service import ImageProcessingPipeline
+    from common_lib.modules.image_processing.pipeline import ImageProcessingPipeline
     return ImageProcessingPipeline()
 
 

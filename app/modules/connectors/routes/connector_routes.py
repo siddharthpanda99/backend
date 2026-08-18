@@ -9,13 +9,13 @@ from typing import Optional, List, Any, Dict
 
 from fastapi import APIRouter, Query
 
-from common_lib.modules.connectors.schemas import (
+from common_lib.modules.plugins.connectors.schemas import (
     ConnectorCreate,
     ConnectorUpdate,
     ConnectorResponse,
     ConnectorListResponse,
 )
-from common_lib.modules.connectors.service import ConnectorService
+from common_lib.modules.plugins.connectors.service import ConnectorService
 
 logger = logging.getLogger(__name__)
 

@@ -18,7 +18,7 @@ async def track_cost(
     metadata: Optional[Dict[str, Any]] = Body(None),
 ):
     try:
-        from common_lib.modules.memory.economics.costing import get_costing_service
+        from common_lib.modules.memory.memory_economics.cost import get_costing_service
 
         svc = get_costing_service()
         return await svc.track_cost(
@@ -35,7 +35,7 @@ async def track_cost(
 @router.get("/budget/{agent_id}")
 async def check_budget(agent_id: str):
     try:
-        from common_lib.modules.memory.economics.budget import get_budget_service
+        from common_lib.modules.memory.memory_economics.budget import get_budget_service
 
         svc = get_budget_service()
         budget = await svc.check_budget(agent_id=agent_id)
@@ -57,7 +57,7 @@ async def set_limit(
     hard_cap: bool = Body(True),
 ):
     try:
-        from common_lib.modules.memory.economics.budget import get_budget_service
+        from common_lib.modules.memory.memory_economics.budget import get_budget_service
 
         svc = get_budget_service()
         return await svc.set_limit(
@@ -76,7 +76,7 @@ async def get_report(
     end_date: Optional[str] = Query(None),
 ):
     try:
-        from common_lib.modules.memory.economics.reporting import (
+        from common_lib.modules.memory.memory_economics.reporting import (
             get_economics_reporting_service,
         )
 
@@ -100,9 +100,12 @@ async def get_report(
 @router.get("/bandit")
 async def get_bandit_stats(agent_id: Optional[str] = Query(None)):
     try:
-        from common_lib.modules.memory.economics.bandit import get_bandit_service
+        from common_lib.modules.memory.memory_adaptation.bandit import (
+            OnlineBanditAdapter,
+            get_bandit_service,
+        )
 
         svc = get_bandit_service()
-        return await svc.get_stats(agent_id=agent_id)
+        return svc.get_stats()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -277,7 +277,7 @@ def get_issue_activity(
     session: Session = Depends(_get_session),
 ):
     """Get activity log for an issue."""
-    from common_lib.modules.project_management.repositories import ActivityRepository
+    from common_lib.modules.project_management.activity import ActivityRepository
 
     repo = ActivityRepository(session)
     return repo.get_issue_activity(issue_id, limit=limit)
@@ -433,10 +433,10 @@ def generate_recurring_instances(
 @router.post("/recurring/process-all")
 def process_all_recurring_tasks(
     session: Session = Depends(_get_session),
-    _perm: None = require_permission("issues.manage", "*", "issues")
+    _perm: None = require_permission("issues.manage", "*", "issues"),
 ):
     """Process all active recurring tasks. Usually called by a cron job."""
     from common_lib.modules.project_management.issues.service import IssueService
-    
+
     svc = IssueService(session)
     return svc.process_all_recurring_tasks()

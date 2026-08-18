@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.modules.common.types.index import APIResponse
-from common_lib.modules.sessions.schemas import SessionResponse
-from common_lib.modules.sessions.service import session_service
+from common_lib.modules.auth.sessions.schemas import SessionResponse
+from common_lib.modules.auth.sessions.service import session_service
 
 router = APIRouter()
 
