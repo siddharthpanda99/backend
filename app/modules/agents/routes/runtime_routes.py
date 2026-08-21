@@ -349,7 +349,8 @@ async def stream(req: StreamRequest):
         get_chat_settings_service,
     )
 
-    persisted = get_chat_settings_service().get_settings(req.session_id)
+    svc = get_chat_settings_service()
+    persisted = svc.get_settings(req.session_id) if svc else {}
     merged = apply_settings_to_request(persisted, req.settings or {})
     # The explicit StreamRequest fields ALWAYS win over the settings object
     # (both persisted and inline). ``is not None`` guards let callers turn a
