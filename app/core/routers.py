@@ -32,6 +32,18 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def _dynamic_workflow_router():
+    from app.modules.workflows.routes.dynamic import router
+
+    return router
+
+
+def _data_configs_router():
+    from app.modules.workflows.routes.data_configs import router
+
+    return router
+
+
 def _knowledge_router():
     from app.modules.knowledge.routes import router
 
@@ -944,6 +956,20 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": workflow_compiler_router,
             "prefix": "/workflows",
             "tags": ["Workflow Compiler — AAR"],
+            "auth": True,
+        },
+        # ── Dynamic Workflow Runner (YAML + data-config) ──────────
+        {
+            "router": _dynamic_workflow_router(),
+            "prefix": "/workflows/dynamic",
+            "tags": ["Dynamic Workflow Runner"],
+            "auth": True,
+        },
+        # ── Data Config CRUD (YAML data-config files) ───────────
+        {
+            "router": _data_configs_router(),
+            "prefix": "/data-configs",
+            "tags": ["Data Configs"],
             "auth": True,
         },
         # ── Tools & Models ─────────────────────────────────────────
