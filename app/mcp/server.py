@@ -99,6 +99,7 @@ from app.mcp.tools.db_studio.frontend_design import register_frontend_design_too
 from app.mcp.tools.tool_search import register_tool_search_tools
 from app.mcp.tools.project_management import register_project_management_tools
 from app.mcp.tools.dynamic_workflows import register_dynamic_workflow_tools
+from app.mcp.tools.plugin_services import register_plugin_service_tools
 from app.mcp.resources.cognitive import register_cognitive_resources
 from common_lib.modules.project_management.mcp import register_pm_resources
 from common_lib.modules.platform_mcp.mcp import register_platform_tools
@@ -199,6 +200,7 @@ register_backend_architecture_tools(mcp_server)
 register_frontend_design_tools(mcp_server)
 register_tool_search_tools(mcp_server)
 register_dynamic_workflow_tools(mcp_server)
+register_plugin_service_tools(mcp_server)
 register_platform_tools(mcp_server)
 
 # 3. Register Modular Resources

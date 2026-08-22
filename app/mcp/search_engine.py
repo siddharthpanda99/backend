@@ -13,27 +13,41 @@ Layers (applied in order):
 """
 
 import logging
+import os
 import re
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("app.mcp.search_engine")
-
 _INDEX: Optional[Dict[str, Any]] = None
+_MODEL_CACHE: Optional[Any] = None
 
 
 def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower())
 
+_MODEL_LOAD_ATTEMPTED = False
+
 
 def _get_semantic_model():
-    """Lazy-load the sentence-transformers model (CPU, ~500MB RAM)."""
+    """Lazy-load the sentence-transformers model (cached, CPU, ~500MB RAM)."""
+    global _MODEL_CACHE, _MODEL_LOAD_ATTEMPTED
+    if _MODEL_CACHE is not None:
+        return _MODEL_CACHE
+    if _MODEL_LOAD_ATTEMPTED:
+        return None
+    _MODEL_LOAD_ATTEMPTED = True
     try:
+        import os
+        os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
         from sentence_transformers import SentenceTransformer
-
-        return SentenceTransformer("all-MiniLM-L6-v2")
+        # device='cpu' prevents meta-tensor errors on Windows/torch 2.6+
+        _MODEL_CACHE = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+        logger.info("sentence-transformers model loaded: all-MiniLM-L6-v2")
+        return _MODEL_CACHE
     except Exception as e:
         logger.warning("sentence-transformers unavailable: %s", e)
+        _MODEL_CACHE = None
         return None
 
 
@@ -86,12 +100,7 @@ def build_index(tools: List[Dict[str, Any]]) -> Dict[str, Any]:
     import threading
 
     def _preload():
-        try:
-            from sentence_transformers import SentenceTransformer
-
-            SentenceTransformer("all-MiniLM-L6-v2")
-        except Exception:
-            pass
+        _get_semantic_model()  # uses global cache
 
     t = threading.Thread(target=_preload, daemon=True)
     t.start()
@@ -142,6 +151,235 @@ async def compute_embeddings_async(index: Dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Layer 6: LLM Re-ranking
+# ---------------------------------------------------------------------------
+
+_LLM_RERANK_CACHE: Dict[str, Any] = {}
+
+
+def _get_llm_client():
+    """Get an LLM client for re-ranking. Tries multiple backends."""
+    # Try OpenAI first
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if api_key:
+        try:
+            import openai
+            return openai.OpenAI(api_key=api_key), "gpt-4o-mini"
+        except Exception:
+            pass
+
+    # Try DeepSeek
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    if api_key:
+        try:
+            import openai
+            return openai.OpenAI(
+                api_key=api_key,
+                base_url="https://api.deepseek.com/v1"
+            ), "deepseek-chat"
+        except Exception:
+            pass
+
+    # Try vLLM local
+    try:
+        import requests
+        resp = requests.get("http://localhost:8001/v1/models", timeout=2)
+        if resp.status_code == 200:
+            import openai
+            return openai.OpenAI(
+                api_key="not-needed",
+                base_url="http://localhost:8001/v1"
+            ), ""
+    except Exception:
+        pass
+
+    return None, None
+
+
+def _build_rerank_prompt(query: str, candidates: List[Dict[str, Any]]) -> str:
+    """Build a structured prompt for LLM re-ranking.
+
+    The LLM scores each tool 0-10 on relevance to the query.
+    Returns JSON array with scores and reasoning.
+    """
+    tools_text = []
+    for i, c in enumerate(candidates, 1):
+        name = c.get("name", "unknown")
+        desc = c.get("description", "")[:150]
+        cat = c.get("category", "")
+        tools_text.append(f"{i}. {name} [{cat}]: {desc}")
+
+    return f"""You are a tool relevance scorer. Score each tool 0-10 on how well it matches the user's query.
+
+Query: {query}
+
+Tools:
+{chr(10).join(tools_text)}
+
+Return ONLY a JSON array (no markdown, no explanation):
+[{{"name": "tool_name", "score": N, "reason": "brief reason"}}]
+
+Score guide:
+- 10: Perfect match, this is exactly what the user needs
+- 7-9: Strong match, very relevant to the query
+- 4-6: Partial match, related but not primary
+- 1-3: Weak match, tangentially related
+- 0: Not relevant at all"""
+
+
+def _parse_rerank_response(response_text: str, candidates: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
+    """Parse LLM re-ranking response into re-scored candidates."""
+    import json
+    import re
+
+    # Try to extract JSON from the response
+    text = response_text.strip()
+
+    # Remove markdown code fences if present
+    text = re.sub(r"```json\s*", "", text)
+    text = re.sub(r"```\s*", "", text)
+
+    # Try to find JSON array
+    match = re.search(r"\[\s*\{.*?\}\s*\]", text, re.DOTALL)
+    if not match:
+        logger.warning("Could not parse LLM rerank response: %s", text[:200])
+        return None
+
+    try:
+        scores = json.loads(match.group())
+    except json.JSONDecodeError as e:
+        logger.warning("JSON parse error in rerank: %s", e)
+        return None
+
+    # Map scores back to candidates
+    name_to_score = {}
+    for item in scores:
+        name = item.get("name", "")
+        score = item.get("score", 0)
+        reason = item.get("reason", "")
+        if name and isinstance(score, (int, float)):
+            name_to_score[name] = (score, reason)
+
+    # Re-score candidates
+    reranked = []
+    for c in candidates:
+        name = c.get("name", "")
+        if name in name_to_score:
+            llm_score, reason = name_to_score[name]
+            # Blend: 60% LLM score + 40% semantic score
+            semantic_score = c.get("score", 0) * 10  # normalize 0-1 to 0-10
+            blended = 0.6 * llm_score + 0.4 * semantic_score
+            enriched = dict(c)
+            enriched["llm_score"] = llm_score
+            enriched["llm_reason"] = reason
+            enriched["score"] = round(blended / 10, 4)  # normalize back to 0-1
+            enriched["match_type"] = "llm_reranked"
+            reranked.append(enriched)
+        else:
+            # Keep original score for tools not scored by LLM
+            reranked.append(c)
+
+    # Sort by blended score
+    reranked.sort(key=lambda x: -x.get("score", 0))
+    return reranked
+
+
+async def rerank_with_llm(
+    query: str,
+    candidates: List[Dict[str, Any]],
+    top_k: int = 5,
+    max_candidates: int = 15,
+) -> List[Dict[str, Any]]:
+    """Re-rank search results using LLM relevance scoring.
+
+    Takes the top-N candidates from semantic search and asks an LLM to
+    score each on a 0-10 relevance scale. Results are blended:
+      final_score = 0.6 * llm_score + 0.4 * semantic_score
+
+    Falls back to original ranking if LLM is unavailable.
+
+    Args:
+        query:       The user's search query.
+        candidates:  Pre-ranked tool dicts from semantic search.
+        top_k:       Number of results to return.
+        max_candidates: Max candidates to send to LLM (keeps prompt small).
+
+    Returns:
+        Re-ranked list of tool dicts with 'match_type' = 'llm_reranked'.
+    """
+    if not candidates:
+        return []
+
+    # Trim to max_candidates for LLM context
+    to_rerank = candidates[:max_candidates]
+
+    # Get LLM client
+    client, model = _get_llm_client()
+    if client is None:
+        logger.debug("No LLM available for reranking — using semantic scores")
+        return candidates[:top_k]
+
+    try:
+        prompt = _build_rerank_prompt(query, to_rerank)
+        messages = [
+            {"role": "system", "content": "You are a precise tool relevance scorer. Return only valid JSON."},
+            {"role": "user", "content": prompt},
+        ]
+
+        # Use minimal tokens — we just need a JSON array
+        response = client.chat.completions.create(
+            model=model or "gpt-4o-mini",
+            messages=messages,
+            temperature=0.1,
+            max_tokens=1024,
+        )
+
+        response_text = response.choices[0].message.content or ""
+        reranked = _parse_rerank_response(response_text, to_rerank)
+
+        if reranked is not None:
+            logger.info(
+                "LLM rerank: %d candidates -> %d re-scored",
+                len(to_rerank),
+                len([r for r in reranked if r.get("match_type") == "llm_reranked"]),
+            )
+            return reranked[:top_k]
+        else:
+            logger.warning("LLM rerank parse failed — falling back to semantic scores")
+            return candidates[:top_k]
+
+    except Exception as e:
+        logger.warning("LLM rerank failed: %s — falling back to semantic scores", e)
+        return candidates[:top_k]
+
+
+def rerank_with_llm_sync(
+    query: str,
+    candidates: List[Dict[str, Any]],
+    top_k: int = 5,
+    max_candidates: int = 15,
+) -> List[Dict[str, Any]]:
+    """Synchronous wrapper for rerank_with_llm."""
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Already in async context — run in thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return pool.submit(
+                    asyncio.run,
+                    rerank_with_llm(query, candidates, top_k, max_candidates)
+                ).result()
+        else:
+            return loop.run_until_complete(
+                rerank_with_llm(query, candidates, top_k, max_candidates)
+            )
+    except RuntimeError:
+        return asyncio.run(rerank_with_llm(query, candidates, top_k, max_candidates))
+
+
+# ---------------------------------------------------------------------------
 # Multi-layer search
 # ---------------------------------------------------------------------------
 
@@ -156,16 +394,17 @@ def search_tools(
     top_k: int = 20,
     min_score: float = 0.15,
     tools: Optional[List[Dict[str, Any]]] = None,
+    rerank: bool = False,
 ) -> List[Dict[str, Any]]:
-    """Multi-layer tool search with semantic ranking.
+    """Multi-layer tool search with semantic + LLM re-ranking.
 
     Layers:
       1. Category filter  (exact, optional)
       2. Audience filter  (exact, optional)
       3. Tag filter       (any-of, optional)
       4. Keyword filter   (substring on name/description, optional)
-      5. Semantic search  (embedding cosine similarity)
-      6. LLM re-ranking   (caller's responsibility — we return descriptions)
+      5. Semantic search  (embedding cosine similarity via MiniLM)
+      6. LLM re-ranking   (OpenAI/DeepSeek/vLLM scores 0-10, blended 60/40)
 
     Args:
         query:          Natural-language query for semantic matching.
@@ -176,10 +415,17 @@ def search_tools(
         top_k:          Max results to return (default 20).
         min_score:      Minimum cosine similarity for semantic results.
         tools:          Optional tool list (if index not yet built).
+        rerank:         Enable LLM re-ranking (default False, costs API call).
 
     Returns:
         List of tool dicts with added 'score' and 'match_type' fields.
     """
+    # If rerank=True, we fetch extra candidates for LLM re-ranking
+    if rerank and top_k < 15:
+        fetch_k = min(top_k * 3, 15)  # fetch 3x for re-ranking pool
+    else:
+        fetch_k = top_k
+
     index = ensure_index(tools)
     candidates = list(range(len(index["tools"])))
 
@@ -234,7 +480,7 @@ def search_tools(
                 if sims[i] >= min_score
             ]
             scored.sort(key=lambda x: -x[1])
-            scored = scored[:top_k]
+            scored = scored[:fetch_k]
 
             results = []
             for idx, score in scored:
@@ -242,14 +488,44 @@ def search_tools(
                 t["score"] = round(score, 4)
                 t["match_type"] = "semantic"
                 results.append(t)
-            return results
+            # Layer 6: LLM re-ranking (if enabled)
+            if rerank and query and len(results) > 1:
+                results = rerank_with_llm_sync(query, results, top_k=top_k)
+            return results[:top_k]
 
-    # Fallback: no query or no model — return filtered with keyword match
+    # Fallback: no model — use keyword scoring on query words
+    if query:
+        query_words = _clean(query).split()
+        scored_candidates = []
+        for i in candidates:
+            t = index["tools"][i]
+            name = _clean(t.get("name", ""))
+            desc = _clean(t.get("description", ""))
+            tags = " ".join(t.get("tags", []))
+            searchable = f"{name} {desc} {tags}"
+            # Score: count query word matches
+            score = sum(1 for w in query_words if w in searchable)
+            if score > 0:
+                scored_candidates.append((i, score / len(query_words)))
+        scored_candidates.sort(key=lambda x: -x[1])
+        scored_candidates = scored_candidates[:fetch_k]
+        results = []
+        for idx, score in scored_candidates:
+            t = dict(index["tools"][idx])
+            t["score"] = round(score, 4)
+            t["match_type"] = "keyword"
+            results.append(t)
+        # Layer 6: LLM re-ranking (if enabled)
+        if rerank and query and len(results) > 1:
+            results = rerank_with_llm_sync(query, results, top_k=top_k)
+        return results[:top_k]
+
+    # No query — return filtered
     results = []
     for i in candidates[:top_k]:
         t = dict(index["tools"][i])
-        t["score"] = 1.0 if keyword else 0.0
-        t["match_type"] = "keyword" if keyword else "filter"
+        t["score"] = 0.0
+        t["match_type"] = "filter"
         results.append(t)
     return results
 
