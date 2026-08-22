@@ -118,6 +118,18 @@ def _drift_router():
     return router
 
 
+def _plugins_router():
+    from app.modules.orchestration.plugins_routes import router
+
+    return router
+
+
+def _search_settings_router():
+    from app.modules.orchestration.search_settings_routes import router
+
+    return router
+
+
 def _kpe_router():
     from app.modules.kpe.routes import router
 
@@ -1293,6 +1305,20 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": _drift_router(),
             "prefix": "/orchestration",
             "tags": ["Drift Detection"],
+            "auth": True,
+        },
+        # ── Plugin System ──────────────────────────────────────────
+        {
+            "router": _plugins_router(),
+            "prefix": "/plugins",
+            "tags": ["Plugin System"],
+            "auth": True,
+        },
+        # ── Search Settings ──────────────────────────────────────
+        {
+            "router": _search_settings_router(),
+            "prefix": "/agents/search-settings",
+            "tags": ["Search Settings"],
             "auth": True,
         },
         # ── Kimchi (Execution Pipeline) ──────────────────────────

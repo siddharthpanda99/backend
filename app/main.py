@@ -1130,6 +1130,79 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Startup: TurboVec initialization skipped: {e}")
 
+    # --- PLUGIN SYSTEM: Load all 39 built-in plugins from platform.yml ---
+    try:
+        from common_lib.modules.orchestration.plugin import PluginContext, PluginLoader
+
+        plugin_ctx = PluginContext(name="platform")
+
+        # Code signing: read key from env; if set, all plugins verified on boot
+        _plugin_signing_key = os.environ.get("PLUGIN_SIGNING_KEY", "")
+        plugin_loader = PluginLoader(plugin_ctx, signing_key=_plugin_signing_key or None)
+
+        # Resolve platform.yml path
+        _common_lib_src = Path(__file__).parent.parent / "Python Libs" / "common_lib" / "src"
+        _platform_yml = _common_lib_src / "common_lib" / "configs" / "plugins" / "platform.yml"
+
+        if _platform_yml.exists():
+            plugin_loader.load_from_yaml(str(_platform_yml))
+            loaded_count = len(plugin_loader._plugins)
+            loaded_names = list(plugin_loader._plugins.keys())
+            print(f"Startup: Plugin system loaded {loaded_count} plugins: {', '.join(loaded_names[:10])}{'...' if loaded_count > 10 else ''}")
+        else:
+            print(f"Startup: platform.yml not found at {_platform_yml}, skipping plugin load")
+
+        # Store on app.state for route access
+        app.state.plugin_ctx = plugin_ctx
+        app.state.plugin_loader = plugin_loader
+
+        # Set as global context so MCP tools and other modules can access it
+        from common_lib.modules.orchestration.plugin import set_context
+        set_context(plugin_ctx)
+
+        # Store loader globally for hot-reload endpoint
+        import common_lib.modules.orchestration.plugin as _plugin_pkg
+        _plugin_pkg._global_loader = plugin_loader
+
+        # Validate all plugins loaded correctly
+        validation = plugin_loader.validate_all()
+        if not validation["valid"]:
+            print(f"Startup: Plugin validation FAILED: {validation['errors']}")
+        else:
+            print(f"Startup: Plugin validation OK ({validation['plugin_count']} plugins, {validation['service_count']} services)")
+        if validation.get("warnings"):
+            for w in validation["warnings"][:5]:
+                print(f"  Warning: {w}")
+
+        # Log signature verification results
+        sig_results = validation.get("signatures")
+        if sig_results:
+            verified = sig_results.get("verified", 0)
+            tampered = sig_results.get("tampered", [])
+            unsigned = sig_results.get("unsigned", [])
+            if tampered:
+                print(f"Startup: SIGNATURE TAMPERED: {tampered}")
+            if unsigned:
+                print(f"Startup: {len(unsigned)} unsigned plugins (no manifest): {unsigned[:5]}")
+            if verified > 0:
+                print(f"Startup: {verified} plugins signature-verified OK")
+        elif _plugin_signing_key:
+            print(f"Startup: Code signing enabled but no manifests found — run 'plugin-sign --key <key>' to sign plugins")
+
+        # Freeze critical services (cannot be overwritten at runtime)
+        for critical in ["settings", "auth", "security", "database"]:
+            if plugin_ctx.has(critical):
+                plugin_ctx.freeze(critical)
+
+        # Log registered services
+        services = plugin_ctx.keys()
+        print(f"Startup: Plugin services available: {', '.join(services[:15])}{'...' if len(services) > 15 else ''}")
+
+    except Exception as pe:
+        print(f"Startup: Plugin system initialization failed: {pe}")
+        import traceback
+        traceback.print_exc()
+
     yield
     # Shutdown
     engine.dispose()
@@ -1167,6 +1240,20 @@ async def lifespan(app: FastAPI):
         print(f"Warning: Could not stop scheduler: {e}")
 
 
+def get_plugin_context():
+    """FastAPI dependency — returns the global PluginContext.
+
+    Use in routes:
+        from app.main import get_plugin_context
+        ctx = Depends(get_plugin_context)
+        ctx.tools.search(...)
+    """
+    from starlette.requests import Request
+
+    # This will be overridden by the dependency injection below
+    raise RuntimeError("PluginContext not available — app not started yet")
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.PROJECT_NAME,
@@ -1176,6 +1263,18 @@ def create_app() -> FastAPI:
         redoc_url=settings.REDOC_URL,
         lifespan=lifespan,
     )
+
+    # Wire plugin context dependency
+    from fastapi import Request as _Req
+
+    async def _plugin_ctx_dep(request: _Req):
+        ctx = getattr(request.app.state, "plugin_ctx", None)
+        if ctx is None:
+            from common_lib.modules.orchestration.plugin import PluginContext
+            ctx = PluginContext(name="fallback")
+        return ctx
+
+    app.dependency_overrides[get_plugin_context] = _plugin_ctx_dep
 
     # Observability Middleware (outermost — capture correlation context first)
     from common_lib.modules.observability.constants import (

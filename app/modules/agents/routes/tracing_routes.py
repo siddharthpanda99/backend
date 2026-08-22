@@ -610,3 +610,36 @@ async def get_agent_cost_by_session(
     except Exception as e:
         logger.error(f"Failed to get cost by session for {agent_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Timeline / Waterfall endpoint ────────────────────────────────────────
+
+@router.get("/timeline/{session_id}")
+async def get_trace_timeline(
+    session_id: str,
+    trace_id: Optional[str] = Query(
+        default=None,
+        description="Optional trace_id to scope the timeline to a single agent response",
+    ),
+):
+    """
+    Get full timeline visualization data for a session/trace.
+
+    Returns:
+      - summary: aggregated stats (total duration, tokens, cost, slowest step)
+      - waterfall: list of bars for Gantt chart (start_ms, end_ms, category, details)
+      - phases: grouped operations (LLM Processing, Tool Execution, etc.)
+      - step_comparison: per-step duration for horizontal bar comparison
+      - token_breakdown: per-step token consumption
+      - events: raw events for detail inspection
+    """
+    try:
+        from common_lib.modules.orchestration.agents.agent.tracing.timeline_service import (
+            TraceTimelineService,
+        )
+        recorder = _get_recorder()
+        svc = TraceTimelineService(recorder)
+        return svc.get_timeline(session_id=session_id, trace_id=trace_id)
+    except Exception as e:
+        logger.error(f"Failed to get timeline for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

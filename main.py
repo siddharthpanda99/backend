@@ -25,6 +25,10 @@ if __name__ == "__main__":
         reload=True, 
         reload_dirs=[app_dir, common_lib_dir],
         reload_excludes=[
+            ".venv/*",
+            "**/.venv/*",
+            "node_modules/*",
+            "**/node_modules/*",
             "logs/*", 
             "**/logs/*",
             "resources/*",
