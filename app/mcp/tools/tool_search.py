@@ -26,7 +26,7 @@ def register_tool_search_tools(mcp: FastMCP):
     """Register tool search & discovery tools on the MCP server."""
 
     async def _ensure_index():
-        """Build the search index from the live MCP tool list."""
+        """Build the search index from the live MCP tool list + plugin context."""
         tools_raw = await mcp.list_tools()
         tool_dicts = [
             {
@@ -36,6 +36,26 @@ def register_tool_search_tools(mcp: FastMCP):
             }
             for t in tools_raw
         ]
+
+        # Enrich with @node metadata from plugin context
+        try:
+            from app.mcp.plugin_context import get_plugin_ctx
+            ctx = get_plugin_ctx()
+            if ctx:
+                for key in ctx.keys():
+                    service = ctx.get(key)
+                    if service and hasattr(service, '__class__'):
+                        cls = service.__class__
+                        tool_dicts.append({
+                            "name": f"plugin.{key}",
+                            "description": (cls.__doc__ or f"Plugin service: {key}")[:200],
+                            "category": "plugin",
+                            "tags": ["plugin", key],
+                            "audience": ["planner", "executor"],
+                        })
+        except Exception:
+            pass
+
         return search_engine.build_index(tool_dicts)
 
     @mcp.tool()
