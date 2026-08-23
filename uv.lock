@@ -894,6 +894,8 @@ requires-dist = [
     { name = "torchvision", marker = "extra == 'vision'", specifier = ">=0.15.0", index = "https://download.pytorch.org/whl/cu124" },
     { name = "trafilatura", marker = "extra == 'connectors'", specifier = ">=1.6.0" },
     { name = "transformers", marker = "extra == 'vision'", specifier = ">=4.36.0" },
+    { name = "tree-sitter", marker = "extra == 'code-intelligence'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-languages", marker = "extra == 'code-intelligence'", specifier = ">=1.10.0" },
     { name = "turbovec", marker = "extra == 'vision'", specifier = ">=0.1.0" },
     { name = "ultralytics", marker = "extra == 'vision'", specifier = ">=8.0.0" },
     { name = "vanna", marker = "extra == 'agents'", specifier = ">=0.0.1" },
@@ -902,7 +904,7 @@ requires-dist = [
     { name = "xlsxwriter", specifier = ">=3.1.0" },
     { name = "youtube-transcript-api", marker = "extra == 'connectors'", specifier = ">=0.6.1" },
 ]
-provides-extras = ["reporting", "excel", "database", "agents", "vision", "audio", "observability", "connectors", "etl", "security", "denoising", "audio-ml", "aura-full", "etl-all", "all"]
+provides-extras = ["reporting", "code-intelligence", "excel", "database", "agents", "vision", "audio", "observability", "connectors", "etl", "security", "denoising", "audio-ml", "aura-full", "etl-all", "all"]
 
 [package.metadata.requires-dev]
 dev = [

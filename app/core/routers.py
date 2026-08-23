@@ -592,6 +592,36 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
         return router
 
+    def _claude_mem_router():
+        from common_lib.modules.memory.claude_mem_features.api.routes import router
+
+        return router
+
+    def _autoresearch_router():
+        from common_lib.modules.knowledge_engine.autoresearch.api import router
+
+        return router
+
+    def _response_templates_router():
+        from common_lib.modules.orchestration.response_templates.api import router
+
+        return router
+
+    def _section_library_router():
+        from common_lib.modules.orchestration.response_templates.section_api import router
+
+        return router
+
+    def _background_tasks_router():
+        from common_lib.modules.system.background_api import router
+
+        return router
+
+    def _task_runner_router():
+        from common_lib.modules.system.task_runner.api import router
+
+        return router
+
     def _project_management_router():
         from app.modules.project_management.routes.index import router
 
@@ -1790,6 +1820,48 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             ).router,
             "prefix": "/file-system",
             "tags": ["File System"],
+            "auth": True,
+        },
+        # ── Claude-Mem Memory Features (Phases 1-10) ─────────────
+        {
+            "router": _claude_mem_router(),
+            "prefix": "",
+            "tags": ["Claude-Mem Memory"],
+            "auth": True,
+        },
+        # ── AutoResearch (Autonomous Research Loop) ──────────────
+        {
+            "router": _autoresearch_router(),
+            "prefix": "",
+            "tags": ["AutoResearch"],
+            "auth": True,
+        },
+        # ── Response Templates (CRUD for MD templates) ──────────
+        {
+            "router": _response_templates_router(),
+            "prefix": "",
+            "tags": ["Response Templates"],
+            "auth": True,
+        },
+        # ── Section Library (reusable sections for template composition) ──
+        {
+            "router": _section_library_router(),
+            "prefix": "",
+            "tags": ["Section Library"],
+            "auth": True,
+        },
+        # ── Background Tasks (long-running process management) ──
+        {
+            "router": _background_tasks_router(),
+            "prefix": "",
+            "tags": ["Background Tasks"],
+            "auth": True,
+        },
+        # ── Universal Task Runner (platform execution substrate) ──
+        {
+            "router": _task_runner_router(),
+            "prefix": "",
+            "tags": ["Universal Task Runner"],
             "auth": True,
         },
     ]

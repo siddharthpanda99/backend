@@ -100,6 +100,11 @@ from app.mcp.tools.tool_search import register_tool_search_tools
 from app.mcp.tools.project_management import register_project_management_tools
 from app.mcp.tools.dynamic_workflows import register_dynamic_workflow_tools
 from app.mcp.tools.plugin_services import register_plugin_service_tools
+from app.mcp.tools.claude_mem import register_claude_mem_tools
+from app.mcp.tools.memory_features import register_memory_feature_tools
+from app.mcp.tools.autoresearch import register_autoresearch_tools
+from app.mcp.tools.autoresearch_observability import register_autoresearch_observability_tools
+from common_lib.modules.orchestration.response_templates.mcp_tools import register_response_template_tools
 from app.mcp.resources.cognitive import register_cognitive_resources
 from common_lib.modules.project_management.mcp import register_pm_resources
 from common_lib.modules.platform_mcp.mcp import register_platform_tools
@@ -201,6 +206,11 @@ register_frontend_design_tools(mcp_server)
 register_tool_search_tools(mcp_server)
 register_dynamic_workflow_tools(mcp_server)
 register_plugin_service_tools(mcp_server)
+register_claude_mem_tools(mcp_server)
+register_memory_feature_tools(mcp_server)
+register_autoresearch_tools(mcp_server)
+register_autoresearch_observability_tools(mcp_server)
+register_response_template_tools(mcp_server)
 register_platform_tools(mcp_server)
 
 # 3. Register Modular Resources
