@@ -622,6 +622,11 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
         return router
 
+    def _behaviour_router():
+        from common_lib.modules.orchestration.behaviour.api import router
+
+        return router
+
     def _ai_gateway_router():
         from common_lib.modules.ai_gateway.proxy import router
 
@@ -1867,6 +1872,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": _task_runner_router(),
             "prefix": "",
             "tags": ["Universal Task Runner"],
+            "auth": True,
+        },
+        # ── Agent Behaviour (traits, strategies, policies, budgets, etc.) ──
+        {
+            "router": _behaviour_router(),
+            "prefix": "/orchestration",
+            "tags": ["Agent Behaviour"],
             "auth": True,
         },
         # ── AI Gateway (universal LLM proxy with 300+ providers) ──

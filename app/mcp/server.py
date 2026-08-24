@@ -37,6 +37,7 @@ from app.mcp.tools.generators import register_generator_tools
 from app.mcp.tools.patterns import register_pattern_tools
 from app.mcp.tools.drift import register_drift_tools
 from app.mcp.tools.drift_alerts import register_drift_alert_tools
+from app.mcp.tools.behaviour_tools import register_behaviour_tools
 from app.mcp.tools.drift_remediation import register_drift_remediation_tools
 from app.mcp.tools.collections import register_collection_tools
 from app.mcp.tools.chatgpt import register_chatgpt_tools
@@ -224,6 +225,7 @@ register_canvas_validation_tools(mcp_server)
 register_chains_tools(mcp_server)
 register_multiagent_tools(mcp_server)
 register_dataset_management_tools(mcp_server)
+register_behaviour_tools(mcp_server)
 
 # 3. Register Modular Resources
 register_cognitive_resources(mcp_server)
@@ -242,4 +244,3 @@ logger.info("Cognitive MCP Server fully industrialized with total platform parit
 
 # Export for external access
 mcp = mcp_server
-ROUTER_DEFINITIONS = ROUTER_DEFINITIONS
