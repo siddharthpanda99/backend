@@ -613,12 +613,17 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         return router
 
     def _background_tasks_router():
-        from common_lib.modules.system.background_api import router
+        from common_lib.modules.system.task_runner.backends.script_api import router
 
         return router
 
     def _task_runner_router():
         from common_lib.modules.system.task_runner.api import router
+
+        return router
+
+    def _ai_gateway_router():
+        from common_lib.modules.ai_gateway.proxy import router
 
         return router
 
@@ -1864,6 +1869,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["Universal Task Runner"],
             "auth": True,
         },
+        # ── AI Gateway (universal LLM proxy with 300+ providers) ──
+        {
+            "router": _ai_gateway_router(),
+            "prefix": "",
+            "tags": ["AI Gateway"],
+            "auth": True,
+        },
     ]
 
     for entry in ROUTER_DEFINITIONS:
@@ -1881,3 +1893,6 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
 
 __all__ = ["register_routers"]
+
+# Export for external access
+__all__ = ['register_routers', 'ROUTER_DEFINITIONS']

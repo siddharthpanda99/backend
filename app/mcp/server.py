@@ -108,6 +108,12 @@ from common_lib.modules.orchestration.response_templates.mcp_tools import regist
 from app.mcp.resources.cognitive import register_cognitive_resources
 from common_lib.modules.project_management.mcp import register_pm_resources
 from common_lib.modules.platform_mcp.mcp import register_platform_tools
+from app.mcp.tools.tool_catalog import register_tool_catalog_tools
+from app.mcp.tools.prompt_templates import register_prompt_template_tools
+from app.mcp.tools.canvas_validator_tools import register_canvas_validation_tools
+from app.mcp.tools.chains_tools import register_chains_tools
+from app.mcp.tools.multiagent_tools import register_multiagent_tools
+from app.mcp.tools.dataset_management import register_dataset_management_tools
 
 # Setup MCP-specific logging
 logging.basicConfig(level=logging.INFO)
@@ -212,6 +218,12 @@ register_autoresearch_tools(mcp_server)
 register_autoresearch_observability_tools(mcp_server)
 register_response_template_tools(mcp_server)
 register_platform_tools(mcp_server)
+register_tool_catalog_tools(mcp_server)
+register_prompt_template_tools(mcp_server)
+register_canvas_validation_tools(mcp_server)
+register_chains_tools(mcp_server)
+register_multiagent_tools(mcp_server)
+register_dataset_management_tools(mcp_server)
 
 # 3. Register Modular Resources
 register_cognitive_resources(mcp_server)
@@ -227,3 +239,7 @@ except Exception as e:
     logger.warning("Dynamic @node registration skipped: %s", e)
 
 logger.info("Cognitive MCP Server fully industrialized with total platform parity.")
+
+# Export for external access
+mcp = mcp_server
+ROUTER_DEFINITIONS = ROUTER_DEFINITIONS
