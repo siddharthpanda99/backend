@@ -14,6 +14,9 @@ try:
 except ImportError:
     pass
 
+# Silence the common 'triton' traceback on Windows before importing any torch-related libs
+os.environ["XFORMERS_FORCE_DISABLE_TRITON"] = "1"
+
 REPO_ROOT = Path(__file__).parent.parent.parent.resolve()
 COMMON_LIB_SRC = str(REPO_ROOT / "Python Libs" / "common_lib" / "src")
 if COMMON_LIB_SRC not in sys.path:

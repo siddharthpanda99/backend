@@ -77,7 +77,9 @@ def run_workflow(workflow_id: str, input: tuple):
         if RICH_AVAILABLE:
             with console.status(f"[bold cyan]Running workflow '{workflow_id}'..."):
                 try:
-                    stream = await svc.run_workflow_by_id(workflow_id, inputs_dict)
+                    from common_lib.modules.workflows.dynamic_runner import DynamicWorkflowRunner
+                    runner = DynamicWorkflowRunner()
+                    stream = runner.run_stream(workflow_id=workflow_id, overrides=inputs_dict)
                     async for event in stream:
                         event_type = event.get("event_type")
                         metadata = event.get("metadata", {})
@@ -112,7 +114,9 @@ def run_workflow(workflow_id: str, input: tuple):
         else:
             click.echo(f"Running workflow '{workflow_id}'...")
             try:
-                stream = await svc.run_workflow_by_id(workflow_id, inputs_dict)
+                from common_lib.modules.workflows.dynamic_runner import DynamicWorkflowRunner
+                runner = DynamicWorkflowRunner()
+                stream = runner.run_stream(workflow_id=workflow_id, overrides=inputs_dict)
                 async for event in stream:
                     event_type = event.get("event_type")
                     metadata = event.get("metadata", {})
