@@ -306,6 +306,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.dip.routes.embeddings import router as dip_embeddings_router
     from app.modules.dip.routes.extraction import router as dip_extraction_router
     from app.modules.file_browser import router as file_browser_router
+
     try:
         from app.modules.file_browser.macro_routes import router as macro_router
     except ImportError:
@@ -608,7 +609,9 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         return router
 
     def _section_library_router():
-        from common_lib.modules.orchestration.response_templates.section_api import router
+        from common_lib.modules.orchestration.response_templates.section_api import (
+            router,
+        )
 
         return router
 
@@ -629,6 +632,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
     def _ai_gateway_router():
         from common_lib.modules.ai_gateway.proxy import router
+
+        return router
+
+    def _platform_controls_router():
+        # platform_controls — Phase 0 skeleton
+        from app.modules.platform_controls.routes import router
 
         return router
 
@@ -1271,7 +1280,18 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["file-browser"],
             "auth": True,
         },
-        *([{"router": macro_router, "prefix": "/file-browser", "tags": ["macros"], "auth": True}] if macro_router is not None else []),
+        *(
+            [
+                {
+                    "router": macro_router,
+                    "prefix": "/file-browser",
+                    "tags": ["macros"],
+                    "auth": True,
+                }
+            ]
+            if macro_router is not None
+            else []
+        ),
         # ── Marketplace & Graph ────────────────────────────────────
         {
             "router": marketplace_router,
@@ -1888,6 +1908,17 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["AI Gateway"],
             "auth": True,
         },
+        # ── Platform Controls (Universal control plane) ──
+        # platform_controls — Phase 0 skeleton. Unauthenticated /health
+        # only; every later-phase endpoint added here requires a JWT
+        # bearer (and admin / audit endpoints also need the matching
+        # RBAC scope). See common_lib/modules/platform_controls/docs/14_observability_security.md §3.
+        {
+            "router": _platform_controls_router(),
+            "prefix": "/platform-controls",
+            "tags": ["Platform Controls"],
+            "auth": False,  # the /health endpoint manages its own auth (none)
+        },
     ]
 
     for entry in ROUTER_DEFINITIONS:
@@ -1907,4 +1938,4 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 __all__ = ["register_routers"]
 
 # Export for external access
-__all__ = ['register_routers', 'ROUTER_DEFINITIONS']
+__all__ = ["register_routers", "ROUTER_DEFINITIONS"]
