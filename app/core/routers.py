@@ -329,6 +329,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     # Lazy imports for modules not imported at main.py top level
     from app.modules.edit.routes import router as edit_router
     from app.modules.vision.routes import router as vision_router
+    from app.modules.face.routes import router as face_router
     from app.modules.filters.routes import router as filters_router
     from app.modules.nodes.routes import router as nodes_router
     from app.modules.prompts.routes import router as prompts_router
@@ -638,6 +639,16 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     def _platform_controls_router():
         # platform_controls — Phase 0 skeleton
         from app.modules.platform_controls.routes import router
+
+        return router
+
+    def _i2w_router():
+        # I2W (Instruction-to-Workflow) — Phase 7 surface.
+        # Thin router layer; all business logic lives in
+        # common_lib.modules.orchestration.instruction_to_workflow.
+        # The router mounts 55 endpoints (REST + WS) at /api/v1/i2w/;
+        # see docs/08_api_contract.md for the full surface.
+        from app.modules.i2w import router
 
         return router
 
@@ -1065,6 +1076,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": vision_router,
             "prefix": "/vision",
             "tags": ["Vision"],
+            "auth": True,
+        },
+        {
+            "router": face_router,
+            "prefix": "/face",
+            "tags": ["Face Operations"],
             "auth": True,
         },
         {
@@ -1918,6 +1935,26 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "prefix": "/platform-controls",
             "tags": ["Platform Controls"],
             "auth": False,  # the /health endpoint manages its own auth (none)
+        },
+        # ── I2W (Instruction-to-Workflow) — Phase 7 ──
+        # 55 endpoints (REST + WS) at /api/v1/i2w/. The /health and
+        # /metrics endpoints manage their own auth (none / scrape-job
+        # only); every other endpoint requires a JWT bearer plus the
+        # appropriate RBAC scope (i2w.read | i2w.write | i2w.execute
+        # | i2w.training.admin). Per-endpoint auth is enforced by the
+        # i2w_deps(...) dependency stack inside each sub-router; the
+        # registry auth=False skips the global auth so the unauth'd
+        # /health and /metrics endpoints can be served without a JWT.
+        # The router is feature-flag gated inside the dependency
+        # stack; when the master flag is off every endpoint returns
+        # 404. See
+        # common_lib/modules/orchestration/instruction_to_workflow/docs/08_api_contract.md
+        # for the full contract.
+        {
+            "router": _i2w_router(),
+            "prefix": "/i2w",
+            "tags": ["Instruction-to-Workflow (I2W)"],
+            "auth": False,  # per-endpoint auth via i2w_deps()
         },
     ]
 

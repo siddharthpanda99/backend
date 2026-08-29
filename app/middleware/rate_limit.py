@@ -19,6 +19,7 @@ Environment variables:
   RATE_LIMIT_GENERATION_RPM       — AI generation endpoints (default: 20)
   RATE_LIMIT_DOWNLOAD_RPM         — model download endpoints (default: 5)
   RATE_LIMIT_STREAMING_RPM        — streaming endpoints (default: 10)
+  RATE_LIMIT_FACE_RPM             — face editing endpoints (default: 15)
   RATE_LIMIT_ENABLED              — set to "false" to disable (default: true)
 """
 
@@ -44,6 +45,7 @@ _AUTH_RPM: int = int(os.environ.get("RATE_LIMIT_AUTH_RPM", "10"))
 _GENERATION_RPM: int = int(os.environ.get("RATE_LIMIT_GENERATION_RPM", "20"))
 _DOWNLOAD_RPM: int = int(os.environ.get("RATE_LIMIT_DOWNLOAD_RPM", "5"))
 _STREAMING_RPM: int = int(os.environ.get("RATE_LIMIT_STREAMING_RPM", "10"))
+_FACE_RPM: int = int(os.environ.get("RATE_LIMIT_FACE_RPM", "15"))
 
 # Window size in seconds (sliding window of 1 minute)
 _WINDOW_SECONDS: int = 60
@@ -73,6 +75,10 @@ def _classify_path(path: str) -> Tuple[str, int]:
         for seg in ("/stream", "/run-stream", "/fleet/status/stream")
     ):
         return "streaming", _STREAMING_RPM
+
+    # Face editing — GPU-heavy face operations (detect, restore, swap, etc.)
+    if path.startswith("/api/v1/face/"):
+        return "face", _FACE_RPM
 
     # Model downloads — expensive, must not overwhelm the download queue
     if "/models/" in path and "/download" in path:

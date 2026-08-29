@@ -1,4 +1,5 @@
 import logging
+
 try:
     from app.mcp.fastmcp_compat import FastMCP
 except ImportError:
@@ -41,6 +42,7 @@ from app.mcp.tools.behaviour_tools import register_behaviour_tools
 from app.mcp.tools.drift_remediation import register_drift_remediation_tools
 from app.mcp.tools.collections import register_collection_tools
 from app.mcp.tools.chatgpt import register_chatgpt_tools
+from app.mcp.tools.i2w import register_i2w_tools
 from app.mcp.tools.rbac import register_rbac_tools
 from app.mcp.tools.credentials import register_credentials_tools
 from app.mcp.tools.db_provisioning import register_db_provisioning_tools
@@ -104,8 +106,12 @@ from app.mcp.tools.plugin_services import register_plugin_service_tools
 from app.mcp.tools.claude_mem import register_claude_mem_tools
 from app.mcp.tools.memory_features import register_memory_feature_tools
 from app.mcp.tools.autoresearch import register_autoresearch_tools
-from app.mcp.tools.autoresearch_observability import register_autoresearch_observability_tools
-from common_lib.modules.orchestration.response_templates.mcp_tools import register_response_template_tools
+from app.mcp.tools.autoresearch_observability import (
+    register_autoresearch_observability_tools,
+)
+from common_lib.modules.orchestration.response_templates.mcp_tools import (
+    register_response_template_tools,
+)
 from app.mcp.resources.cognitive import register_cognitive_resources
 from common_lib.modules.project_management.mcp import register_pm_resources
 from common_lib.modules.platform_mcp.mcp import register_platform_tools
@@ -226,6 +232,7 @@ register_chains_tools(mcp_server)
 register_multiagent_tools(mcp_server)
 register_dataset_management_tools(mcp_server)
 register_behaviour_tools(mcp_server)
+register_i2w_tools(mcp_server)
 
 # 3. Register Modular Resources
 register_cognitive_resources(mcp_server)

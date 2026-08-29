@@ -257,7 +257,9 @@ async def lifespan(app: FastAPI):
 
             # --- SEED: Knowledge Hub initial data ---
             try:
-                from common_lib.modules.knowledge_engine.knowledge_hub.seed_data import seed_all
+                from common_lib.modules.knowledge_engine.knowledge_hub.seed_data import (
+                    seed_all,
+                )
                 from sqlmodel import Session as KHSession
 
                 with KHSession(engine) as kh_seed:
@@ -990,7 +992,9 @@ async def lifespan(app: FastAPI):
 
     # Start scheduler cron loops
     try:
-        from common_lib.modules.core_infrastructure.scheduler.service import get_scheduler_service
+        from common_lib.modules.core_infrastructure.scheduler.service import (
+            get_scheduler_service,
+        )
 
         scheduler = get_scheduler_service()
         scheduler.load_from_disk()
@@ -1138,19 +1142,29 @@ async def lifespan(app: FastAPI):
 
         # Code signing: read key from env; if set, all plugins verified on boot
         _plugin_signing_key = os.environ.get("PLUGIN_SIGNING_KEY", "")
-        plugin_loader = PluginLoader(plugin_ctx, signing_key=_plugin_signing_key or None)
+        plugin_loader = PluginLoader(
+            plugin_ctx, signing_key=_plugin_signing_key or None
+        )
 
         # Resolve platform.yml path
-        _common_lib_src = Path(__file__).parent.parent / "Python Libs" / "common_lib" / "src"
-        _platform_yml = _common_lib_src / "common_lib" / "configs" / "plugins" / "platform.yml"
+        _common_lib_src = (
+            Path(__file__).parent.parent / "Python Libs" / "common_lib" / "src"
+        )
+        _platform_yml = (
+            _common_lib_src / "common_lib" / "configs" / "plugins" / "platform.yml"
+        )
 
         if _platform_yml.exists():
             plugin_loader.load_from_yaml(str(_platform_yml))
             loaded_count = len(plugin_loader._plugins)
             loaded_names = list(plugin_loader._plugins.keys())
-            print(f"Startup: Plugin system loaded {loaded_count} plugins: {', '.join(loaded_names[:10])}{'...' if loaded_count > 10 else ''}")
+            print(
+                f"Startup: Plugin system loaded {loaded_count} plugins: {', '.join(loaded_names[:10])}{'...' if loaded_count > 10 else ''}"
+            )
         else:
-            print(f"Startup: platform.yml not found at {_platform_yml}, skipping plugin load")
+            print(
+                f"Startup: platform.yml not found at {_platform_yml}, skipping plugin load"
+            )
 
         # Store on app.state for route access
         app.state.plugin_ctx = plugin_ctx
@@ -1158,10 +1172,12 @@ async def lifespan(app: FastAPI):
 
         # Set as global context so MCP tools and other modules can access it
         from common_lib.modules.orchestration.plugin import set_context
+
         set_context(plugin_ctx)
 
         # Store loader globally for hot-reload endpoint
         import common_lib.modules.orchestration.plugin as _plugin_pkg
+
         _plugin_pkg._global_loader = plugin_loader
 
         # Validate all plugins loaded correctly
@@ -1169,7 +1185,9 @@ async def lifespan(app: FastAPI):
         if not validation["valid"]:
             print(f"Startup: Plugin validation FAILED: {validation['errors']}")
         else:
-            print(f"Startup: Plugin validation OK ({validation['plugin_count']} plugins, {validation['service_count']} services)")
+            print(
+                f"Startup: Plugin validation OK ({validation['plugin_count']} plugins, {validation['service_count']} services)"
+            )
         if validation.get("warnings"):
             for w in validation["warnings"][:5]:
                 print(f"  Warning: {w}")
@@ -1183,11 +1201,15 @@ async def lifespan(app: FastAPI):
             if tampered:
                 print(f"Startup: SIGNATURE TAMPERED: {tampered}")
             if unsigned:
-                print(f"Startup: {len(unsigned)} unsigned plugins (no manifest): {unsigned[:5]}")
+                print(
+                    f"Startup: {len(unsigned)} unsigned plugins (no manifest): {unsigned[:5]}"
+                )
             if verified > 0:
                 print(f"Startup: {verified} plugins signature-verified OK")
         elif _plugin_signing_key:
-            print(f"Startup: Code signing enabled but no manifests found — run 'plugin-sign --key <key>' to sign plugins")
+            print(
+                f"Startup: Code signing enabled but no manifests found — run 'plugin-sign --key <key>' to sign plugins"
+            )
 
         # Freeze critical services (cannot be overwritten at runtime)
         for critical in ["settings", "auth", "security", "database"]:
@@ -1196,11 +1218,14 @@ async def lifespan(app: FastAPI):
 
         # Log registered services
         services = plugin_ctx.keys()
-        print(f"Startup: Plugin services available: {', '.join(services[:15])}{'...' if len(services) > 15 else ''}")
+        print(
+            f"Startup: Plugin services available: {', '.join(services[:15])}{'...' if len(services) > 15 else ''}"
+        )
 
     except Exception as pe:
         print(f"Startup: Plugin system initialization failed: {pe}")
         import traceback
+
         traceback.print_exc()
 
     yield
@@ -1231,7 +1256,9 @@ async def lifespan(app: FastAPI):
 
     # Stop scheduler cron loops
     try:
-        from common_lib.modules.core_infrastructure.scheduler.service import get_scheduler_service
+        from common_lib.modules.core_infrastructure.scheduler.service import (
+            get_scheduler_service,
+        )
 
         scheduler = get_scheduler_service()
         await scheduler.stop_all()
@@ -1271,6 +1298,7 @@ def create_app() -> FastAPI:
         ctx = getattr(request.app.state, "plugin_ctx", None)
         if ctx is None:
             from common_lib.modules.orchestration.plugin import PluginContext
+
             ctx = PluginContext(name="fallback")
         return ctx
 
@@ -1369,6 +1397,26 @@ def create_app() -> FastAPI:
         print("Startup: Control Center Activity Logging middleware enabled")
     except Exception as cc_err:
         print(f"Warning: Control Center Activity Logging middleware failed: {cc_err}")
+
+    # voice_control BC deprecation headers (Phase 12 — PR 5).
+    # Adds ``Deprecation: true`` + ``Sunset: <2027-02-28>`` +
+    # ``Link: <canonical URL>; rel="successor-version"`` to every
+    # ``/api/v1/voice-control/*`` response. The canonical
+    # ``/api/v1/platform-controls/*`` URL space is unaffected. See
+    # common_lib/modules/platform_controls/docs/11_migration_from_voice_control.md
+    # §6.4 for the middleware design and §11 for the deprecation
+    # timeline. Wrapped in try/except so a missing voice_control
+    # package (pre-Phase 12) never breaks startup.
+    try:
+        from app.modules.voice_control.middleware import DeprecationHeadersMiddleware
+
+        app.add_middleware(DeprecationHeadersMiddleware)
+        print(
+            "Startup: voice_control deprecation headers middleware enabled "
+            "(Sunset: 2027-02-28)"
+        )
+    except Exception as vc_err:
+        print(f"Warning: voice_control deprecation headers middleware failed: {vc_err}")
 
     # Register Custom OpenAPI
     app.openapi = lambda: custom_openapi(app)
