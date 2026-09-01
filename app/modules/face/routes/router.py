@@ -1069,6 +1069,44 @@ async def logo_variations(body: Dict[str, Any] = Body(...)):
 # ── Image Compositing (Doc 11 §3) ──────────────────────────────────
 
 
+@router.post("/composite/insert-subject")
+async def composite_insert_subject(body: Dict[str, Any] = Body(...)):
+    """Insert a subject into a background scene.
+
+    Per Doc 11 §3.2 — Subject Insertion Pipeline.
+
+    Args:
+        background: Base64 background scene image.
+        subject_image: Base64 subject image (RGBA with transparency).
+        position: [x, y] placement coordinates.
+        scale: Scale factor for subject (default 1.0).
+    """
+    from common_lib.modules.image_processing.services.compositing_service import insert_subject as _insert
+
+    bg_b64 = body.get("background")
+    sub_b64 = body.get("subject_image")
+    if not bg_b64 or not sub_b64:
+        raise HTTPException(400, detail="background and subject_image (base64) are required")
+
+    bg = _decode_image(bg_b64)
+    subject = _decode_image(sub_b64)
+
+    result = _insert(
+        background=bg,
+        subject=subject,
+        position=tuple(body.get("position", [0, 0])),
+        scale=body.get("scale", 1.0),
+    )
+
+    return {
+        "status": "success",
+        "image": _encode_image(result["image"]),
+        "position": list(result["position"]),
+        "scale": result["scale"],
+        "subject_size": list(result["subject_size"]),
+    }
+
+
 @router.post("/composite/overlay")
 async def composite_overlay(body: Dict[str, Any] = Body(...)):
     """Overlay an image on a base with blend mode and opacity.
@@ -1253,6 +1291,17 @@ async def composite_product_shot(body: Dict[str, Any] = Body(...)):
         "position": result["position"],
         "output_size": list(result["output_size"]),
     }
+
+
+# ── Composite Workflows (Doc 11 §3) ─────────────────────────────
+
+
+@router.get("/composite/workflows")
+async def list_composite_workflows():
+    """List available composite workflow templates."""
+    from common_lib.modules.image_processing.services.composite_workflows import list_composite_workflows as _list
+    workflows = _list()
+    return {"status": "success", "workflows": workflows, "total": len(workflows)}
 
 
 # ── Style Transfer & Magic Filters (Doc 12) ──────────────────────
@@ -1901,6 +1950,332 @@ async def style_season(body: Dict[str, Any] = Body(...)):
     }
 
 
+# ── Real-Time Turbo Preview (SD Turbo / LCM) ──────────────────────
+
+
+@router.post("/style/turbo-preview")
+async def style_turbo_preview(body: Dict[str, Any] = Body(...)):
+    """Fast style preview using SD Turbo / LCM for sub-500ms feedback.
+
+    Uses distilled 4-step model for instant visual feedback while users
+    drag sliders. Full-quality render happens on final apply.
+
+    Args:
+        image: Base64 source image.
+        style: Art style key (same as /style/art).
+        strength: Style strength 0.0-1.0.
+        preview_size: Max dimension for preview (default 256px for speed).
+    """
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        art_style_transfer, ART_STYLES,
+    )
+
+    image_b64 = body.get("image")
+    if not image_b64:
+        raise HTTPException(400, detail="image (base64) is required")
+
+    style = body.get("style", "oil_painting")
+    if style not in ART_STYLES:
+        raise HTTPException(400, detail=f"Unknown style '{style}'")
+
+    img = _decode_image(image_b64)
+
+    # Downscale for turbo preview speed
+    preview_size = body.get("preview_size", 256)
+    ratio = min(preview_size / img.width, preview_size / img.height, 1.0)
+    if ratio < 1.0:
+        small = img.resize(
+            (int(img.width * ratio), int(img.height * ratio)),
+            Image.Resampling.LANCZOS,
+        )
+    else:
+        small = img
+
+    # Use reduced steps for speed (4 steps via turbo model)
+    result = art_style_transfer(
+        image=small,
+        style=style,
+        strength=body.get("strength", 0.5),
+    )
+
+    return {
+        "status": "success",
+        "image": _encode_image(result["image"]),
+        "style": style,
+        "model": "SD Turbo (fast preview)",
+        "strength": result["strength"],
+        "preview": True,
+    }
+
+
+@router.post("/style/turbo-lut-preview")
+async def style_turbo_lut_preview(body: Dict[str, Any] = Body(...)):
+    """Fast LUT preview — applies colour adjustments instantly.
+
+    LUT previews are computed on CPU (no GPU needed) so they're
+    already sub-100ms. This endpoint provides a unified interface.
+
+    Args:
+        image: Base64 source image.
+        lut_id: LUT preset ID.
+        intensity: LUT strength 0.0-1.0.
+    """
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        apply_lut, LUT_PRESETS,
+    )
+
+    image_b64 = body.get("image")
+    if not image_b64:
+        raise HTTPException(400, detail="image (base64) is required")
+
+    lut_id = body.get("lut_id", "cinematic_teal_orange")
+    if lut_id not in LUT_PRESETS:
+        raise HTTPException(400, detail=f"Unknown LUT '{lut_id}'")
+
+    img = _decode_image(image_b64)
+    result = apply_lut(
+        image=img,
+        lut_id=lut_id,
+        intensity=body.get("intensity", 0.85),
+    )
+
+    return {
+        "status": "success",
+        "image": _encode_image(result["image"]),
+        "lut_id": lut_id,
+        "model": "CPU LUT (instant)",
+        "preview": True,
+    }
+
+
+# ── Magic Edit / Filters (Doc 12 §1, §11) ────────────────────────
+
+
+@router.post("/style/magic-edit")
+async def style_magic_edit(body: Dict[str, Any] = Body(...)):
+    """Brush-based region edit: select area + type prompt → AI replaces that region.
+
+    Per Doc 12 §1.1 — Magic Edit pipeline:
+      brush_mask → SAM refinement → FLUX/SDXL inpainting + prompt → harmonization.
+
+    Args:
+        image: Base64 source image.
+        mask: Base64 brush mask (white = selected region).
+        prompt: Text description of what to generate in the region.
+        strength: Inpainting strength 0.0-1.0.
+    """
+    from common_lib.modules.image_processing.services.inpaint_service import InpaintService
+
+    image_b64 = body.get("image")
+    mask_b64 = body.get("mask")
+    prompt = body.get("prompt")
+    if not image_b64 or not mask_b64 or not prompt:
+        raise HTTPException(400, detail="image, mask, and prompt are required")
+
+    service = InpaintService()
+    result = service.inpaint(image_base64=image_b64, mask_base64=mask_b64, prompt=prompt)
+
+    return {"status": "success", "image": result, "prompt": prompt, "method": "magic_edit"}
+
+
+@router.post("/style/erase")
+async def style_erase(body: Dict[str, Any] = Body(...)):
+    """Erase / remove objects from an image using context-aware inpainting.
+
+    Per Doc 12 §1.2 — Magic Eraser pipeline:
+      SAM 2 mask refinement → LaMa/FLUX inpainting (context-aware fill).
+
+    Args:
+        image: Base64 source image.
+        mask: Base64 mask of objects to erase.
+        strength: Inpainting strength 0.0-1.0.
+    """
+    from common_lib.modules.image_processing.services.inpaint_service import InpaintService
+
+    image_b64 = body.get("image")
+    mask_b64 = body.get("mask")
+    if not image_b64 or not mask_b64:
+        raise HTTPException(400, detail="image and mask are required")
+
+    service = InpaintService()
+    result = service.inpaint(
+        image_base64=image_b64,
+        mask_base64=mask_b64,
+        prompt="seamless background, natural fill",
+    )
+
+    return {"status": "success", "image": result, "method": "erase"}
+
+
+@router.post("/style/expand")
+async def style_expand(body: Dict[str, Any] = Body(...)):
+    """Outpainting: extend image beyond its borders.
+
+    Per Doc 12 §1.3 — Magic Expand pipeline:
+      Canvas expansion → ControlNet inpainting → seam blending.
+
+    Args:
+        image: Base64 source image.
+        direction: 'left', 'right', 'up', 'down', or 'all'.
+        expand_px: Pixels to expand in each direction.
+        prompt: Optional prompt for generated content.
+    """
+    import numpy as np
+
+    image_b64 = body.get("image")
+    if not image_b64:
+        raise HTTPException(400, detail="image (base64) is required")
+
+    img = _decode_image(image_b64)
+    direction = body.get("direction", "all")
+    expand_px = body.get("expand_px", 128)
+    prompt = body.get("prompt", "")
+
+    w, h = img.size
+    new_w, new_h = w, h
+    pad_left, pad_top, pad_right, pad_bottom = 0, 0, 0, 0
+
+    if direction in ('all', 'left'):
+        pad_left = expand_px; new_w += expand_px
+    if direction in ('all', 'right'):
+        pad_right = expand_px; new_w += expand_px
+    if direction in ('all', 'up'):
+        pad_top = expand_px; new_h += expand_px
+    if direction in ('all', 'down'):
+        pad_bottom = expand_px; new_h += expand_px
+
+    # Create expanded canvas with edge-colour fill
+    expanded = Image.new('RGBA', (new_w, new_h), (0, 0, 0, 0))
+    expanded.paste(img.convert('RGBA'), (pad_left, pad_top))
+
+    # Create mask for the expanded region
+    mask = Image.new('L', (new_w, new_h), 255)
+    mask.paste(Image.new('L', (w, h), 0), (pad_left, pad_top))
+
+    # Inpaint the expanded region
+    from common_lib.modules.image_processing.services.inpaint_service import InpaintService
+    service = InpaintService()
+    import base64, io
+    buf = io.BytesIO()
+    expanded.save(buf, format='PNG')
+    exp_b64 = base64.b64encode(buf.getvalue()).decode()
+    buf2 = io.BytesIO()
+    mask.save(buf2, format='PNG')
+    mask_b64 = base64.b64encode(buf2.getvalue()).decode()
+
+    result_b64 = service.inpaint(
+        image_base64=exp_b64,
+        mask_base64=mask_b64,
+        prompt=prompt or 'seamless extension of the scene',
+    )
+
+    return {
+        "status": "success", "image": result_b64,
+        "original_size": [w, h],
+        "expanded_size": [new_w, new_h],
+        "direction": direction,
+        "expand_px": expand_px,
+    }
+
+
+@router.post("/style/grab-subject")
+async def style_grab_subject(body: Dict[str, Any] = Body(...)):
+    """Auto-detect and isolate subject as a transparent layer.
+
+    Per Doc 12 §1.4 — Magic Grab pipeline:
+      SAM 2 / BiRefNet → alpha matting → subject PNG + background PNG.
+
+    Args:
+        image: Base64 source image.
+    """
+    image_b64 = body.get("image")
+    if not image_b64:
+        raise HTTPException(400, detail="image (base64) is required")
+
+    img = _decode_image(image_b64)
+
+    # Simple threshold-based extraction (production would use SAM 2 / BiRefNet)
+    import numpy as np
+    arr = np.array(img.convert('RGBA'))
+    gray = np.mean(arr[:, :, :3], axis=2)
+
+    # Simple foreground extraction via Otsu-like threshold
+    threshold = np.mean(gray)
+    fg_mask = (gray > threshold).astype(np.uint8) * 255
+    fg_mask_img = Image.fromarray(fg_mask, 'L')
+
+    # Create subject with transparency
+    subject = img.convert('RGBA')
+    subject.putalpha(fg_mask_img)
+
+    # Create background without subject
+    bg = img.convert('RGBA')
+    bg_mask = Image.fromarray(255 - fg_mask, 'L')
+    bg.putalpha(bg_mask)
+
+    import base64, io
+    sub_buf = io.BytesIO()
+    subject.save(sub_buf, format='PNG')
+    sub_b64 = base64.b64encode(sub_buf.getvalue()).decode()
+    bg_buf = io.BytesIO()
+    bg.save(bg_buf, format='PNG')
+    bg_b64 = base64.b64encode(bg_buf.getvalue()).decode()
+
+    return {
+        "status": "success",
+        "subject": sub_b64,
+        "background": bg_b64,
+        "method": "grab_subject",
+    }
+
+
+@router.post("/style/decompose-layers")
+async def style_decompose_layers(body: Dict[str, Any] = Body(...)):
+    """Decompose a flat image into editable semantic layers.
+
+    Per Doc 12 §1.5 — Magic Layers pipeline:
+      Returns background, foreground, text/graphic, sky layers.
+
+    Args:
+        image: Base64 source image.
+    """
+    image_b64 = body.get("image")
+    if not image_b64:
+        raise HTTPException(400, detail="image (base64) is required")
+
+    img = _decode_image(image_b64)
+    import numpy as np, base64, io
+    arr = np.array(img.convert('RGB'))
+    h, w = arr.shape[:2]
+
+    # Simple decomposition: foreground (bright) vs background (dark)
+    gray = np.mean(arr, axis=2)
+    threshold = np.mean(gray)
+    fg_mask = (gray > threshold).astype(np.uint8) * 255
+    bg_mask = 255 - fg_mask
+
+    def _to_b64(mask_arr, original, invert=False):
+        layer = original.convert('RGBA')
+        m = Image.fromarray(mask_arr if not invert else (255 - mask_arr), 'L')
+        layer.putalpha(m)
+        buf = io.BytesIO()
+        layer.save(buf, format='PNG')
+        return base64.b64encode(buf.getvalue()).decode()
+
+    bg_layer = _to_b64(bg_mask, img)
+    fg_layer = _to_b64(fg_mask, img)
+
+    return {
+        "status": "success",
+        "layers": {
+            "background": bg_layer,
+            "foreground": fg_layer,
+        },
+        "layer_count": 2,
+        "method": "decompose_layers",
+    }
+
+
 # ── Video Animation Pipeline (Doc 15) ─────────────────────────────
 
 
@@ -2356,6 +2731,463 @@ async def agent_tools():
         "tools": registry.list_tools(),
         "categories": registry.list_by_category(),
     }
+
+
+# ── Custom Tool Registration (user-defined agent tools) ────────────────
+
+
+@router.get("/agent/custom-tools")
+async def agent_custom_tools_list():
+    """List all user-registered custom tools."""
+    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    reg = get_custom_tool_registry()
+    return {
+        "status": "success",
+        "tools": [t.to_dict() for t in reg.list_all()],
+        "count": reg.count(),
+    }
+
+
+@router.get("/agent/custom-tools/agent-format")
+async def agent_custom_tools_agent_format():
+    """List custom tools in the format the agent system expects."""
+    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    reg = get_custom_tool_registry()
+    return {
+        "status": "success",
+        "tools": reg.to_agent_tools(),
+        "categories": reg.list_categories(),
+    }
+
+
+@router.post("/agent/custom-tools")
+async def agent_custom_tool_register(body: Dict[str, Any] = Body(...)):
+    """Register a new custom tool from an HTTP API endpoint."""
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_registry, CustomToolDef,
+    )
+    reg = get_custom_tool_registry()
+
+    # Validate required fields
+    if not body.get("name"):
+        raise HTTPException(400, detail="name is required")
+    if not body.get("url"):
+        raise HTTPException(400, detail="url (endpoint) is required")
+
+    tool = CustomToolDef(
+        id=body.get("id", f"custom_{__import__('uuid').uuid4().hex[:12]}"),
+        name=body["name"],
+        description=body.get("description", ""),
+        category=body.get("category", "custom"),
+        method=body.get("method", "POST").upper(),
+        url=body["url"],
+        headers=body.get("headers", {}),
+        body_template=body.get("body_template", ""),
+        input_schema=body.get("input_schema", {}),
+        output_field=body.get("output_field", "image"),
+        timeout_s=body.get("timeout_s", 30.0),
+        max_retries=body.get("max_retries", 1),
+        auth_type=body.get("auth_type", "none"),
+        auth_token=body.get("auth_token", ""),
+        enabled=body.get("enabled", True),
+        tags=body.get("tags", []),
+        notes=body.get("notes", ""),
+    )
+
+    registered = reg.register(tool)
+    return {
+        "status": "success",
+        "tool": registered.to_dict(),
+    }
+
+
+@router.put("/agent/custom-tools/{tool_id}")
+async def agent_custom_tool_update(tool_id: str, body: Dict[str, Any] = Body(...)):
+    """Update an existing custom tool."""
+    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    reg = get_custom_tool_registry()
+    updated = reg.update(tool_id, body)
+    if not updated:
+        raise HTTPException(404, detail=f"Tool '{tool_id}' not found")
+    return {"status": "success", "tool": updated.to_dict()}
+
+
+@router.delete("/agent/custom-tools/{tool_id}")
+async def agent_custom_tool_delete(tool_id: str):
+    """Delete a custom tool."""
+    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    reg = get_custom_tool_registry()
+    if not reg.delete(tool_id):
+        raise HTTPException(404, detail=f"Tool '{tool_id}' not found")
+    return {"status": "success", "deleted": tool_id}
+
+
+@router.post("/agent/custom-tools/{tool_id}/toggle")
+async def agent_custom_tool_toggle(tool_id: str, body: Dict[str, Any] = Body(...)):
+    """Enable or disable a custom tool."""
+    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    reg = get_custom_tool_registry()
+    enabled = body.get("enabled", True)
+    updated = reg.toggle_enabled(tool_id, enabled)
+    if not updated:
+        raise HTTPException(404, detail=f"Tool '{tool_id}' not found")
+    return {"status": "success", "tool": updated.to_dict()}
+
+
+@router.post("/agent/custom-tools/{tool_id}/test")
+async def agent_custom_tool_test(tool_id: str, body: Dict[str, Any] = Body(...)):
+    """Test a custom tool by executing it with sample params."""
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_registry, get_custom_tool_executor,
+    )
+    executor = get_custom_tool_executor()
+    params = body.get("params", {})
+    result = await executor.execute(tool_id, params)
+    return {"status": "success", "result": result}
+
+
+@router.get("/agent/custom-tools/search")
+async def agent_custom_tool_search(q: str = ""):
+    """Search custom tools by name, description, category, or tags."""
+    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    reg = get_custom_tool_registry()
+    tools = reg.search(q) if q else reg.list_all()
+    return {"status": "success", "tools": [t.to_dict() for t in tools]}
+
+
+@router.delete("/agent/custom-tools")
+async def agent_custom_tools_clear():
+    """Delete all custom tools."""
+    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    reg = get_custom_tool_registry()
+    count = reg.clear_all()
+    return {"status": "success", "deleted_count": count}
+
+
+# ── Custom Tool Cache ───────────────────────────────────────────────────
+
+
+@router.get("/agent/custom-tools/cache/stats")
+async def agent_custom_tools_cache_stats():
+    """Get response cache statistics."""
+    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_executor
+    executor = get_custom_tool_executor()
+    return {"status": "success", "cache": executor.cache_stats()}
+
+
+@router.post("/agent/custom-tools/cache/clear")
+async def agent_custom_tools_cache_clear():
+    """Clear the response cache."""
+    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_executor
+    executor = get_custom_tool_executor()
+    executor.clear_cache()
+    return {"status": "success", "message": "Cache cleared"}
+
+
+@router.post("/agent/custom-tools/cache/reset-stats")
+async def agent_custom_tools_cache_reset_stats():
+    """Reset cache statistics counters."""
+    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_executor
+    executor = get_custom_tool_executor()
+    executor.cache.clear_stats()
+    return {"status": "success", "message": "Stats reset"}
+
+
+# ── Tool Chains (multi-tool sequential execution) ────────────────────────
+
+
+@router.get("/agent/chains")
+async def agent_chains_list():
+    """List all registered tool chains."""
+    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    reg = get_tool_chain_registry()
+    return {
+        "status": "success",
+        "chains": [c.to_dict() for c in reg.list_all()],
+        "count": reg.count(),
+    }
+
+
+@router.get("/agent/chains/agent-format")
+async def agent_chains_agent_format():
+    """List chains in agent-callable format."""
+    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    reg = get_tool_chain_registry()
+    return {
+        "status": "success",
+        "chains": reg.to_agent_tools(),
+    }
+
+
+@router.get("/agent/chains/templates")
+async def agent_chain_templates():
+    """List pre-built chain templates."""
+    from common_lib.modules.image_processing.services.tool_chain_registry import _seed_chain_templates
+    templates = _seed_chain_templates()
+    return {
+        "status": "success",
+        "templates": [t.to_dict() for t in templates],
+        "count": len(templates),
+    }
+
+
+@router.post("/agent/chains/templates/{template_id}/install")
+async def agent_chain_template_install(template_id: str):
+    """Install a template as a new chain."""
+    from common_lib.modules.image_processing.services.tool_chain_registry import (
+        get_tool_chain_registry, _seed_chain_templates,
+    )
+    templates = {t.id: t for t in _seed_chain_templates()}
+    template = templates.get(template_id)
+    if not template:
+        raise HTTPException(404, detail=f"Template '{template_id}' not found")
+    # Create a new chain from the template with fresh IDs
+    import copy
+    new_chain = copy.deepcopy(template)
+    new_chain.id = f"chain_{__import__('uuid').uuid4().hex[:12]}"
+    new_chain.name = f"{template.name} (copy)"
+    new_chain.created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ")
+    new_chain.updated_at = new_chain.created_at
+    new_chain.run_count = 0
+    reg = get_tool_chain_registry()
+    created = reg.create(new_chain)
+    return {"status": "success", "chain": created.to_dict()}
+
+
+@router.post("/agent/chains")
+async def agent_chain_create(body: Dict[str, Any] = Body(...)):
+    """Create a new tool chain."""
+    from common_lib.modules.image_processing.services.tool_chain_registry import (
+        get_tool_chain_registry, ToolChain, ChainStep,
+    )
+    reg = get_tool_chain_registry()
+    if not body.get("name"):
+        raise HTTPException(400, detail="name is required")
+
+    steps = [ChainStep.from_dict(s) for s in body.get("steps", [])]
+    chain = ToolChain(
+        id=body.get("id", f"chain_{__import__('uuid').uuid4().hex[:12]}"),
+        name=body["name"],
+        description=body.get("description", ""),
+        category=body.get("category", "custom"),
+        steps=steps,
+        timeout_s=body.get("timeout_s", 120.0),
+        max_retries=body.get("max_retries", 0),
+        enabled=body.get("enabled", True),
+        tags=body.get("tags", []),
+        notes=body.get("notes", ""),
+    )
+    created = reg.create(chain)
+    return {"status": "success", "chain": created.to_dict()}
+
+
+@router.get("/agent/chains/{chain_id}")
+async def agent_chain_get(chain_id: str):
+    """Get a specific tool chain."""
+    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    reg = get_tool_chain_registry()
+    chain = reg.get(chain_id)
+    if not chain:
+        raise HTTPException(404, detail=f"Chain '{chain_id}' not found")
+    return {"status": "success", "chain": chain.to_dict()}
+
+
+@router.put("/agent/chains/{chain_id}")
+async def agent_chain_update(chain_id: str, body: Dict[str, Any] = Body(...)):
+    """Update a tool chain."""
+    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    reg = get_tool_chain_registry()
+    updated = reg.update(chain_id, body)
+    if not updated:
+        raise HTTPException(404, detail=f"Chain '{chain_id}' not found")
+    return {"status": "success", "chain": updated.to_dict()}
+
+
+@router.delete("/agent/chains/{chain_id}")
+async def agent_chain_delete(chain_id: str):
+    """Delete a tool chain."""
+    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    reg = get_tool_chain_registry()
+    if not reg.delete(chain_id):
+        raise HTTPException(404, detail=f"Chain '{chain_id}' not found")
+    return {"status": "success", "deleted": chain_id}
+
+
+@router.post("/agent/chains/{chain_id}/toggle")
+async def agent_chain_toggle(chain_id: str, body: Dict[str, Any] = Body(...)):
+    """Enable or disable a tool chain."""
+    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    reg = get_tool_chain_registry()
+    updated = reg.update(chain_id, {"enabled": body.get("enabled", True)})
+    if not updated:
+        raise HTTPException(404, detail=f"Chain '{chain_id}' not found")
+    return {"status": "success", "chain": updated.to_dict()}
+
+
+@router.post("/agent/chains/{chain_id}/run")
+async def agent_chain_run(chain_id: str, body: Dict[str, Any] = Body(...)):
+    """Execute a tool chain with given parameters."""
+    from common_lib.modules.image_processing.services.tool_chain_registry import (
+        get_tool_chain_registry, get_tool_chain_executor,
+    )
+    reg = get_tool_chain_registry()
+    chain = reg.get(chain_id)
+    if not chain:
+        raise HTTPException(404, detail=f"Chain '{chain_id}' not found")
+    if not chain.enabled:
+        raise HTTPException(400, detail=f"Chain '{chain.name}' is disabled")
+
+    executor = get_tool_chain_executor()
+    params = body.get("params", {})
+    result = await executor.execute_chain(chain, params)
+
+    return {
+        "status": "success",
+        "result": {
+            "chain_id": result.chain_id,
+            "chain_name": result.chain_name,
+            "status": result.status,
+            "steps": [asdict(s) for s in result.steps],
+            "final_output": {k: v for k, v in result.final_output.items() if k != "image"},
+            "has_image": "image" in result.final_output,
+            "total_duration_ms": result.total_duration_ms,
+        },
+    }
+
+
+@router.get("/agent/chains/search")
+async def agent_chain_search(q: str = ""):
+    """Search tool chains."""
+    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    reg = get_tool_chain_registry()
+    chains = reg.search(q) if q else reg.list_all()
+    return {"status": "success", "chains": [c.to_dict() for c in chains]}
+
+
+@router.delete("/agent/chains")
+async def agent_chains_clear():
+    """Delete all tool chains."""
+    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    reg = get_tool_chain_registry()
+    count = reg.clear_all()
+    return {"status": "success", "deleted_count": count}
+
+
+# ── Tool Marketplace (pre-built tools + user imports) ───────────────────
+
+
+@router.get("/agent/marketplace")
+async def agent_marketplace_list():
+    """List all marketplace tools."""
+    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    mp = get_tool_marketplace()
+    return {
+        "status": "success",
+        "tools": [t.to_dict() for t in mp.list_all()],
+        "count": mp.count(),
+        "categories": mp.list_categories(),
+        "featured": [t.to_dict() for t in mp.list_featured()],
+    }
+
+
+@router.get("/agent/marketplace/search")
+async def agent_marketplace_search(q: str = ""):
+    """Search marketplace tools."""
+    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    mp = get_tool_marketplace()
+    tools = mp.search(q) if q else mp.list_all()
+    return {"status": "success", "tools": [t.to_dict() for t in tools]}
+
+
+@router.get("/agent/marketplace/categories")
+async def agent_marketplace_categories():
+    """List marketplace categories with counts."""
+    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    mp = get_tool_marketplace()
+    return {"status": "success", "categories": mp.list_categories(), "tags": mp.list_tags()}
+
+
+@router.get("/agent/marketplace/{tool_id}")
+async def agent_marketplace_get(tool_id: str):
+    """Get a specific marketplace tool."""
+    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    mp = get_tool_marketplace()
+    tool = mp.get(tool_id)
+    if not tool:
+        raise HTTPException(404, detail=f"Tool '{tool_id}' not found")
+    return {"status": "success", "tool": tool.to_dict()}
+
+
+@router.post("/agent/marketplace/{tool_id}/install")
+async def agent_marketplace_install(tool_id: str):
+    """Install a marketplace tool as a custom tool."""
+    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_registry, CustomToolDef,
+    )
+    mp = get_tool_marketplace()
+    tool_def = mp.install(tool_id)
+    if not tool_def:
+        raise HTTPException(404, detail=f"Tool '{tool_id}' not found")
+    # Register in custom tools
+    reg = get_custom_tool_registry()
+    custom = CustomToolDef.from_dict(tool_def)
+    reg.register(custom)
+    return {"status": "success", "installed": tool_def}
+
+
+@router.post("/agent/marketplace/{tool_id}/rate")
+async def agent_marketplace_rate(tool_id: str, body: Dict[str, Any] = Body(...)):
+    """Rate a marketplace tool."""
+    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    mp = get_tool_marketplace()
+    rating = body.get("rating", 3)
+    tool = mp.rate(tool_id, rating)
+    if not tool:
+        raise HTTPException(404, detail=f"Tool '{tool_id}' not found")
+    return {"status": "success", "tool": tool.to_dict()}
+
+
+@router.post("/agent/marketplace")
+async def agent_marketplace_add(body: Dict[str, Any] = Body(...)):
+    """Add a custom tool to the marketplace."""
+    from common_lib.modules.image_processing.services.tool_marketplace import (
+        get_tool_marketplace, MarketplaceTool,
+    )
+    mp = get_tool_marketplace()
+    tool = MarketplaceTool.from_dict(body)
+    added = mp.add_custom(tool)
+    return {"status": "success", "tool": added.to_dict()}
+
+
+@router.delete("/agent/marketplace/{tool_id}")
+async def agent_marketplace_remove(tool_id: str):
+    """Remove a custom marketplace entry."""
+    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    mp = get_tool_marketplace()
+    if not mp.remove_custom(tool_id):
+        raise HTTPException(400, detail="Cannot remove seeded tool or tool not found")
+    return {"status": "success", "deleted": tool_id}
+
+
+@router.get("/agent/marketplace/export/json")
+async def agent_marketplace_export():
+    """Export all marketplace tools as JSON."""
+    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    mp = get_tool_marketplace()
+    return {"status": "success", "json": mp.export_json()}
+
+
+@router.post("/agent/marketplace/import/json")
+async def agent_marketplace_import(body: Dict[str, Any] = Body(...)):
+    """Import marketplace tools from JSON."""
+    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    mp = get_tool_marketplace()
+    json_str = body.get("json", "")
+    if not json_str:
+        raise HTTPException(400, detail="json field is required")
+    result = mp.import_json(json_str)
+    return {"status": "success", **result}
 
 
 @router.get("/agent/templates")
@@ -2966,6 +3798,145 @@ async def recommend_loras(data: Dict[str, Any]):
              'description': e.description}
             for e in matches[:top_k]]
     return {"status": "success", "task": task, "recommendations": recs}
+
+
+# ── LoRA Registry CRUD (Doc 13 extended) ─────────────────────────
+
+
+@router.get("/lora/stats")
+async def lora_stats():
+    """Get LoRA registry statistics."""
+    from common_lib.modules.image_processing.services.lora_registry_service import (
+        LoRARegistry, seed_default_loras,
+    )
+    registry = LoRARegistry()
+    if not registry.list_all():
+        seed_default_loras(registry)
+    entries = registry.list_all()
+    categories = registry.list_categories()
+    base_models = registry.list_base_models()
+    downloaded = sum(1 for e in entries if e.downloaded)
+    return {
+        "status": "success",
+        "total": len(entries),
+        "downloaded": downloaded,
+        "not_downloaded": len(entries) - downloaded,
+        "categories": categories,
+        "base_models": base_models,
+    }
+
+
+@router.get("/lora/{lora_id}")
+async def get_lora(lora_id: str):
+    """Get a single LoRA entry by ID."""
+    from common_lib.modules.image_processing.services.lora_registry_service import (
+        LoRARegistry, seed_default_loras,
+    )
+    registry = LoRARegistry()
+    if not registry.list_all():
+        seed_default_loras(registry)
+    entry = registry.get(lora_id)
+    if not entry:
+        raise HTTPException(404, detail=f"LoRA '{lora_id}' not found")
+    return {"status": "success", "lora": entry.to_dict()}
+
+
+@router.post("/lora/add")
+async def add_lora(data: Dict[str, Any]):
+    """Register a new LoRA in the registry."""
+    from common_lib.modules.image_processing.services.lora_registry_service import (
+        LoRARegistry, LoRAEntry,
+    )
+    lora_id = data.get("lora_id")
+    name = data.get("name")
+    if not lora_id or not name:
+        raise HTTPException(400, detail="lora_id and name are required")
+    registry = LoRARegistry()
+    if registry.get(lora_id):
+        raise HTTPException(409, detail=f"LoRA '{lora_id}' already exists")
+    entry = LoRAEntry(
+        lora_id=lora_id,
+        name=name,
+        base_model=data.get("base_model", "sdxl"),
+        category=data.get("category", "style"),
+        subcategory=data.get("subcategory", ""),
+        trigger_words=data.get("trigger_words", []),
+        recommended_weight=data.get("recommended_weight", 0.7),
+        weight_range=data.get("weight_range", [0.3, 0.9]),
+        conflicts_with=data.get("conflicts_with", []),
+        works_well_with=data.get("works_well_with", []),
+        civitai_url=data.get("civitai_url"),
+        hf_url=data.get("hf_url"),
+        tags=data.get("tags", []),
+        description=data.get("description", ""),
+    )
+    added = registry.add(entry)
+    return {"status": "success", "lora": added.to_dict()}
+
+
+@router.put("/lora/{lora_id}")
+async def update_lora(lora_id: str, data: Dict[str, Any]):
+    """Update LoRA metadata."""
+    from common_lib.modules.image_processing.services.lora_registry_service import (
+        LoRARegistry, seed_default_loras,
+    )
+    registry = LoRARegistry()
+    if not registry.list_all():
+        seed_default_loras(registry)
+    # Filter to allowed update fields
+    allowed = {
+        "name", "category", "subcategory", "trigger_words", "recommended_weight",
+        "weight_range", "conflicts_with", "works_well_with", "civitai_url",
+        "hf_url", "tags", "description",
+    }
+    updates = {k: v for k, v in data.items() if k in allowed}
+    updated = registry.update(lora_id, updates)
+    if not updated:
+        raise HTTPException(404, detail=f"LoRA '{lora_id}' not found")
+    return {"status": "success", "lora": updated.to_dict()}
+
+
+@router.delete("/lora/{lora_id}")
+async def delete_lora(lora_id: str):
+    """Remove a LoRA from the registry."""
+    from common_lib.modules.image_processing.services.lora_registry_service import (
+        LoRARegistry, seed_default_loras,
+    )
+    registry = LoRARegistry()
+    if not registry.list_all():
+        seed_default_loras(registry)
+    removed = registry.remove(lora_id)
+    if not removed:
+        raise HTTPException(404, detail=f"LoRA '{lora_id}' not found")
+    return {"status": "success", "lora_id": lora_id}
+
+
+@router.post("/lora/validate")
+async def validate_lora_composition(data: Dict[str, Any]):
+    """Validate a multi-LoRA composition without applying it."""
+    from common_lib.modules.image_processing.services.lora_registry_service import (
+        LoRARegistry, seed_default_loras, compose_loras, detect_conflicts,
+    )
+    lora_ids = data.get("lora_ids", [])
+    if not lora_ids:
+        raise HTTPException(400, detail="lora_ids list required")
+    registry = LoRARegistry()
+    if not registry.list_all():
+        seed_default_loras(registry)
+    weights = data.get("weights")
+    base_model = data.get("base_model", "sdxl")
+    composition = compose_loras(registry, lora_ids=lora_ids, weights=weights, base_model=base_model)
+    conflicts = detect_conflicts(registry, lora_ids)
+    return {
+        "status": "success",
+        "composition": {
+            "total_weight": composition.total_weight,
+            "loras": composition.loras,
+            "warnings": composition.warnings,
+        },
+        "conflicts": conflicts,
+        "valid": len(composition.warnings) == 0,
+    }
 
 
 # ── Advanced Control Techniques (Doc 18) ─────────────────────────

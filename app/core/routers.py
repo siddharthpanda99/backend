@@ -330,6 +330,8 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.edit.routes import router as edit_router
     from app.modules.vision.routes import router as vision_router
     from app.modules.face.routes import router as face_router
+    from app.modules.influencer.routes import router as influencer_router
+    from app.modules.usecases.routes import router as usecases_router
     from app.modules.filters.routes import router as filters_router
     from app.modules.nodes.routes import router as nodes_router
     from app.modules.prompts.routes import router as prompts_router
@@ -1082,6 +1084,18 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": face_router,
             "prefix": "/face",
             "tags": ["Face Operations"],
+            "auth": True,
+        },
+        {
+            "router": influencer_router,
+            "prefix": "/influencer",
+            "tags": ["AI Influencer Studio"],
+            "auth": True,
+        },
+        {
+            "router": usecases_router,
+            "prefix": "/usecases",
+            "tags": ["Usecase Builder"],
             "auth": True,
         },
         {
