@@ -370,3 +370,180 @@ def _node_response(node) -> Dict[str, Any]:
         "last_run_ms": node.last_run_ms,
         "last_error": node.last_error,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Template Sharing (cross-user marketplace)
+# ═══════════════════════════════════════════════════════════════════════════
+
+import uuid
+from datetime import datetime, timezone
+
+# In-memory shared template store (production would use DB)
+_shared_templates: Dict[str, Dict[str, Any]] = {}
+
+
+class SharedTemplateCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str = Field(default="", max_length=500)
+    tags: List[str] = Field(default_factory=list)
+    pipeline: Dict[str, Any] = Field(..., description="Full pipeline definition (stages, nodes, config)")
+    author: str = Field(default="anonymous")
+    thumbnail: Optional[str] = Field(default=None, description="Base64 thumbnail preview")
+
+
+class SharedTemplateUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=500)
+    tags: Optional[List[str]] = Field(default=None)
+    pipeline: Optional[Dict[str, Any]] = Field(default=None)
+    thumbnail: Optional[str] = Field(default=None)
+
+
+@router.get("/templates/shared")
+async def list_shared_templates(
+    search: str = "",
+    tag: str = "",
+    author: str = "",
+    sort: str = "newest",
+):
+    """List all shared templates (marketplace). Supports search, tag filter, author filter."""
+    templates = list(_shared_templates.values())
+
+    if search:
+        q = search.lower()
+        templates = [
+            t for t in templates
+            if q in t["name"].lower() or q in t.get("description", "").lower()
+            or any(q in tag.lower() for tag in t.get("tags", []))
+        ]
+
+    if tag:
+        templates = [t for t in templates if tag in t.get("tags", [])]
+
+    if author:
+        templates = [t for t in templates if t.get("author") == author]
+
+    if sort == "popular":
+        templates.sort(key=lambda t: t.get("installs", 0), reverse=True)
+    elif sort == "oldest":
+        templates.sort(key=lambda t: t.get("created_at", ""))
+    else:  # newest
+        templates.sort(key=lambda t: t.get("created_at", ""), reverse=True)
+
+    return {
+        "templates": templates,
+        "total": len(templates),
+    }
+
+
+@router.post("/templates/shared")
+async def share_template(data: SharedTemplateCreate):
+    """Share a pipeline template to the marketplace."""
+    template_id = f"tpl_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+
+    template = {
+        "id": template_id,
+        "name": data.name,
+        "description": data.description,
+        "tags": data.tags,
+        "pipeline": data.pipeline,
+        "author": data.author,
+        "thumbnail": data.thumbnail,
+        "created_at": now,
+        "updated_at": now,
+        "version": 1,
+        "installs": 0,
+        "rating": 0.0,
+        "rating_count": 0,
+    }
+
+    _shared_templates[template_id] = template
+    return template
+
+
+@router.get("/templates/shared/{template_id}")
+async def get_shared_template(template_id: str):
+    """Get a shared template by ID."""
+    tpl = _shared_templates.get(template_id)
+    if not tpl:
+        raise HTTPException(404, detail=f"Template '{template_id}' not found")
+    return tpl
+
+
+@router.put("/templates/shared/{template_id}")
+async def update_shared_template(template_id: str, data: SharedTemplateUpdate):
+    """Update a shared template."""
+    tpl = _shared_templates.get(template_id)
+    if not tpl:
+        raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+    if data.name is not None:
+        tpl["name"] = data.name
+    if data.description is not None:
+        tpl["description"] = data.description
+    if data.tags is not None:
+        tpl["tags"] = data.tags
+    if data.pipeline is not None:
+        tpl["pipeline"] = data.pipeline
+        tpl["version"] = tpl.get("version", 1) + 1
+    if data.thumbnail is not None:
+        tpl["thumbnail"] = data.thumbnail
+
+    tpl["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return tpl
+
+
+@router.delete("/templates/shared/{template_id}")
+async def delete_shared_template(template_id: str):
+    """Delete a shared template."""
+    if template_id not in _shared_templates:
+        raise HTTPException(404, detail=f"Template '{template_id}' not found")
+    del _shared_templates[template_id]
+    return {"status": "deleted", "id": template_id}
+
+
+@router.post("/templates/shared/{template_id}/install")
+async def install_shared_template(template_id: str):
+    """Increment install count and return the template for local import."""
+    tpl = _shared_templates.get(template_id)
+    if not tpl:
+        raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+    tpl["installs"] = tpl.get("installs", 0) + 1
+    return {
+        "status": "installed",
+        "template": tpl,
+    }
+
+
+@router.post("/templates/shared/{template_id}/rate")
+async def rate_shared_template(template_id: str, rating: float = Field(..., ge=0, le=5)):
+    """Rate a shared template (0-5 stars)."""
+    tpl = _shared_templates.get(template_id)
+    if not tpl:
+        raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+    count = tpl.get("rating_count", 0)
+    avg = tpl.get("rating", 0.0)
+    new_count = count + 1
+    new_avg = ((avg * count) + rating) / new_count
+
+    tpl["rating"] = round(new_avg, 2)
+    tpl["rating_count"] = new_count
+
+    return {
+        "status": "rated",
+        "rating": tpl["rating"],
+        "rating_count": tpl["rating_count"],
+    }
+
+
+@router.get("/templates/shared/search/tags")
+async def list_shared_tags():
+    """List all unique tags across shared templates."""
+    tags: set = set()
+    for tpl in _shared_templates.values():
+        tags.update(tpl.get("tags", []))
+    return {"tags": sorted(tags)}

@@ -4457,6 +4457,103 @@ async def face_quality_assess(request: Request):
     return {"status": "success", **result.to_dict()}
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Template Marketplace — Community Sharing API
+# ═══════════════════════════════════════════════════════════════════════════
+
+# In-memory community template store (production: use DB)
+_community_templates: List[Dict[str, Any]] = []
+
+
+@router.get("/marketplace/templates")
+async def marketplace_list_templates():
+    """List all community-shared pipeline templates."""
+    return {"status": "success", "templates": _community_templates}
+
+
+@router.post("/marketplace/templates/publish")
+async def marketplace_publish_template(body: Dict[str, Any] = Body(...)):
+    """Publish a pipeline template to the community marketplace."""
+    name = body.get("name")
+    description = body.get("description", "")
+    pipeline = body.get("pipeline")
+    author = body.get("author", "anonymous")
+    tags = body.get("tags", [])
+    category = body.get("category", "general")
+
+    if not name or not pipeline:
+        raise HTTPException(400, detail="name and pipeline are required")
+
+    template_id = f"tpl_{int(__import__('time').time() * 1000)}"
+    entry = {
+        "id": template_id,
+        "name": name,
+        "description": description,
+        "pipeline": pipeline,
+        "author": author,
+        "tags": tags,
+        "category": category,
+        "published_at": __import__('datetime').datetime.utcnow().isoformat(),
+        "downloads": 0,
+        "rating": 0.0,
+    }
+    _community_templates.append(entry)
+    return {"status": "success", "template_id": template_id}
+
+
+@router.post("/marketplace/templates/{template_id}/install")
+async def marketplace_install_template(template_id: str):
+    """Install (download) a community template — increments counter."""
+    for t in _community_templates:
+        if t["id"] == template_id:
+            t["downloads"] = t.get("downloads", 0) + 1
+            return {"status": "success", "pipeline": t["pipeline"]}
+    raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+
+@router.delete("/marketplace/templates/{template_id}")
+async def marketplace_delete_template(template_id: str):
+    """Delete a community template (author only in production)."""
+    global _community_templates
+    before = len(_community_templates)
+    _community_templates = [t for t in _community_templates if t["id"] != template_id]
+    if len(_community_templates) == before:
+        raise HTTPException(404, detail=f"Template '{template_id}' not found")
+    return {"status": "success"}
+
+
+@router.get("/marketplace/templates/search")
+async def marketplace_search_templates(
+    q: str = "", category: str = "", tag: str = ""
+):
+    """Search community templates by name, category, or tag."""
+    results = _community_templates
+    if q:
+        results = [t for t in results if q.lower() in t["name"].lower() or q.lower() in t.get("description", "").lower()]
+    if category:
+        results = [t for t in results if t.get("category") == category]
+    if tag:
+        results = [t for t in results if tag in t.get("tags", [])]
+    return {"status": "success", "templates": results}
+
+
+@router.post("/marketplace/templates/{template_id}/rate")
+async def marketplace_rate_template(template_id: str, body: Dict[str, Any] = Body(...)):
+    """Rate a community template (1-5 stars)."""
+    rating = body.get("rating", 0)
+    if not (1 <= rating <= 5):
+        raise HTTPException(400, detail="rating must be between 1 and 5")
+    for t in _community_templates:
+        if t["id"] == template_id:
+            # Simple running average
+            old = t.get("rating", 0)
+            count = t.get("rating_count", 0)
+            t["rating"] = round((old * count + rating) / (count + 1), 2)
+            t["rating_count"] = count + 1
+            return {"status": "success", "rating": t["rating"]}
+    raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+
 @router.post("/quality-gate/stream")
 async def face_quality_gate_stream(request: Request):
     """Quality gate with SSE streaming for progress updates.

@@ -10,6 +10,7 @@ from pathlib import Path
 # Load environment variables from .env
 try:
     import dotenv
+
     dotenv.load_dotenv()
 except ImportError:
     pass
@@ -442,6 +443,7 @@ def model_download(model_id):
     click.echo(f"Downloading {model_id}...")
     svc.download_model(model_id)
     click.echo("[OK] Download complete")
+
 
 # ============================================================
 # SESSION - Agent chat sessions
@@ -1298,7 +1300,7 @@ def core_workflow_run(workflow_id, inputs):
     import json
 
     try:
-        from common_lib.cli.workflow_runner import WorkflowRunner
+        from common_lib.modules.cli.workflow_runner import WorkflowRunner
 
         runner = WorkflowRunner()
         input_data = json.loads(inputs) if isinstance(inputs, str) else inputs
