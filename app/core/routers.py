@@ -283,6 +283,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.vectorstores.routes import router as vectorstores_router
     from app.modules.models.routes import router as models_router
     from app.modules.models.external_routes import router as external_models_router
+    from app.modules.ai_models.routes import router as ai_models_catalog_router
     from app.modules.data_forge.routes import router as data_forge_router
     from app.modules.grid.routes import router as grid_router
     from app.modules.plugins.routes.router import router as plugins_router
@@ -1058,6 +1059,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": external_models_router,
             "prefix": "/models/external",
             "tags": ["External Models Discovery"],
+            "auth": True,
+        },
+        {
+            "router": ai_models_catalog_router,
+            "prefix": "/ai_models",
+            "tags": ["Model Catalog"],
             "auth": True,
         },
         {"router": sd_models_router, "prefix": "", "tags": ["SD Models"], "auth": True},
