@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Body, Query
 from fastapi.responses import Response, StreamingResponse
+from common_lib.paths import RESOURCES_ROOT
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Face Operations"])
@@ -860,6 +861,203 @@ async def health_operation(operation: str):
             for p, exists in zip(required, available)
         } if required else {"note": "CPU-only operation, no models required"},
     }
+
+
+@router.get("/health/identity")
+async def health_identity():
+    """Check identity consistency models: InstantID, PuLID, PhotoMaker, IP-Adapter FaceID."""
+    from common_lib.paths import RESOURCES_ROOT as _RES
+
+    resources = str(_RES)
+    home = os.path.expanduser("~")
+
+    models = {}
+
+    # InstantID
+    instantid_path = os.path.join(resources, "image_models", "face", "ip_adapter_faceid")
+    instantid_main = os.path.join(instantid_path, "ip-adapter.bin")
+    instantid_hf = os.path.join(resources, "image_models", "instantid", "ip-adapter.bin")
+    models["instantid"] = {
+        "available": _check_model_exists(instantid_main, instantid_hf),
+        "path": instantid_main if os.path.isfile(instantid_main) else instantid_hf,
+        "size_mb": round(os.path.getsize(instantid_main if os.path.isfile(instantid_main) else instantid_hf) / 1024 / 1024, 1) if _check_model_exists(instantid_main, instantid_hf) else 0,
+        "description": "IP-Adapter FaceID + ControlNet — best quality identity preservation",
+        "method": "instantid",
+    }
+
+    # PuLID
+    pulid_path = os.path.join(resources, "image_models", "face", "pulid")
+    pulid_file = os.path.join(pulid_path, "pulid.bin")
+    models["pulid"] = {
+        "available": _check_model_exists(pulid_file),
+        "path": pulid_file,
+        "size_mb": round(os.path.getsize(pulid_file) / 1024 / 1024, 1) if os.path.isfile(pulid_file) else 0,
+        "description": "PuLID — lightweight identity preservation, good speed/quality balance",
+        "method": "pulid",
+    }
+
+    # PhotoMaker
+    pm_path = os.path.join(resources, "image_models", "face", "photomaker")
+    pm_file = os.path.join(pm_path, "photomaker.bin")
+    models["photomaker"] = {
+        "available": _check_model_exists(pm_file),
+        "path": pm_file,
+        "size_mb": round(os.path.getsize(pm_file) / 1024 / 1024, 1) if os.path.isfile(pm_file) else 0,
+        "description": "PhotoMaker — multi-reference identity preservation, best consistency",
+        "method": "photomaker",
+    }
+
+    # IP-Adapter FaceID
+    ip_faceid_path = os.path.join(resources, "image_models", "face", "ip_adapter_faceid")
+    ip_faceid_file = os.path.join(ip_faceid_path, "ip-adapter-faceid-plusv2.bin")
+    models["ip_adapter_faceid"] = {
+        "available": _check_model_exists(ip_faceid_file),
+        "path": ip_faceid_file,
+        "size_mb": round(os.path.getsize(ip_faceid_file) / 1024 / 1024, 1) if os.path.isfile(ip_faceid_file) else 0,
+        "description": "IP-Adapter FaceID — lightweight face identity adapter",
+        "method": "ip_adapter_faceid",
+    }
+
+    # VRAM info
+    vram_info = {"total_mb": 0, "used_mb": 0, "free_mb": 0, "gpu_name": "none"}
+    try:
+        import torch
+        if torch.cuda.is_available():
+            vram_info["gpu_name"] = torch.cuda.get_device_name(0)
+            total = torch.cuda.get_device_properties(0).total_mem
+            free, total2 = torch.cuda.mem_get_info(0)
+            vram_info["total_mb"] = round(total / 1024 / 1024)
+            vram_info["free_mb"] = round(free / 1024 / 1024)
+            vram_info["used_mb"] = round((total2 - free) / 1024 / 1024)
+    except Exception:
+        pass
+
+    available_count = sum(1 for m in models.values() if m["available"])
+
+    return {
+        "status": "success",
+        "models": models,
+        "available": available_count,
+        "total": len(models),
+        "vram": vram_info,
+    }
+
+
+# Identity model download configurations
+_IDENTITY_MODEL_SOURCES: Dict[str, Dict[str, Any]] = {
+    "instantid": {
+        "repo_id": "InstantX/InstantID",
+        "filename": "ip-adapter.bin",
+        "subfolder": "ip-adapter",
+        "dest_dir": os.path.join(str(RESOURCES_ROOT), "image_models", "face", "ip_adapter_faceid"),
+        "dest_filename": "ip-adapter.bin",
+    },
+    "pulid": {
+        "repo_id": "lllyasviel/PuLID",
+        "filename": "pulid.bin",
+        "dest_dir": os.path.join(str(RESOURCES_ROOT), "image_models", "face", "pulid"),
+        "dest_filename": "pulid.bin",
+    },
+    "photomaker": {
+        "repo_id": "TencentARC/PhotoMaker",
+        "filename": "PhotoMaker.bin",
+        "dest_dir": os.path.join(str(RESOURCES_ROOT), "image_models", "face", "photomaker"),
+        "dest_filename": "photomaker.bin",
+    },
+    "ip_adapter_faceid": {
+        "repo_id": "h94/IP-Adapter-FaceID",
+        "filename": "ip-adapter-faceid-plusv2.bin",
+        "subfolder": "models",
+        "dest_dir": os.path.join(str(RESOURCES_ROOT), "image_models", "face", "ip_adapter_faceid"),
+        "dest_filename": "ip-adapter-faceid-plusv2.bin",
+    },
+}
+
+
+@router.post("/health/identity/download")
+async def download_identity_model(data: Dict[str, Any] = Body(...)):
+    """Download an identity model from HuggingFace. Non-streaming version."""
+    model_id = data.get("model")
+    if not model_id or model_id not in _IDENTITY_MODEL_SOURCES:
+        raise HTTPException(400, detail=f"Unknown model: {model_id}. Available: {list(_IDENTITY_MODEL_SOURCES.keys())}")
+
+    source = _IDENTITY_MODEL_SOURCES[model_id]
+    dest_dir = Path(source["dest_dir"])
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / source["dest_filename"]
+
+    if dest_path.exists():
+        return {"status": "success", "message": "Already downloaded", "path": str(dest_path)}
+
+    try:
+        from huggingface_hub import hf_hub_download
+
+        kwargs: Dict[str, Any] = {
+            "repo_id": source["repo_id"],
+            "filename": source["filename"],
+        }
+        if source.get("subfolder"):
+            kwargs["subfolder"] = source["subfolder"]
+
+        downloaded = hf_hub_download(**kwargs)
+        import shutil
+        shutil.copy2(str(downloaded), str(dest_path))
+
+        size_mb = round(dest_path.stat().st_size / 1024 / 1024, 1)
+        return {"status": "success", "path": str(dest_path), "size_mb": size_mb}
+    except Exception as e:
+        raise HTTPException(500, detail=f"Download failed: {e}")
+
+
+@router.post("/health/identity/download/stream")
+async def download_identity_model_stream(data: Dict[str, Any] = Body(...)):
+    """Download an identity model with SSE progress streaming."""
+    model_id = data.get("model")
+    if not model_id or model_id not in _IDENTITY_MODEL_SOURCES:
+        raise HTTPException(400, detail=f"Unknown model: {model_id}")
+
+    source = _IDENTITY_MODEL_SOURCES[model_id]
+    dest_dir = Path(source["dest_dir"])
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / source["dest_filename"]
+
+    async def generate():
+        if dest_path.exists():
+            yield _sse("progress", {"percent": 100, "message": "Already downloaded", "phase": "Done"})
+            yield _sse("result", {"path": str(dest_path), "size_mb": round(dest_path.stat().st_size / 1024 / 1024, 1)})
+            return
+
+        yield _sse("progress", {"percent": 0, "message": f"Starting download from {source['repo_id']}...", "phase": "Init"})
+
+        try:
+            import shutil
+            from huggingface_hub import hf_hub_download
+
+            yield _sse("progress", {"percent": 10, "message": "Connecting to HuggingFace...", "phase": "Connect"})
+
+            kwargs_download: Dict[str, Any] = {
+                "repo_id": source["repo_id"],
+                "filename": source["filename"],
+            }
+            if source.get("subfolder"):
+                kwargs_download["subfolder"] = source["subfolder"]
+
+            yield _sse("progress", {"percent": 20, "message": "Downloading model file...", "phase": "Download"})
+
+            # Download with progress tracking
+            downloaded_path = hf_hub_download(**kwargs_download)
+
+            yield _sse("progress", {"percent": 80, "message": "Copying to destination...", "phase": "Install"})
+
+            shutil.copy2(str(downloaded_path), str(dest_path))
+
+            size_mb = round(dest_path.stat().st_size / 1024 / 1024, 1)
+            yield _sse("progress", {"percent": 100, "message": f"Downloaded {size_mb}MB", "phase": "Done"})
+            yield _sse("result", {"path": str(dest_path), "size_mb": size_mb})
+        except Exception as e:
+            yield _sse("error", {"message": str(e)})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 # ── Sticker Generation (Doc 11 §1) ─────────────────────────────
@@ -4545,13 +4743,407 @@ async def marketplace_rate_template(template_id: str, body: Dict[str, Any] = Bod
         raise HTTPException(400, detail="rating must be between 1 and 5")
     for t in _community_templates:
         if t["id"] == template_id:
-            # Simple running average
             old = t.get("rating", 0)
             count = t.get("rating_count", 0)
             t["rating"] = round((old * count + rating) / (count + 1), 2)
             t["rating_count"] = count + 1
             return {"status": "success", "rating": t["rating"]}
     raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+
+# ── Reviews ────────────────────────────────────────────────────
+
+@router.get("/marketplace/templates/{template_id}/reviews")
+async def marketplace_list_reviews(template_id: str):
+    """List reviews for a community template."""
+    for t in _community_templates:
+        if t["id"] == template_id:
+            return {"status": "success", "reviews": t.get("reviews", [])}
+    raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+
+@router.post("/marketplace/templates/{template_id}/reviews")
+async def marketplace_add_review(template_id: str, body: Dict[str, Any] = Body(...)):
+    """Add a review comment to a community template."""
+    author = body.get("author", "anonymous")
+    text = body.get("text", "")
+    rating = body.get("rating")
+
+    if not text.strip():
+        raise HTTPException(400, detail="review text is required")
+
+    for t in _community_templates:
+        if t["id"] == template_id:
+            if "reviews" not in t:
+                t["reviews"] = []
+            review = {
+                "id": f"rev_{int(__import__('time').time() * 1000)}",
+                "author": author,
+                "text": text,
+                "rating": rating,
+                "created_at": __import__('datetime').datetime.utcnow().isoformat(),
+            }
+            t["reviews"].append(review)
+            # Update template rating if provided
+            if rating and 1 <= rating <= 5:
+                old = t.get("rating", 0)
+                count = t.get("rating_count", 0)
+                t["rating"] = round((old * count + rating) / (count + 1), 2)
+                t["rating_count"] = count + 1
+            return {"status": "success", "review": review}
+    raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+
+# ── Fork ───────────────────────────────────────────────────────
+
+@router.post("/marketplace/templates/{template_id}/fork")
+async def marketplace_fork_template(template_id: str, body: Dict[str, Any] = Body(...)):
+    """Fork a community template — clone it as a new publishable template."""
+    author = body.get("author", "anonymous")
+
+    for t in _community_templates:
+        if t["id"] == template_id:
+            new_id = f"tpl_{int(__import__('time').time() * 1000)}"
+            forked = {
+                "id": new_id,
+                "name": f"{t['name']} (fork)",
+                "description": t.get("description", ""),
+                "pipeline": t.get("pipeline"),
+                "author": author,
+                "tags": list(t.get("tags", [])),
+                "category": t.get("category", "general"),
+                "published_at": __import__('datetime').datetime.utcnow().isoformat(),
+                "downloads": 0,
+                "rating": 0.0,
+                "rating_count": 0,
+                "reviews": [],
+                "forked_from": t["id"],
+                "forked_from_name": t["name"],
+            }
+            _community_templates.append(forked)
+            return {"status": "success", "template": forked}
+    raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+
+@router.post("/marketplace/templates/{template_id}/clone")
+async def marketplace_clone_template(template_id: str, body: Dict[str, Any] = Body(...)):
+    """Clone a template in-place — creates a copy with reset stats (no fork tracking)."""
+    author = body.get("author", "anonymous")
+    new_name = body.get("name")
+
+    for t in _community_templates:
+        if t["id"] == template_id:
+            new_id = f"tpl_{int(__import__('time').time() * 1000)}"
+            import copy as _copy
+            cloned = {
+                "id": new_id,
+                "name": new_name or f"{t['name']} (copy)",
+                "description": t.get("description", ""),
+                "pipeline": _copy.deepcopy(t.get("pipeline")),
+                "author": author,
+                "tags": list(t.get("tags", [])),
+                "category": t.get("category", "general"),
+                "published_at": __import__('datetime').datetime.utcnow().isoformat(),
+                "downloads": 0,
+                "rating": 0.0,
+                "rating_count": 0,
+                "reviews": [],
+                "version": 1,
+                "versions": [],
+            }
+            _community_templates.append(cloned)
+            return {"status": "success", "template": cloned}
+    raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+
+# ── Trending ───────────────────────────────────────────────────
+
+@router.get("/marketplace/templates/trending")
+async def marketplace_trending_templates(limit: int = 10):
+    """Get trending templates sorted by download velocity (downloads per day)."""
+    import datetime as _dt
+    now = _dt.datetime.utcnow()
+    scored = []
+    for t in _community_templates:
+        try:
+            published = _dt.datetime.fromisoformat(t.get("published_at", now.isoformat()))
+            days = max((now - published).total_seconds() / 86400, 0.1)
+            velocity = t.get("downloads", 0) / days
+        except (ValueError, TypeError):
+            velocity = t.get("downloads", 0)
+        scored.append({**t, "velocity": round(velocity, 2)})
+    scored.sort(key=lambda x: x["velocity"], reverse=True)
+    return {"status": "success", "templates": scored[:limit]}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Template Versioning
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/marketplace/templates/{template_id}/versions")
+async def marketplace_list_versions(template_id: str):
+    """List all versions of a template."""
+    for t in _community_templates:
+        if t["id"] == template_id:
+            versions = t.get("versions", [])
+            current = {
+                "version": t.get("version", 1),
+                "pipeline": t.get("pipeline"),
+                "changelog": t.get("changelog", ""),
+                "published_at": t.get("published_at"),
+                "is_current": True,
+            }
+            all_versions = [current] + versions
+            return {"status": "success", "versions": all_versions, "current_version": t.get("version", 1)}
+    raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+
+@router.post("/marketplace/templates/{template_id}/versions")
+async def marketplace_create_version(template_id: str, body: Dict[str, Any] = Body(...)):
+    """Create a new version of a template (author updates)."""
+    pipeline = body.get("pipeline")
+    changelog = body.get("changelog", "")
+
+    if not pipeline:
+        raise HTTPException(400, detail="pipeline is required for new version")
+
+    for t in _community_templates:
+        if t["id"] == template_id:
+            # Archive current version
+            if "versions" not in t:
+                t["versions"] = []
+            t["versions"].insert(0, {
+                "version": t.get("version", 1),
+                "pipeline": t.get("pipeline"),
+                "changelog": t.get("changelog", ""),
+                "published_at": t.get("published_at"),
+                "archived_at": __import__('datetime').datetime.utcnow().isoformat(),
+            })
+            # Update to new version
+            t["version"] = t.get("version", 1) + 1
+            t["pipeline"] = pipeline
+            t["changelog"] = changelog
+            t["published_at"] = __import__('datetime').datetime.utcnow().isoformat()
+            return {"status": "success", "version": t["version"], "previous_versions": len(t["versions"])}
+    raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+
+@router.post("/marketplace/templates/{template_id}/versions/{version_num}/rollback")
+async def marketplace_rollback_version(template_id: str, version_num: int):
+    """Rollback a template to a previous version."""
+    for t in _community_templates:
+        if t["id"] == template_id:
+            versions = t.get("versions", [])
+            target = None
+            for v in versions:
+                if v.get("version") == version_num:
+                    target = v
+                    break
+            if not target:
+                raise HTTPException(404, detail=f"Version {version_num} not found")
+            # Archive current
+            if "versions" not in t:
+                t["versions"] = []
+            t["versions"].insert(0, {
+                "version": t.get("version", 1),
+                "pipeline": t.get("pipeline"),
+                "changelog": f"Rolled back to v{version_num}",
+                "published_at": t.get("published_at"),
+                "archived_at": __import__('datetime').datetime.utcnow().isoformat(),
+            })
+            # Restore target
+            t["version"] = t.get("version", 1) + 1
+            t["pipeline"] = target["pipeline"]
+            t["published_at"] = __import__('datetime').datetime.utcnow().isoformat()
+            return {"status": "success", "rolled_back_to": version_num, "new_version": t["version"]}
+    raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+
+@router.get("/marketplace/templates/{template_id}/versions/{version_num}")
+async def marketplace_get_version(template_id: str, version_num: int):
+    """Get a specific version's pipeline data for diff comparison."""
+    for t in _community_templates:
+        if t["id"] == template_id:
+            # Current version
+            if t.get("version", 1) == version_num:
+                return {"status": "success", "version": {"version": version_num, "pipeline": t.get("pipeline"), "changelog": t.get("changelog", ""), "published_at": t.get("published_at"), "is_current": True}}
+            # Archived version
+            for v in t.get("versions", []):
+                if v.get("version") == version_num:
+                    return {"status": "success", "version": v}
+            raise HTTPException(404, detail=f"Version {version_num} not found")
+    raise HTTPException(404, detail=f"Template '{template_id}' not found")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Template Collections
+# ═══════════════════════════════════════════════════════════════════════════
+
+_collections: List[Dict[str, Any]] = []
+
+
+@router.get("/marketplace/collections")
+async def marketplace_list_collections():
+    """List all template collections."""
+    return {"status": "success", "collections": _collections}
+
+
+@router.post("/marketplace/collections")
+async def marketplace_create_collection(body: Dict[str, Any] = Body(...)):
+    """Create a new template collection."""
+    name = body.get("name", "")
+    description = body.get("description", "")
+    author = body.get("author", "anonymous")
+    template_ids = body.get("template_ids", [])
+    tags = body.get("tags", [])
+
+    if not name.strip():
+        raise HTTPException(400, detail="collection name is required")
+
+    col_id = f"col_{int(__import__('time').time() * 1000)}"
+    collection = {
+        "id": col_id,
+        "name": name,
+        "description": description,
+        "author": author,
+        "template_ids": template_ids,
+        "tags": tags,
+        "created_at": __import__('datetime').datetime.utcnow().isoformat(),
+        "updated_at": __import__('datetime').datetime.utcnow().isoformat(),
+    }
+    _collections.append(collection)
+    return {"status": "success", "collection_id": col_id}
+
+
+@router.put("/marketplace/collections/{col_id}")
+async def marketplace_update_collection(col_id: str, body: Dict[str, Any] = Body(...)):
+    """Update a collection's metadata or template list."""
+    for c in _collections:
+        if c["id"] == col_id:
+            if "name" in body: c["name"] = body["name"]
+            if "description" in body: c["description"] = body["description"]
+            if "tags" in body: c["tags"] = body["tags"]
+            if "template_ids" in body: c["template_ids"] = body["template_ids"]
+            c["updated_at"] = __import__('datetime').datetime.utcnow().isoformat()
+            return {"status": "success", "collection": c}
+    raise HTTPException(404, detail=f"Collection '{col_id}' not found")
+
+
+@router.delete("/marketplace/collections/{col_id}")
+async def marketplace_delete_collection(col_id: str):
+    """Delete a collection."""
+    global _collections
+    before = len(_collections)
+    _collections = [c for c in _collections if c["id"] != col_id]
+    if len(_collections) == before:
+        raise HTTPException(404, detail=f"Collection '{col_id}' not found")
+    return {"status": "success"}
+
+
+@router.post("/marketplace/collections/{col_id}/add")
+async def marketplace_add_to_collection(col_id: str, body: Dict[str, Any] = Body(...)):
+    """Add a template to a collection."""
+    template_id = body.get("template_id")
+    if not template_id:
+        raise HTTPException(400, detail="template_id is required")
+    for c in _collections:
+        if c["id"] == col_id:
+            if template_id not in c["template_ids"]:
+                c["template_ids"].append(template_id)
+                c["updated_at"] = __import__('datetime').datetime.utcnow().isoformat()
+            return {"status": "success", "count": len(c["template_ids"])}
+    raise HTTPException(404, detail=f"Collection '{col_id}' not found")
+
+
+@router.post("/marketplace/collections/{col_id}/remove")
+async def marketplace_remove_from_collection(col_id: str, body: Dict[str, Any] = Body(...)):
+    """Remove a template from a collection."""
+    template_id = body.get("template_id")
+    for c in _collections:
+        if c["id"] == col_id:
+            c["template_ids"] = [tid for tid in c["template_ids"] if tid != template_id]
+            c["updated_at"] = __import__('datetime').datetime.utcnow().isoformat()
+            return {"status": "success", "count": len(c["template_ids"])}
+    raise HTTPException(404, detail=f"Collection '{col_id}' not found")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Template Analytics
+# ═══════════════════════════════════════════════════════════════════════════
+
+_analytics: Dict[str, Dict[str, Any]] = {}  # template_id -> analytics
+
+
+@router.post("/marketplace/templates/{template_id}/view")
+async def marketplace_track_view(template_id: str):
+    """Track a template view (when user opens details)."""
+    if template_id not in _analytics:
+        _analytics[template_id] = {"views": 0, "view_dates": [], "install_dates": []}
+    _analytics[template_id]["views"] = _analytics[template_id].get("views", 0) + 1
+    _analytics[template_id]["view_dates"].append(__import__('datetime').datetime.utcnow().isoformat())
+    return {"status": "success", "views": _analytics[template_id]["views"]}
+
+
+@router.get("/marketplace/templates/{template_id}/analytics")
+async def marketplace_get_analytics(template_id: str, days: int = Query(7, ge=1, le=365)):
+    """Get analytics for a template with configurable time range."""
+    stats = _analytics.get(template_id, {"views": 0, "view_dates": [], "install_dates": []})
+    tpl = next((t for t in _community_templates if t["id"] == template_id), None)
+    downloads = tpl.get("downloads", 0) if tpl else 0
+    rating = tpl.get("rating", 0) if tpl else 0
+    rating_count = tpl.get("rating_count", 0) if tpl else 0
+    review_count = len(tpl.get("reviews", [])) if tpl else 0
+
+    import datetime as _dt
+    now = _dt.datetime.utcnow()
+    daily_views = [0] * days
+    daily_installs = [0] * days
+    for d_str in stats.get("view_dates", []):
+        try:
+            d = _dt.datetime.fromisoformat(d_str)
+            days_ago = (now - d).days
+            if 0 <= days_ago < days:
+                daily_views[days - 1 - days_ago] += 1
+        except (ValueError, TypeError):
+            pass
+    for d_str in stats.get("install_dates", []):
+        try:
+            d = _dt.datetime.fromisoformat(d_str)
+            days_ago = (now - d).days
+            if 0 <= days_ago < days:
+                daily_installs[days - 1 - days_ago] += 1
+        except (ValueError, TypeError):
+            pass
+
+    # Period totals
+    period_views = sum(daily_views)
+    period_installs = sum(daily_installs)
+
+    return {
+        "status": "success",
+        "analytics": {
+            "views": stats.get("views", 0),
+            "downloads": downloads,
+            "rating": rating,
+            "rating_count": rating_count,
+            "review_count": review_count,
+            "daily_views": daily_views,
+            "daily_installs": daily_installs,
+            "period_views": period_views,
+            "period_installs": period_installs,
+            "total_installs": downloads,
+            "conversion_rate": round(downloads / max(stats.get("views", 0), 1) * 100, 1),
+            "days": days,
+        },
+    }
+
+
+# Also track installs
+_orig_install = None
+async def _track_install(template_id: str):
+    if template_id not in _analytics:
+        _analytics[template_id] = {"views": 0, "view_dates": [], "install_dates": []}
+    _analytics[template_id]["install_dates"].append(__import__('datetime').datetime.utcnow().isoformat())
 
 
 @router.post("/quality-gate/stream")

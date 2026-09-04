@@ -31,7 +31,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -519,7 +519,7 @@ async def install_shared_template(template_id: str):
 
 
 @router.post("/templates/shared/{template_id}/rate")
-async def rate_shared_template(template_id: str, rating: float = Field(..., ge=0, le=5)):
+async def rate_shared_template(template_id: str, rating: float = Body(..., ge=0, le=5)):
     """Rate a shared template (0-5 stars)."""
     tpl = _shared_templates.get(template_id)
     if not tpl:
