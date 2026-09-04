@@ -9,6 +9,7 @@ expects:
 - ``POST /api/v1/ai_models/refresh``     → live per-key provider probe
 - ``POST /api/v1/ai_models/set-default`` → persist default model choice
 - ``GET  /api/v1/ai_models/status``      → per-provider status view
+- ``GET  /api/v1/ai_models/usage``       → compact per-provider usage overview
 """
 
 from __future__ import annotations
@@ -55,6 +56,93 @@ async def model_catalog_refresh(
         return _catalog().refresh_status(provider=provider)
     except Exception as exc:  # noqa: BLE001
         logger.error("model_catalog.refresh failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/usage")
+async def model_catalog_usage() -> Dict[str, Any]:
+    """Return a compact per-provider usage/limits overview.
+
+    Merges the most recent live refresh (OpenRouter-style usage quotas,
+    free-tier flags, model counts) with DB-backed key status. Lightweight
+    enough for the chat UI to poll while choosing a model/provider.
+    """
+    try:
+        return _catalog().usage_overview()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("model_catalog.usage failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/pools")
+async def model_pools_list() -> Dict[str, Any]:
+    """List saved model pools (persistable model collections)."""
+    try:
+        return _catalog().list_pools()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("model_pools.list failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/pools")
+async def model_pools_create(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Create a model pool from live-catalog (provider, model) members."""
+    try:
+        name = body.get("name") or ""
+        members = body.get("members") or []
+        return _catalog().create_pool(
+            name,
+            members=members,
+            description=body.get("description") or "",
+            strategy=body.get("strategy") or "priority",
+            enabled=bool(body.get("enabled", True)),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error("model_pools.create failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.put("/pools/{pool_id}")
+async def model_pools_update(
+    pool_id: str,
+    body: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Update a pool (name / members / strategy / enabled)."""
+    try:
+        return _catalog().update_pool(pool_id, body)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("model_pools.update failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.delete("/pools/{pool_id}")
+async def model_pools_delete(pool_id: str) -> Dict[str, Any]:
+    """Delete a pool."""
+    try:
+        return _catalog().delete_pool(pool_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("model_pools.delete failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/pools/{pool_id}/select")
+async def model_pools_select(
+    pool_id: str,
+    body: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Rotate a pool → returns the chosen (provider, model) for this request.
+
+    Selection considers live usage (remaining credits / free tier) and
+    task complexity when the rotation flags are on, else plain priority.
+    """
+    try:
+        body = body or {}
+        return _catalog().select_pool(
+            pool_id,
+            complexity=str(body.get("complexity") or "medium"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error("model_pools.select failed: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
 
 
