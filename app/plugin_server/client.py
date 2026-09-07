@@ -450,3 +450,73 @@ __all__ = [
     "get_plugin_server_client",
     "reset_plugin_server_client",
 ]
+
+
+# ───────────────────────────────────────────────────────────────────
+# Panel methods (for /panels/* proxying)
+# ───────────────────────────────────────────────────────────────────
+
+def _list_panels_impl(self):
+    self._check_circuit()
+    try:
+        r = self._get_client().get("/panels", timeout=10.0)
+        r.raise_for_status()
+        self._record_success()
+        return r.json()
+    except (httpx.HTTPError, OSError) as e:
+        self._record_failure()
+        raise PluginServerUnreachable(f"list_panels failed: {e}") from e
+
+
+def _get_panel_impl(self, panel_id, mode="ui"):
+    self._check_circuit()
+    try:
+        r = self._get_client().get(
+            f"/panels/{panel_id}", params={"mode": mode}, timeout=10.0
+        )
+        if r.status_code == 404:
+            raise PluginServerError(f"Panel '{panel_id}' not found")
+        r.raise_for_status()
+        self._record_success()
+        return r.json()
+    except (httpx.HTTPError, OSError) as e:
+        self._record_failure()
+        raise PluginServerUnreachable(f"get_panel failed: {e}") from e
+
+
+def _render_panel_impl(self, panel_id, mode="ui", payload=None):
+    self._check_circuit()
+    body = {
+        "mode": mode,
+        "payload": payload or {},
+    }
+    try:
+        r = self._get_client().post(
+            f"/panels/{panel_id}/render", json=body, timeout=self.timeout_sec
+        )
+        if r.status_code == 404:
+            raise PluginServerError(f"Panel '{panel_id}' not found")
+        if r.status_code == 503:
+            try:
+                detail = r.json()
+            except Exception:
+                detail = {"error": r.text}
+            self._record_failure()
+            raise PluginServerToolError(
+                f"panel error: {detail.get('error', 'error')}",
+                status_code=503,
+                body=detail,
+            )
+        r.raise_for_status()
+        self._record_success()
+        return r.json()
+    except (httpx.HTTPError, OSError) as e:
+        self._record_failure()
+        raise PluginServerUnreachable(f"render_panel failed: {e}") from e
+
+
+# Monkey-patch the methods onto PluginServerClient so they're
+# available without needing a full class refactor.
+PluginServerClient.list_panels = _list_panels_impl
+PluginServerClient.get_panel = _get_panel_impl
+PluginServerClient.render_panel = _render_panel_impl
