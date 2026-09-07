@@ -1499,6 +1499,25 @@ def create_app() -> FastAPI:
         name="mcp_sse",
     )
 
+    # Plugin Server proxy (port 8081) — frontend hits these and we
+    # proxy to the standalone Plugin Server. The frontend doesn't
+    # need to know about port 8081.
+    try:
+        from app.routes.plugin_server_proxy import router as plugin_server_proxy_router
+
+        app.include_router(
+            plugin_server_proxy_router,
+            prefix="/api/plugin-server",
+            tags=["plugin-server"],
+        )
+    except Exception as _e:
+        # Plugin server proxy is optional; don't fail startup
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            f"Plugin server proxy router not registered: {_e}"
+        )
+
     # Serve generated images as static files
     from common_lib.paths import GENERATED_CONTENT
 
