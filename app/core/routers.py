@@ -38,6 +38,12 @@ def _dynamic_workflow_router():
     return router
 
 
+def _layouts_router():
+    from app.routes.layouts import router
+
+    return router
+
+
 def _data_configs_router():
     from app.modules.workflows.routes.data_configs import router
 
@@ -1976,6 +1982,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "prefix": "/i2w",
             "tags": ["Instruction-to-Workflow (I2W)"],
             "auth": False,  # per-endpoint auth via i2w_deps()
+        },
+        {
+            "router": _layouts_router(),
+            "prefix": "/layouts",
+            "tags": ["Layouts"],
+            "auth": True,
         },
     ]
 
