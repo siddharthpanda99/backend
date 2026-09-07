@@ -44,9 +44,21 @@ from common_lib.modules.layout import (
     serialise,
     deserialise,
 )
+from common_lib.modules.layout.preferences import (
+    UserPreference,
+    ensure_user_preferences_table,
+    get_preference,
+    set_preference,
+)
 from common_lib.modules.layout.storage import (
     LayoutPresetRecord,
     LayoutProfileRecord,
+    LayoutVersionRecord,
+)
+from common_lib.modules.layout.versioning import (
+    diff_dicts,
+    diff_summary,
+    diff_to_human,
 )
 
 logger = logging.getLogger(__name__)
@@ -131,6 +143,8 @@ def _load_user_layout(user_id: str, layout_id: str) -> LayoutPreset | None:
 
 
 def _save_user_layout(user_id: str, layout: LayoutPreset) -> bool:
+    """Save (or update) a layout. If updating, snapshot the old
+    version into LayoutVersionRecord for history/diff."""
     cm = _db_session()
     if cm is None:
         return False
@@ -151,6 +165,38 @@ def _save_user_layout(user_id: str, layout: LayoutPreset) -> bool:
             )
             s.add(rec)
         else:
+            # Snapshot the OLD version into the history table
+            # before we overwrite. This is what powers /history and
+            # /diff/{a}/{b}.
+            from sqlmodel import select as _select
+
+            latest_v_stmt = (
+                _select(LayoutVersionRecord)
+                .where(LayoutVersionRecord.layout_id == layout.id)
+                .order_by(LayoutVersionRecord.version_number.desc())
+            )
+            latest_v = s.exec(latest_v_stmt).first()
+            next_version = (latest_v.version_number + 1) if latest_v else 1
+            # Compute change summary
+            try:
+                before_dict = deserialise(rec.preset_json, LayoutPreset).model_dump()
+                after_dict = layout.model_dump()
+                changes = diff_dicts(before_dict, after_dict)
+                summary = diff_summary(changes)
+                change_summary = (
+                    f"+{summary['added']} ~{summary['changed']} -{summary['removed']}"
+                )
+            except Exception:
+                change_summary = "updated"
+            version_rec = LayoutVersionRecord(
+                layout_id=layout.id,
+                version_number=next_version,
+                preset_json=rec.preset_json,
+                change_summary=change_summary,
+                created_by=user_id,
+                created_at=now,
+            )
+            s.add(version_rec)
             rec.name = layout.name
             rec.description = layout.description or ""
             rec.category = layout.category or "general"
@@ -580,6 +626,201 @@ async def apply_profile(request: Request, profile_id: str) -> dict[str, Any]:
         "profile": profile_data,
         "active_page": active_page.model_dump(),
         "layout": layout_data,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Per-user default profile
+# ═══════════════════════════════════════════════════════════════════
+
+
+class SetDefaultProfileRequest(BaseModel):
+    profile_id: str = Field(..., description="Profile id (built-in or user)")
+
+
+@router.on_event("startup")
+async def _on_startup_prefs():
+    try:
+        ensure_user_preferences_table()
+    except Exception as e:
+        logger.warning(f"Could not ensure user_preferences table: {e}")
+
+
+@router.get("/me/default-profile")
+async def get_my_default_profile(request: Request) -> dict[str, Any]:
+    """Return the current user's default profile id (or empty)."""
+    user_id = _current_user_id(request)
+    profile_id = get_preference(user_id, "default_profile_id", "")
+    return {
+        "user_id": user_id,
+        "default_profile_id": profile_id or "",
+    }
+
+
+@router.put("/me/default-profile")
+async def set_my_default_profile(
+    request: Request, body: SetDefaultProfileRequest
+) -> dict[str, Any]:
+    """Set the current user's default profile.
+
+    Once set, ChatView will automatically pick this profile up
+    on every mount. Users can change it at any time.
+    """
+    user_id = _current_user_id(request)
+    # Verify the profile exists
+    profile_found = False
+    for p in BUILTIN_PROFILES:
+        if p.id == body.profile_id:
+            profile_found = True
+            break
+    if not profile_found:
+        profile_found = _load_user_profile(user_id, body.profile_id) is not None
+    if not profile_found:
+        raise HTTPException(
+            status_code=404,
+            detail=f"profile '{body.profile_id}' not found",
+        )
+    set_preference(user_id, "default_profile_id", body.profile_id)
+    return {
+        "user_id": user_id,
+        "default_profile_id": body.profile_id,
+    }
+
+
+@router.delete("/me/default-profile")
+async def clear_my_default_profile(request: Request) -> dict[str, Any]:
+    """Clear the current user's default profile."""
+    user_id = _current_user_id(request)
+    set_preference(user_id, "default_profile_id", "")
+    return {"user_id": user_id, "default_profile_id": ""}
+
+
+@router.get("/{layout_id}/history")
+async def get_layout_history(request: Request, layout_id: str) -> dict[str, Any]:
+    """Return the version history of a layout.
+
+    Newest first. Each entry is a snapshot of the layout at that
+    point in time plus a short change summary.
+    """
+    # Built-ins don't have history
+    if _is_builtin_layout(layout_id):
+        return {
+            "layout_id": layout_id,
+            "history": [],
+            "note": "built-in layouts are versioned with the platform",
+        }
+    cm = _db_session()
+    if cm is None:
+        return {"layout_id": layout_id, "history": []}
+    try:
+        with cm as s:
+            from sqlmodel import select as _select
+
+            stmt = (
+                _select(LayoutVersionRecord)
+                .where(LayoutVersionRecord.layout_id == layout_id)
+                .order_by(LayoutVersionRecord.version_number.desc())
+            )
+            records = s.exec(stmt).all()
+        return {
+            "layout_id": layout_id,
+            "history": [
+                {
+                    "version": r.version_number,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "created_by": r.created_by,
+                    "change_summary": r.change_summary,
+                }
+                for r in records
+            ],
+        }
+    except Exception as e:
+        return {"layout_id": layout_id, "history": [], "error": str(e)}
+
+
+@router.get("/{layout_id}/diff")
+async def diff_layout_versions(
+    request: Request,
+    layout_id: str,
+    from_version: int = Query(..., description="Older version number"),
+    to_version: int = Query(..., description="Newer version number"),
+    format: str = Query("json", description="json | human"),
+) -> dict[str, Any]:
+    """Diff between two versions of a layout.
+
+    Returns either structured JSON changes (default) or a
+    human-readable text format.
+    """
+    cm = _db_session()
+    if cm is None:
+        raise HTTPException(status_code=503, detail="version history requires DB")
+    with cm as s:
+        v_from = s.get(LayoutVersionRecord, (from_version, layout_id))
+        v_to = s.get(LayoutVersionRecord, (to_version, layout_id))
+        if v_from is None or v_to is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"versions {from_version}/{to_version} not found",
+            )
+        before = deserialise(v_from.preset_json, LayoutPreset)
+        after = deserialise(v_to.preset_json, LayoutPreset)
+    changes = diff_dicts(before.model_dump(), after.model_dump())
+    summary = diff_summary(changes)
+    if format == "human":
+        return {
+            "layout_id": layout_id,
+            "from_version": from_version,
+            "to_version": to_version,
+            "summary": summary,
+            "human": diff_to_human(changes),
+        }
+    return {
+        "layout_id": layout_id,
+        "from_version": from_version,
+        "to_version": to_version,
+        "summary": summary,
+        "changes": [
+            {
+                "path": c.path,
+                "before": c.before,
+                "after": c.after,
+                "op": c.op,
+            }
+            for c in changes
+        ],
+    }
+
+
+@router.post("/{layout_id}/rollback")
+async def rollback_layout(
+    request: Request, layout_id: str, body: dict
+) -> dict[str, Any]:
+    """Roll back to a specific version.
+
+    Reads the snapshot at ``body.version``, re-applies it, and
+    creates a new version entry recording the rollback.
+    """
+    version = body.get("version")
+    if version is None:
+        raise HTTPException(status_code=400, detail="'version' is required in body")
+    if _is_builtin_layout(layout_id):
+        raise HTTPException(status_code=403, detail="built-in layouts are read-only")
+    user_id = _current_user_id(request)
+    cm = _db_session()
+    if cm is None:
+        raise HTTPException(status_code=503, detail="DB unavailable")
+    with cm as s:
+        v = s.get(LayoutVersionRecord, (version, layout_id))
+        if v is None:
+            raise HTTPException(status_code=404, detail=f"version {version} not found")
+        snapshot = deserialise(v.preset_json, LayoutPreset)
+    # Apply via the normal save path (which also creates a new version)
+    if not _save_user_layout(user_id, snapshot):
+        raise HTTPException(status_code=500, detail="save failed")
+    return {
+        "ok": True,
+        "layout_id": layout_id,
+        "rolled_back_to": version,
     }
 
 
