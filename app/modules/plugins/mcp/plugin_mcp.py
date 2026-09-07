@@ -19,16 +19,22 @@ _registered_tools: List[Dict[str, Any]] = []
 _tool_handlers: Dict[str, callable] = {}
 
 
-def register_tool(name: str, description: str, input_schema: Optional[Dict[str, Any]] = None):
+def register_tool(
+    name: str, description: str, input_schema: Optional[Dict[str, Any]] = None
+):
     """Decorator to register a tool with the MCP server."""
+
     def decorator(func):
-        _registered_tools.append({
-            "name": name,
-            "description": description,
-            "inputSchema": input_schema or {"type": "object", "properties": {}},
-        })
+        _registered_tools.append(
+            {
+                "name": name,
+                "description": description,
+                "inputSchema": input_schema or {"type": "object", "properties": {}},
+            }
+        )
         _tool_handlers[name] = func
         return func
+
     return decorator
 
 
@@ -52,6 +58,7 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
 
 # ── Tool Implementations ────────────────────────────────────────────────────
 
+
 @register_tool(
     name="list_plugins",
     description="List all available plugins with their status, category, and tool counts",
@@ -63,27 +70,38 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         },
     },
 )
-def _list_plugins(category: Optional[str] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
-    from common_lib.modules.plugins.manager import PluginManager
-    manager = PluginManager()
+def _list_plugins(
+    category: Optional[str] = None, search: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    from common_lib.modules.plugins.manager import get_plugin_manager
+
+    manager = get_plugin_manager()  # process-wide singleton, auto-starts
     plugins = manager.engine.list_plugins()
     results = []
     for p in plugins:
         health = p.check_health()
-        results.append({
-            "id": p.id,
-            "name": p.metadata.name,
-            "description": p.metadata.description,
-            "category": p.metadata.category,
-            "version": p.metadata.version,
-            "status": health.status.value,
-            "total_tools": len([n for n in p.get_nodes() if n.get("entity_type") == "tool"]),
-        })
+        results.append(
+            {
+                "id": p.id,
+                "name": p.metadata.name,
+                "description": p.metadata.description,
+                "category": p.metadata.category,
+                "version": p.metadata.version,
+                "status": health.status.value,
+                "total_tools": len(
+                    [n for n in p.get_nodes() if n.get("entity_type") == "tool"]
+                ),
+            }
+        )
     if category:
         results = [r for r in results if r["category"] == category]
     if search:
         q = search.lower()
-        results = [r for r in results if q in r["name"].lower() or q in (r.get("description") or "").lower()]
+        results = [
+            r
+            for r in results
+            if q in r["name"].lower() or q in (r.get("description") or "").lower()
+        ]
     return results
 
 
@@ -99,8 +117,9 @@ def _list_plugins(category: Optional[str] = None, search: Optional[str] = None) 
     },
 )
 def _get_plugin(plugin_id: str) -> Optional[Dict[str, Any]]:
-    from common_lib.modules.plugins.manager import PluginManager
-    manager = PluginManager()
+    from common_lib.modules.plugins.manager import get_plugin_manager
+
+    manager = get_plugin_manager()
     for p in manager.engine.list_plugins():
         if p.id == plugin_id:
             health = p.check_health()
@@ -124,26 +143,89 @@ def _get_plugin(plugin_id: str) -> Optional[Dict[str, Any]]:
         "type": "object",
         "properties": {
             "plugin_id": {"type": "string", "description": "Plugin ID"},
-            "tool_name": {"type": "string", "description": "Tool/method name to execute"},
-            "params": {"type": "object", "description": "Parameters as key-value pairs"},
+            "tool_name": {
+                "type": "string",
+                "description": "Tool/method name to execute",
+            },
+            "params": {
+                "type": "object",
+                "description": "Parameters as key-value pairs",
+            },
         },
         "required": ["plugin_id", "tool_name"],
     },
 )
-def _execute_tool(plugin_id: str, tool_name: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    from common_lib.modules.plugins.manager import PluginManager
-    manager = PluginManager()
+def _execute_tool(
+    plugin_id: str, tool_name: str, params: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    from common_lib.modules.plugins.engine.safe_reload import SafeReloadError
+
+    manager = get_plugin_manager()
     for p in manager.engine.list_plugins():
         if p.id == plugin_id:
-            handler = p.get_node_handler(f"{plugin_id}.{tool_name}")
-            if not handler:
-                return {"success": False, "error": f"Tool '{tool_name}' not found"}
             try:
-                result = handler(**(params or {}))
+                # safe_invoke handles the drain/swap protection
+                result = p.safe_invoke(f"{plugin_id}.{tool_name}", **(params or {}))
+                if result is None:
+                    return {"success": False, "error": f"Tool '{tool_name}' not found"}
                 return {"success": True, "result": result}
+            except SafeReloadError as e:
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "retry_after": 5,
+                    "detail": "plugin is reloading; retry shortly",
+                }
             except Exception as e:
                 return {"success": False, "error": str(e)}
     return {"success": False, "error": f"Plugin '{plugin_id}' not found"}
+
+
+@register_tool(
+    name="safe_reload_plugin",
+    description="Hot-reload a single plugin using the SafeReload protocol (drain in-flight, atomic swap, warm-up)",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "plugin_id": {
+                "type": "string",
+                "description": "Plugin ID to safely reload",
+            },
+        },
+        "required": ["plugin_id"],
+    },
+)
+def _safe_reload_plugin(plugin_id: str) -> Dict[str, Any]:
+    from common_lib.modules.plugins.engine.safe_reload import SafeReloadError
+
+    manager = get_plugin_manager()
+    try:
+        reload_id = manager.safe_reload_plugin(plugin_id)
+        return {"success": True, "plugin_id": plugin_id, "reload_id": reload_id}
+    except KeyError:
+        return {"success": False, "error": f"Plugin '{plugin_id}' not found"}
+    except SafeReloadError as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "retry_after": 5,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@register_tool(
+    name="safe_reload_all_plugins",
+    description="Hot-reload ALL plugins (naive, clears in-flight state). Use safe_reload_plugin for graceful per-plugin reload.",
+    input_schema={
+        "type": "object",
+        "properties": {},
+    },
+)
+def _safe_reload_all_plugins() -> Dict[str, Any]:
+    manager = get_plugin_manager()
+    n = manager.reload()
+    return {"success": True, "plugins_loaded": n}
 
 
 @register_tool(
@@ -158,8 +240,9 @@ def _execute_tool(plugin_id: str, tool_name: str, params: Optional[Dict[str, Any
     },
 )
 def _check_health(plugin_id: str) -> Optional[Dict[str, Any]]:
-    from common_lib.modules.plugins.manager import PluginManager
-    manager = PluginManager()
+    from common_lib.modules.plugins.manager import get_plugin_manager
+
+    manager = get_plugin_manager()
     for p in manager.engine.list_plugins():
         if p.id == plugin_id:
             health = p.check_health()
@@ -184,21 +267,30 @@ def _check_health(plugin_id: str) -> Optional[Dict[str, Any]]:
     },
 )
 def _search_plugins(query: str) -> List[Dict[str, Any]]:
-    from common_lib.modules.plugins.manager import PluginManager
-    manager = PluginManager()
+    from common_lib.modules.plugins.manager import get_plugin_manager
+
+    manager = get_plugin_manager()
     q = query.lower()
     results = []
     for p in manager.engine.list_plugins():
         if q in p.metadata.name.lower() or q in (p.metadata.description or "").lower():
             health = p.check_health()
-            results.append({
-                "id": p.id,
-                "name": p.metadata.name,
-                "description": p.metadata.description,
-                "category": p.metadata.category,
-                "status": health.status.value,
-            })
+            results.append(
+                {
+                    "id": p.id,
+                    "name": p.metadata.name,
+                    "description": p.metadata.description,
+                    "category": p.metadata.category,
+                    "status": health.status.value,
+                }
+            )
     return results
 
 
-__all__ = ["list_tools", "call_tool", "register_tool", "_registered_tools", "_tool_handlers"]
+__all__ = [
+    "list_tools",
+    "call_tool",
+    "register_tool",
+    "_registered_tools",
+    "_tool_handlers",
+]

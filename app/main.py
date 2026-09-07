@@ -1228,8 +1228,66 @@ async def lifespan(app: FastAPI):
 
         traceback.print_exc()
 
+    # ── TOOL PLUGIN SYSTEM: Pre-load native + integrated + external plugins ──
+    # This is the tool-plugin layer (BaseToolPlugin / @tool / @node) used by
+    # the agentic loop and the /api/v1/plugins REST endpoints. The infrastructure
+    # layer above (orchestration.plugin.PluginLoader) handles DI services.
+    try:
+        from common_lib.modules.plugins.manager import get_plugin_manager
+
+        tool_manager = get_plugin_manager()  # singleton, lazy-starts
+        loaded = len(tool_manager.engine.list_plugins())
+        print(f"Startup: Tool plugin system loaded {loaded} plugins")
+    except Exception as te:
+        print(f"Startup: Tool plugin system initialization failed: {te}")
+        import traceback
+
+        traceback.print_exc()
+
+    # ── Hot-reload watcher (opt-in via PLUGIN_RELOAD_MODE env var) ──
+    # Modes: manual (default), poll, watch
+    # See common_lib/modules/plugins/engine/watcher.py
+    try:
+        from common_lib.modules.plugins.engine.watcher import (
+            WatcherConfig,
+            get_plugin_watcher,
+        )
+
+        wcfg = WatcherConfig.from_env()
+        watcher = get_plugin_watcher(config=wcfg)
+        # Pass the running asyncio loop to the watcher so it can
+        # schedule debounced reloads. On first startup, the loop
+        # is already running (we're inside lifespan's __aenter__).
+        import asyncio as _asyncio
+
+        try:
+            _loop = _asyncio.get_running_loop()
+            watcher.start(_loop)
+        except RuntimeError:
+            watcher.start(None)  # will use get_event_loop later
+        if wcfg.mode == "manual":
+            print(
+                "Startup: Plugin hot-reload watcher is MANUAL (set PLUGIN_RELOAD_MODE=poll|watch to enable)"
+            )
+        else:
+            print(
+                f"Startup: Plugin hot-reload watcher active (mode={wcfg.mode}, "
+                f"interval={wcfg.interval_sec}s)"
+            )
+    except Exception as we:
+        print(f"Startup: Plugin hot-reload watcher initialization failed: {we}")
+
     yield
     # Shutdown
+    # Stop the watcher before tearing down the rest
+    try:
+        from common_lib.modules.plugins.engine.watcher import (
+            reset_plugin_watcher,
+        )
+
+        reset_plugin_watcher()
+    except Exception:
+        pass
     engine.dispose()
 
     # Stop periodic decay loop task
@@ -1547,6 +1605,30 @@ def create_app() -> FastAPI:
 app = create_app()
 
 if __name__ == "__main__":
+    import os
     import uvicorn
 
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    # Worker pool support for production zero-downtime reloads.
+    # Set UVICORN_WORKERS=N to run N processes. Each process has
+    # its own PluginManager and ReloadGuard singleton, so reloads
+    # are per-worker (use POST /api/v1/plugins/reload on each).
+    #
+    # For a real zero-downtime setup, run a process supervisor
+    # (e.g. honcho, supervisord) that can do rolling restarts.
+    workers = int(os.environ.get("UVICORN_WORKERS", "1"))
+    if workers > 1:
+        # reload=True is incompatible with workers>1 in uvicorn
+        uvicorn.run(
+            "app.main:app",
+            host=os.environ.get("UVICORN_HOST", "0.0.0.0"),
+            port=int(os.environ.get("UVICORN_PORT", "8000")),
+            workers=workers,
+            reload=False,
+        )
+    else:
+        uvicorn.run(
+            "app.main:app",
+            host=os.environ.get("UVICORN_HOST", "0.0.0.0"),
+            port=int(os.environ.get("UVICORN_PORT", "8000")),
+            reload=os.environ.get("UVICORN_RELOAD", "1") == "1",
+        )
