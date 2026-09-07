@@ -20,6 +20,7 @@ async def health_root(request: Request) -> dict[str, Any]:
     Returns 200 if the server is up and the lifespan startup has
     completed. Use this for load-balancer health checks.
     """
+    components = getattr(request.app.state, "components", {})
     return {
         "status": "ok" if getattr(request.app.state, "ready", False) else "starting",
         "uptime_sec": (
@@ -27,6 +28,14 @@ async def health_root(request: Request) -> dict[str, Any]:
             if getattr(request.app.state, "started_at", None)
             else 0
         ),
+        "plugins": {
+            "tool_plugins": components.get("tool_plugins_loaded", 0),
+            "discovered_plugins": components.get("discovered_plugins_loaded", 0),
+            "discovered_skipped": components.get("discovered_plugins_skipped", 0),
+            "discovered_errors": components.get("discovered_plugins_errors", 0),
+            "infra_plugins": components.get("infra_plugins_loaded", 0),
+            "extensions": components.get("extensions_loaded", 0),
+        },
     }
 
 

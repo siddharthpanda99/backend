@@ -107,6 +107,46 @@ async def _startup_components(app: FastAPI) -> dict[str, Any]:
         components["tool_plugins_loaded"] = 0
         components["tool_error"] = str(e)
 
+    # 1b. Discovered plugins (3rd-party, in plugins/ folder)
+    try:
+        from app.plugin_server.discovery import PluginDiscovery
+        from app.plugin_server.plugins_manager import install_plugin
+        from common_lib.modules.plugins.base import BaseToolPlugin
+        from common_lib.modules.plugins.schemas import PluginType
+
+        plugins_root = os.path.join(os.path.dirname(__file__), "plugins")
+        discovery = PluginDiscovery(plugins_root=plugins_root)
+        result = discovery.scan()
+        components["discovery_result"] = result
+        components["plugins_root"] = plugins_root
+
+        # Register each discovered plugin with the engine
+        for d in result.plugins:
+            try:
+                # Assign plugin_type and add to engine's plugins dict
+                if (
+                    hasattr(d.plugin_instance, "metadata")
+                    and d.plugin_instance.metadata
+                ):
+                    d.plugin_instance.metadata.plugin_type = PluginType.EXTERNAL
+                # Register in the engine
+                mgr.engine.plugins[d.plugin_id] = d.plugin_instance
+                logger.info(
+                    f"Discovered plugin '{d.plugin_id}' "
+                    f"(adapter={d.adapter_class_name}, warm_up_ok={d.warm_up_ok})"
+                )
+            except Exception as e:
+                logger.exception(
+                    f"Failed to register discovered plugin {d.plugin_id}: {e}"
+                )
+        components["discovered_plugins_loaded"] = len(result.plugins)
+        components["discovered_plugins_skipped"] = len(result.skipped)
+        components["discovered_plugins_errors"] = len(result.errors)
+    except Exception as e:
+        logger.exception(f"Failed to run plugin discovery: {e}")
+        components["discovered_plugins_loaded"] = 0
+        components["discovery_error"] = str(e)
+
     # 2. Infrastructure plugins (PluginLoader from platform.yml)
     try:
         from common_lib.modules.orchestration.plugin import PluginContext, PluginLoader
@@ -283,12 +323,14 @@ from app.plugin_server.routes.plugins import router as plugins_router
 from app.plugin_server.routes.infra import router as infra_router
 from app.plugin_server.routes.extensions import router as extensions_router
 from app.plugin_server.routes.tools import router as tools_router
+from app.plugin_server.routes.install import router as install_router
 
 app.include_router(health_router, prefix="/health", tags=["health"])
 app.include_router(plugins_router, prefix="/plugins", tags=["plugins"])
 app.include_router(infra_router, prefix="/infra", tags=["infrastructure"])
 app.include_router(extensions_router, prefix="/extensions", tags=["extensions"])
 app.include_router(tools_router, prefix="/tools", tags=["tools"])
+app.include_router(install_router, tags=["install"])  # /install/* and /installed/*
 
 
 # ── Entry point ────────────────────────────────────────────────
