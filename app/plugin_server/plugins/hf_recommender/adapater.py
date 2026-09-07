@@ -23,6 +23,26 @@ class HfRecommenderAdapter(BaseAdapter):
     """Adapter for the 3rd-party HuggingFace model recommender."""
 
     def discover(self) -> list[BaseToolPlugin]:
+
+     # Universal deepseek-style lifecycle applied to this plugin
+        # Universal deepseek-style lifecycle applied to this plugin
+        from app.plugin_server.panels import PluginLifecycle, PluginPhase, PluginCapability
+        self.lifecycle = PluginLifecycle(
+            plugin_id="hf_recommender",
+            phases=[
+                PluginPhase("init", "Initialize HF catalog"),
+                PluginPhase("ready", "Ready to recommend models"),
+            ],
+            capabilities=[
+                PluginCapability("search", "Search HF models for a task", requires_auth=False),
+                PluginCapability("recommend", "Recommend best model", requires_auth=False),
+            ],
+            model_invocable=True,    # AI agents can call
+            user_invocable=True,      # UI can use
+            health_check_interval_sec=60.0,
+        )
+
+        # Make the cloned/ code importable
         """Build the plugin instance from the 3rd-party library."""
         # Make the 3rd-party code importable
         self.add_cloned_to_sys_path()

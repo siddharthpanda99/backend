@@ -20,6 +20,27 @@ class DataAnalyticsAdapter(BaseAdapter):
     """Adapter for the 3rd-party data analytics library."""
 
     def discover(self) -> list[BaseToolPlugin]:
+
+     # Universal deepseek-style lifecycle applied to this plugin
+        # Universal deepseek-style lifecycle
+        from app.plugin_server.panels import PluginLifecycle, PluginPhase, PluginCapability
+        self.lifecycle = PluginLifecycle(
+            plugin_id="data_analytics_toolkit",
+            phases=[
+                PluginPhase("init", "Initialize stats engine"),
+                PluginPhase("ready", "Ready to analyze"),
+            ],
+            capabilities=[
+                PluginCapability("describe", "Compute summary stats", requires_auth=False),
+                PluginCapability("outliers", "Detect outliers", requires_auth=False),
+                PluginCapability("fit", "Fit OLS regression", requires_auth=False),
+            ],
+            model_invocable=True,
+            user_invocable=True,
+            health_check_interval_sec=60.0,
+        )
+
+        self.add_cloned_to_sys_path()
         self.add_cloned_to_sys_path()
         try:
             import analytics_lib as al

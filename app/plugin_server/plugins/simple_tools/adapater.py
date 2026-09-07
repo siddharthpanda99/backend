@@ -18,6 +18,27 @@ class SimpleToolsAdapter(BaseAdapter):
     """Adapter for the 3rd-party single-file utility."""
 
     def discover(self) -> list[BaseToolPlugin]:
+
+     # Universal deepseek-style lifecycle applied to this plugin
+        # Universal deepseek-style lifecycle
+        from app.plugin_server.panels import PluginLifecycle, PluginPhase, PluginCapability
+        self.lifecycle = PluginLifecycle(
+            plugin_id="simple_tools",
+            phases=[
+                PluginPhase("init", "Initialize utilities"),
+                PluginPhase("ready", "Ready to use"),
+            ],
+            capabilities=[
+                PluginCapability("transform", "slugify, truncate, etc", requires_auth=False),
+                PluginCapability("hash", "short_hash, generate_uuid", requires_auth=False),
+                PluginCapability("validate", "is_valid_email, word_count", requires_auth=False),
+            ],
+            model_invocable=True,
+            user_invocable=True,
+            health_check_interval_sec=60.0,
+        )
+
+        self.add_cloned_to_sys_path()
         self.add_cloned_to_sys_path()
         try:
             import utils as u  # 3rd-party

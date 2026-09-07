@@ -19,6 +19,7 @@ import signal
 import sys
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 # Bootstrap: ensure common_lib src is on sys.path
@@ -74,6 +75,10 @@ async def lifespan(app: FastAPI):
     app.state.components = components
     app.state.started_at = started_at
     app.state.ready = True
+    # Expose the panel registry globally so the /panels routes can
+    # find it (the registry is populated by startup_components above).
+    if "panel_registry" in components:
+        app.state.panel_registry = components["panel_registry"]
 
     logger.info(
         f"Plugin Server ready: "
@@ -142,6 +147,34 @@ async def _startup_components(app: FastAPI) -> dict[str, Any]:
         components["discovered_plugins_loaded"] = len(result.plugins)
         components["discovered_plugins_skipped"] = len(result.skipped)
         components["discovered_plugins_errors"] = len(result.errors)
+
+        # 1c. Discover plugin panels (each plugin's panel/ subfolder)
+        try:
+            from app.plugin_server.panels.discovery import register_all_panels
+            from app.plugin_server.panels.registry import get_panel_registry
+
+            # Map plugin_id -> BaseToolPlugin instance, for panel wiring
+            plugin_id_to_instance: dict[str, Any] = {
+                d.plugin_id: d.plugin_instance for d in result.plugins
+            }
+
+            # The panels/ folder is at app/plugin_server/panels/
+            # but discovery walks plugins/*/panel/ for per-plugin
+            # panels. Pass plugins_root (which is also the panels_root
+            # in our layout).
+            plugins_root_for_panels = Path(os.path.dirname(__file__)) / "plugins"
+            panel_registry = get_panel_registry()
+            components["panel_registry"] = panel_registry
+            panels_registered = register_all_panels(
+                plugins_root=plugins_root_for_panels,
+                plugin_id_to_instance=plugin_id_to_instance,
+                registry=panel_registry,
+            )
+            components["discovered_panels"] = panels_registered
+            logger.info(f"Startup: registered {panels_registered} panels")
+        except Exception as e:
+            logger.exception(f"Failed to discover panels: {e}")
+            components["discovered_panels"] = 0
     except Exception as e:
         logger.exception(f"Failed to run plugin discovery: {e}")
         components["discovered_plugins_loaded"] = 0
@@ -324,6 +357,7 @@ from app.plugin_server.routes.infra import router as infra_router
 from app.plugin_server.routes.extensions import router as extensions_router
 from app.plugin_server.routes.tools import router as tools_router
 from app.plugin_server.routes.install import router as install_router
+from app.plugin_server.routes.panels import router as panels_router
 
 app.include_router(health_router, prefix="/health", tags=["health"])
 app.include_router(plugins_router, prefix="/plugins", tags=["plugins"])
@@ -331,6 +365,7 @@ app.include_router(infra_router, prefix="/infra", tags=["infrastructure"])
 app.include_router(extensions_router, prefix="/extensions", tags=["extensions"])
 app.include_router(tools_router, prefix="/tools", tags=["tools"])
 app.include_router(install_router, tags=["install"])  # /install/* and /installed/*
+app.include_router(panels_router, prefix="/panels", tags=["panels"])
 
 
 # ── Entry point ────────────────────────────────────────────────
