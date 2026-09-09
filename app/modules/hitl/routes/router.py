@@ -1,12 +1,12 @@
 """HITL Policy Builder — Thin FastAPI routes.
 
-All business logic lives in common_lib.modules.hitl.service.
+All business logic lives in common_lib.modules.governance.hitl.
 Routes only handle HTTP concerns: parsing, status codes, response shaping.
 """
 
 from fastapi import APIRouter, HTTPException, Query
-from common_lib.modules.hitl.service import get_hitl_policy_service
-from common_lib.modules.hitl.schemas import (
+from common_lib.modules.governance.hitl.policy_service import get_hitl_policy_service
+from common_lib.modules.governance.hitl.schemas import (
     HITLPolicyCreate,
     HITLPolicyUpdate,
     HITLPolicyDetailResponse,

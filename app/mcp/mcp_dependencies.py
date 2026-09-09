@@ -82,6 +82,15 @@ async def resolve_knowledge_engine_service():
     return _knowledge_engine_service_instance
 
 
+def resolve_knowledge_api_service():
+    """Helper to get the unified knowledge_api facade (sync service)."""
+    from common_lib.modules.knowledge_engine.knowledge_api.service import (
+        KnowledgeService,
+    )
+
+    return KnowledgeService()
+
+
 def resolve_vision_controller():
     """Helper to get vision task controller."""
     from app.modules.vision.routes import controller

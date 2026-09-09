@@ -104,7 +104,7 @@ def register_agent_tools(mcp: FastMCP):
         session_id: str = "",
     ) -> Dict[str, Any]:
         """Submit a new HITL approval request. Returns the pending request with its status and token."""
-        from common_lib.modules.governance.hitl.service import get_hitl_service
+        from common_lib.modules.governance.hitl.approval_service import get_hitl_service
 
         svc = get_hitl_service()
         item = svc.create_request(
@@ -132,7 +132,7 @@ def register_agent_tools(mcp: FastMCP):
     @mcp.tool()
     async def check_hitl_status(request_id: str) -> Dict[str, Any]:
         """Check the current status of a HITL approval request by its ID."""
-        from common_lib.modules.governance.hitl.service import get_hitl_service
+        from common_lib.modules.governance.hitl.approval_service import get_hitl_service
 
         svc = get_hitl_service()
         item = svc.get_request(request_id)
@@ -150,7 +150,7 @@ def register_agent_tools(mcp: FastMCP):
     @mcp.tool()
     async def list_hitl_overrides() -> List[Dict[str, Any]]:
         """List all emergency overrides currently active in the HITL system."""
-        from common_lib.modules.governance.hitl.service import get_hitl_service
+        from common_lib.modules.governance.hitl.approval_service import get_hitl_service
 
         svc = get_hitl_service()
         items = svc.list_overrides()

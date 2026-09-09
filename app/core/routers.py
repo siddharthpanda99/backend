@@ -56,6 +56,18 @@ def _knowledge_router():
     return router
 
 
+def _world_model_router():
+    from app.modules.knowledge.routes.world_model import router
+
+    return router
+
+
+def _ontology_router():
+    from app.modules.knowledge.routes.ontology import router
+
+    return router
+
+
 def _governance_router():
     from app.modules.governance.routes import router
 
@@ -1469,6 +1481,20 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": _knowledge_router(),
             "prefix": "",
             "tags": ["Knowledge Engine"],
+            "auth": True,
+        },
+        # ── Knowledge World Model (F1 entity/fact ledger) ──
+        {
+            "router": _world_model_router(),
+            "prefix": "",
+            "tags": ["Knowledge World Model"],
+            "auth": True,
+        },
+        # ── Knowledge Ontology (F2 type trust boundary) ──
+        {
+            "router": _ontology_router(),
+            "prefix": "",
+            "tags": ["Knowledge Ontology"],
             "auth": True,
         },
         {

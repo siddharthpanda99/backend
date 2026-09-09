@@ -125,7 +125,9 @@ async def lifespan(app: FastAPI):
                     print(f"Auto-seeded {seeded_k} API keys from config.ini.")
 
                 # Seed Human-in-the-Loop (HITL) seed data
-                from common_lib.modules.governance.hitl.service import get_hitl_service
+                from common_lib.modules.governance.hitl.approval_service import (
+                    get_hitl_service,
+                )
 
                 get_hitl_service()._load_seed_data()
                 print("HITL Governance seed data loaded.")

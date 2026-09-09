@@ -117,6 +117,7 @@ from common_lib.modules.project_management.mcp import register_pm_resources
 from common_lib.modules.platform_mcp.mcp import register_platform_tools
 from app.mcp.tools.tool_catalog import register_tool_catalog_tools
 from app.mcp.tools.prompt_templates import register_prompt_template_tools
+from app.mcp.tools.knowledge_api import register_knowledge_api_tools
 from app.mcp.tools.canvas_validator_tools import register_canvas_validation_tools
 from app.mcp.tools.chains_tools import register_chains_tools
 from app.mcp.tools.multiagent_tools import register_multiagent_tools
@@ -161,6 +162,7 @@ register_system_tools(mcp_server)
 register_image_edit_tools(mcp_server)
 register_hooks_triggers_tools(mcp_server)
 register_knowledge_tools(mcp_server)
+register_knowledge_api_tools(mcp_server)
 register_knowledgebase_tools(mcp_server)
 register_kpe_tools(mcp_server)
 register_learning_tools(mcp_server)

@@ -166,7 +166,9 @@ async def stream_agent_generator(
         if decision:
             action = decision.get("action")
             if action in ("approve", "modify"):
-                from common_lib.modules.governance.hitl.service import get_hitl_service
+                from common_lib.modules.governance.hitl.approval_service import (
+                    get_hitl_service,
+                )
 
                 hitl_service = get_hitl_service()
                 request_id = decision.get("request_id", "")
@@ -204,7 +206,9 @@ async def stream_agent_generator(
                     "[Streaming] Injected approval for tool: %s", approved["tool"]
                 )
             elif action == "reject":
-                from common_lib.modules.governance.hitl.service import get_hitl_service
+                from common_lib.modules.governance.hitl.approval_service import (
+                    get_hitl_service,
+                )
 
                 request_id = decision.get("request_id", "")
                 if request_id:

@@ -7,7 +7,7 @@ These tools enable agents to interact with the event-driven runtime layer.
 import logging
 from typing import List, Dict, Any, Optional
 from app.mcp.fastmcp_compat import FastMCP
-from common_lib.modules.governance.hitl.service import get_hitl_service
+from common_lib.modules.governance.hitl.approval_service import get_hitl_service
 
 logger = logging.getLogger("mcp.tools.hooks_triggers")
 
@@ -35,7 +35,9 @@ def register_hooks_triggers_tools(mcp: FastMCP):
         ]
 
     @mcp.tool()
-    async def register_hook(hook_id: str, name: str, event: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def register_hook(
+        hook_id: str, name: str, event: str, config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Register a new event hook in the governance system."""
         svc = get_hitl_service()
         body = {
@@ -62,7 +64,12 @@ def register_hooks_triggers_tools(mcp: FastMCP):
         return result.to_dict() if hasattr(result, "to_dict") else {"id": hook_id}
 
     @mcp.tool()
-    async def update_hook(hook_id: str, name: Optional[str] = None, event: Optional[str] = None, enabled: Optional[bool] = None) -> Dict[str, Any]:
+    async def update_hook(
+        hook_id: str,
+        name: Optional[str] = None,
+        event: Optional[str] = None,
+        enabled: Optional[bool] = None,
+    ) -> Dict[str, Any]:
         """Update an existing hook's name, event, or enabled status."""
         svc = get_hitl_service()
         existing = svc.get_hook(hook_id)
@@ -127,7 +134,9 @@ def register_hooks_triggers_tools(mcp: FastMCP):
         ]
 
     @mcp.tool()
-    async def create_trigger(trigger_id: str, name: str, event: str, condition: str = "true") -> Dict[str, Any]:
+    async def create_trigger(
+        trigger_id: str, name: str, event: str, condition: str = "true"
+    ) -> Dict[str, Any]:
         """Register a new trigger that fires when an event matches the condition."""
         svc = get_hitl_service()
         body = {
@@ -139,13 +148,17 @@ def register_hooks_triggers_tools(mcp: FastMCP):
         }
         result = svc.define_trigger(body)
         return {
-            "id": getattr(result, "id", trigger_id) if hasattr(result, "id") else trigger_id,
+            "id": getattr(result, "id", trigger_id)
+            if hasattr(result, "id")
+            else trigger_id,
             "name": name,
             "status": "created",
         }
 
     @mcp.tool()
-    async def evaluate_trigger(trigger_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def evaluate_trigger(
+        trigger_id: str, context: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Evaluate whether a trigger's condition is met given the current context."""
         svc = get_hitl_service()
         trigger = svc.get_trigger(trigger_id)
@@ -157,7 +170,9 @@ def register_hooks_triggers_tools(mcp: FastMCP):
         # For production, this would use a proper expression evaluator
         matched = True
         if condition and condition != "true":
-            matched = context.get("event") == condition or context.get("type") == condition
+            matched = (
+                context.get("event") == condition or context.get("type") == condition
+            )
 
         return {
             "trigger_id": trigger_id,
@@ -185,9 +200,15 @@ def register_hooks_triggers_tools(mcp: FastMCP):
         for p in policies:
             d = {}
             for attr in [
-                "approval_policy_id", "name", "description",
-                "trigger_conditions", "approvers", "timeout",
-                "escalation", "trigger_ids", "hook_ids",
+                "approval_policy_id",
+                "name",
+                "description",
+                "trigger_conditions",
+                "approvers",
+                "timeout",
+                "escalation",
+                "trigger_ids",
+                "hook_ids",
             ]:
                 if hasattr(p, attr):
                     d[attr] = getattr(p, attr)

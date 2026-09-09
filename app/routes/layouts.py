@@ -32,7 +32,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 
 from common_lib.modules.layout import (
     BUILTIN_PRESETS,
