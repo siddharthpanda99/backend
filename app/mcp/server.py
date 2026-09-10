@@ -57,6 +57,7 @@ from app.mcp.tools.core_infrastructure import register_core_infrastructure_tools
 from app.mcp.tools.image_runtime import register_image_runtime_tools
 from app.mcp.tools.data_storage import register_data_storage_tools
 from app.mcp.tools.nodes_registry import register_nodes_registry_tools
+from app.mcp.tools.alerts import register_alerts_tools
 from app.mcp.tools.db_studio.database_connections import (
     register_database_connections_tools,
 )
@@ -163,6 +164,7 @@ register_image_edit_tools(mcp_server)
 register_hooks_triggers_tools(mcp_server)
 register_knowledge_tools(mcp_server)
 register_knowledge_api_tools(mcp_server)
+register_alerts_tools(mcp_server)
 register_knowledgebase_tools(mcp_server)
 register_kpe_tools(mcp_server)
 register_learning_tools(mcp_server)

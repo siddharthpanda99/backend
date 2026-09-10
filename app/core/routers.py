@@ -56,6 +56,12 @@ def _knowledge_router():
     return router
 
 
+def _alerts_router():
+    from app.modules.knowledge_engine.alerts.routes import router
+
+    return router
+
+
 def _world_model_router():
     from app.modules.knowledge.routes.world_model import router
 
@@ -1488,6 +1494,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": _world_model_router(),
             "prefix": "",
             "tags": ["Knowledge World Model"],
+            "auth": True,
+        },
+        # ── Knowledge Alerts ──
+        {
+            "router": _alerts_router(),
+            "prefix": "",
+            "tags": ["Knowledge Alerts"],
             "auth": True,
         },
         # ── Knowledge Ontology (F2 type trust boundary) ──
