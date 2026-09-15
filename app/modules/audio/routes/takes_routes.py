@@ -44,13 +44,15 @@ class UnifiedGenerateRequest(BaseModel):
     Use this endpoint for ALL generation types to automatically get
     versioned takes (take-1, take-2, ...).
     """
+
     source: str = Field(
-        ..., description="Generation type: tts | speak | music | sfx | voice_clone | singing | synth | edit"
+        ...,
+        description="Generation type: tts | speak | music | sfx | voice_clone | singing | synth | edit",
     )
     mode: str = Field(
         default="generate",
         description="generate | retry | regenerate. "
-                    "generate = fresh. retry = same params. regenerate = variation.",
+        "generate = fresh. retry = same params. regenerate = variation.",
     )
     params: Dict[str, Any] = Field(
         default_factory=dict,
@@ -112,7 +114,15 @@ def _compute_intent_key(source: str, params: Dict[str, Any]) -> str:
     # Build a stable string from the most relevant fields
     relevant = {
         k: params.get(k)
-        for k in ("text", "prompt", "voice", "model_id", "description", "lyrics", "audio_path")
+        for k in (
+            "text",
+            "prompt",
+            "voice",
+            "model_id",
+            "description",
+            "lyrics",
+            "audio_path",
+        )
         if k in params
     }
     if not relevant:
@@ -226,7 +236,7 @@ def _route_to_generator(source: str, params: Dict[str, Any]) -> Any:
     response_model=GenerateResponse,
     summary="Unified generation with take tracking",
     description="Generate audio (tts/speak/music/sfx/voice_clone/singing) with automatic take versioning. "
-                "Use mode=generate for fresh, mode=retry to repeat, mode=regenerate for variation.",
+    "Use mode=generate for fresh, mode=retry to repeat, mode=regenerate for variation.",
 )
 async def unified_generate(req: UnifiedGenerateRequest) -> Dict[str, Any]:
     """Unified generation endpoint with automatic take tracking.
@@ -271,7 +281,11 @@ async def unified_generate(req: UnifiedGenerateRequest) -> Dict[str, Any]:
         result = await _route_to_generator(req.source, resolved_params)
 
         # Extract output URL from result
-        output_url = getattr(result, "audio_url", None) or getattr(result, "output_url", None) or ""
+        output_url = (
+            getattr(result, "audio_url", None)
+            or getattr(result, "output_url", None)
+            or ""
+        )
         output_path = getattr(result, "filename", None) or ""
 
         # Record the take (use actual_mode to reflect retry fallback to generate)
@@ -284,7 +298,8 @@ async def unified_generate(req: UnifiedGenerateRequest) -> Dict[str, Any]:
             params=resolved_params,
             seed=resolved_seed,
             metadata={
-                "model": resolved_params.get("model") or resolved_params.get("model_id"),
+                "model": resolved_params.get("model")
+                or resolved_params.get("model_id"),
                 "duration": getattr(result, "duration_seconds", None),
                 "audio_url": output_url,
             },
@@ -323,7 +338,9 @@ async def unified_generate(req: UnifiedGenerateRequest) -> Dict[str, Any]:
     summary="List generation sessions",
     description="Returns all active generation sessions with take counts.",
 )
-async def list_sessions(source: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+async def list_sessions(
+    source: Optional[str] = None, limit: int = 50
+) -> List[Dict[str, Any]]:
     """List all active generation sessions."""
     manager = get_takes_manager()
     sessions = manager.list_sessions(source=source, limit=limit)
@@ -335,7 +352,9 @@ async def list_sessions(source: Optional[str] = None, limit: int = 50) -> List[D
             created_at=s.created_at,
             take_count=s.take_count,
             latest_take_number=s.latest_take.take_number if s.latest_take else None,
-            promoted_take_number=s.promoted_take.take_number if s.promoted_take else None,
+            promoted_take_number=s.promoted_take.take_number
+            if s.promoted_take
+            else None,
         ).model_dump()
         for s in sessions
     ]
@@ -379,7 +398,9 @@ async def promote_take(session_id: str, take_number: int) -> Dict[str, Any]:
     manager = get_takes_manager()
     parts = session_id.split("/", 1)
     if len(parts) != 2:
-        raise HTTPException(status_code=400, detail=f"Invalid session_id format: {session_id}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid session_id format: {session_id}"
+        )
 
     source, intent_key = parts
     take = manager.promote_take(source, intent_key, take_number)
@@ -406,7 +427,9 @@ async def delete_take(session_id: str, take_number: int) -> Dict[str, Any]:
     manager = get_takes_manager()
     parts = session_id.split("/", 1)
     if len(parts) != 2:
-        raise HTTPException(status_code=400, detail=f"Invalid session_id format: {session_id}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid session_id format: {session_id}"
+        )
 
     source, intent_key = parts
     deleted = manager.delete_take(source, intent_key, take_number)
@@ -416,7 +439,10 @@ async def delete_take(session_id: str, take_number: int) -> Dict[str, Any]:
             detail=f"Take-{take_number} not found in session '{session_id}'",
         )
 
-    return {"status": "ok", "message": f"Take-{take_number} deleted from '{session_id}'"}
+    return {
+        "status": "ok",
+        "message": f"Take-{take_number} deleted from '{session_id}'",
+    }
 
 
 @router.post(
@@ -435,15 +461,19 @@ async def retry_latest(session_id: str) -> Dict[str, Any]:
     source, intent_key = parts
     latest = manager.get_latest_take(source, intent_key)
     if not latest:
-        raise HTTPException(status_code=404, detail=f"No takes found for session '{session_id}'")
+        raise HTTPException(
+            status_code=404, detail=f"No takes found for session '{session_id}'"
+        )
 
-    return await unified_generate(UnifiedGenerateRequest(
-        source=source,
-        mode="retry",
-        params=latest.params,
-        intent_key=intent_key,
-        seed=latest.seed,
-    ))
+    return await unified_generate(
+        UnifiedGenerateRequest(
+            source=source,
+            mode="retry",
+            params=latest.params,
+            intent_key=intent_key,
+            seed=latest.seed,
+        )
+    )
 
 
 @router.post(
@@ -462,14 +492,18 @@ async def regenerate_latest(session_id: str) -> Dict[str, Any]:
     source, intent_key = parts
     latest = manager.get_latest_take(source, intent_key)
     if not latest:
-        raise HTTPException(status_code=404, detail=f"No takes found for session '{session_id}'")
+        raise HTTPException(
+            status_code=404, detail=f"No takes found for session '{session_id}'"
+        )
 
-    return await unified_generate(UnifiedGenerateRequest(
-        source=source,
-        mode="regenerate",
-        params=latest.params,
-        intent_key=intent_key,
-    ))
+    return await unified_generate(
+        UnifiedGenerateRequest(
+            source=source,
+            mode="regenerate",
+            params=latest.params,
+            intent_key=intent_key,
+        )
+    )
 
 
 @router.get(
@@ -480,6 +514,160 @@ async def regenerate_latest(session_id: str) -> Dict[str, Any]:
 async def takes_stats() -> Dict[str, Any]:
     """Get aggregate statistics about the takes system."""
     return get_takes_manager().get_stats()
+
+
+# ── Takes Compare/Promote (C074 / W7-L06) ───────────────────────────────────
+
+
+class TakeCompareRequest(BaseModel):
+    """Request to compare two takes side-by-side."""
+
+    session_id: str
+    take_a: int
+    take_b: int
+
+
+class TakeCompareResponse(BaseModel):
+    """Side-by-side comparison of two takes."""
+
+    session_id: str
+    take_a: Dict[str, Any]
+    take_b: Dict[str, Any]
+    diff: Dict[str, Any]
+
+
+@router.post(
+    "/takes/compare",
+    response_model=TakeCompareResponse,
+    summary="Compare two takes",
+    description="Returns a side-by-side comparison of two takes in the same session, "
+    "including parameter differences, metadata diff, and quality metrics.",
+)
+async def compare_takes(req: TakeCompareRequest) -> Dict[str, Any]:
+    """Compare two takes in a session."""
+    manager = get_takes_manager()
+    parts = req.session_id.split("/", 1)
+    if len(parts) != 2:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid session_id format: {req.session_id}"
+        )
+    source, intent_key = parts
+
+    take_a = manager.get_take(source, intent_key, req.take_a)
+    take_b = manager.get_take(source, intent_key, req.take_b)
+
+    if not take_a or not take_b:
+        raise HTTPException(status_code=404, detail="One or both takes not found")
+
+    # Compute parameter diff
+    all_keys = set(take_a.params.keys()) | set(take_b.params.keys())
+    param_diff = {}
+    for k in all_keys:
+        va = take_a.params.get(k)
+        vb = take_b.params.get(k)
+        if va != vb:
+            param_diff[k] = {"take_a": va, "take_b": vb}
+
+    # Metadata diff
+    meta_diff = {}
+    all_meta = set(take_a.metadata.keys()) | set(take_b.metadata.keys())
+    for k in all_meta:
+        ma = take_a.metadata.get(k)
+        mb = take_b.metadata.get(k)
+        if ma != mb:
+            meta_diff[k] = {"take_a": ma, "take_b": mb}
+
+    return TakeCompareResponse(
+        session_id=req.session_id,
+        take_a=TakeSummary(
+            take_number=take_a.take_number,
+            mode=take_a.mode,
+            output_url=take_a.output_url,
+            created_at=take_a.created_at,
+            promoted=take_a.promoted,
+            seed=take_a.seed,
+            error=take_a.error,
+            metadata=take_a.metadata,
+        ).model_dump(),
+        take_b=TakeSummary(
+            take_number=take_b.take_number,
+            mode=take_b.mode,
+            output_url=take_b.output_url,
+            created_at=take_b.created_at,
+            promoted=take_b.promoted,
+            seed=take_b.seed,
+            error=take_b.error,
+            metadata=take_b.metadata,
+        ).model_dump(),
+        diff={
+            "params": param_diff,
+            "metadata": meta_diff,
+            "seeds_differ": take_a.seed != take_b.seed,
+            "modes_differ": take_a.mode != take_b.mode,
+        },
+    ).model_dump()
+
+
+class TakePromoteByQualityRequest(BaseModel):
+    """Request to promote the best take based on quality criteria."""
+
+    session_id: str
+    criteria: str = Field(
+        default="latest", description="latest | first | promoted | highest_quality"
+    )
+
+
+@router.post(
+    "/takes/promote-best",
+    response_model=PromotionResponse,
+    summary="Promote best take by criteria",
+    description="Automatically promotes the best take in a session based on the "
+    "specified criteria (latest, first, promoted, highest_quality).",
+)
+async def promote_best_take(req: TakePromoteByQualityRequest) -> Dict[str, Any]:
+    """Promote the best take based on quality criteria."""
+    manager = get_takes_manager()
+    parts = req.session_id.split("/", 1)
+    if len(parts) != 2:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid session_id format: {req.session_id}"
+        )
+    source, intent_key = parts
+
+    session = manager.get_session(req.session_id)
+    if not session or not session.takes:
+        raise HTTPException(
+            status_code=404, detail=f"Session '{req.session_id}' not found or empty"
+        )
+
+    target_take = None
+    if req.criteria == "latest":
+        target_take = session.takes[-1]
+    elif req.criteria == "first":
+        target_take = session.takes[0]
+    elif req.criteria == "promoted":
+        target_take = session.promoted_take or session.takes[-1]
+    elif req.criteria == "highest_quality":
+        # Heuristic: prefer promoted, then latest successful (no error), then latest
+        target_take = session.promoted_take
+        if not target_take:
+            successful = [t for t in session.takes if not t.error]
+            target_take = successful[-1] if successful else session.takes[-1]
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown criteria: {req.criteria}")
+
+    if not target_take:
+        raise HTTPException(status_code=404, detail="No suitable take found")
+
+    promoted = manager.promote_take(source, intent_key, target_take.take_number)
+    if not promoted:
+        raise HTTPException(status_code=500, detail="Promotion failed")
+
+    return PromotionResponse(
+        session_id=req.session_id,
+        take_number=target_take.take_number,
+        message=f"Take-{target_take.take_number} promoted as best ({req.criteria})",
+    ).model_dump()
 
 
 __all__ = ["router"]
