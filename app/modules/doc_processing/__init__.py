@@ -19,6 +19,8 @@ from app.modules.doc_processing.routes.router import router as pdf_router
 from app.modules.doc_processing.routes.general_router import router as general_router
 from app.modules.doc_processing.excel.routes import router as excel_router
 from app.modules.doc_processing.lazy_routes import router as lazy_router
+from app.modules.doc_processing.routes.paperless_webhook import router as paperless_webhook_router
+from app.modules.doc_processing.routes.paperless_proxy import router as paperless_proxy_router
 
 doc_processing_router = APIRouter()
 
@@ -36,6 +38,13 @@ for route in excel_router.routes:
 
 # Merge Lazy Engine routes
 for route in lazy_router.routes:
+    doc_processing_router.routes.append(route)
+
+# Merge Paperless DMS routes
+for route in paperless_webhook_router.routes:
+    doc_processing_router.routes.append(route)
+
+for route in paperless_proxy_router.routes:
     doc_processing_router.routes.append(route)
 
 router = doc_processing_router
