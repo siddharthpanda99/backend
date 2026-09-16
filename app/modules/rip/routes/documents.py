@@ -175,11 +175,119 @@ async def list_chunking_strategies():
     """List all available chunking strategies with descriptions."""
     return {
         "strategies": [
-            {"id": "fixed", "name": "Fixed-size", "description": "Fixed token-size chunks with optional overlap"},
-            {"id": "recursive", "name": "Recursive Character", "description": "Natural boundary splitting (paragraphs → sentences → words)"},
-            {"id": "semantic", "name": "Semantic", "description": "Embedding-similarity-based boundary detection"},
-            {"id": "hierarchical", "name": "Hierarchical", "description": "Multi-level chunks (section → paragraph → sentence)"},
-            {"id": "llm", "name": "LLM-based (LumberChunker)", "description": "LLM-guided semantic boundary identification"},
-            {"id": "late", "name": "Late Chunking", "description": "Embed full document, then chunk the embedding space"},
+            {
+                "id": "fixed",
+                "name": "Fixed-size",
+                "description": "Fixed token-size chunks with optional overlap",
+            },
+            {
+                "id": "recursive",
+                "name": "Recursive Character",
+                "description": "Natural boundary splitting (paragraphs → sentences → words)",
+            },
+            {
+                "id": "semantic",
+                "name": "Semantic",
+                "description": "Embedding-similarity-based boundary detection",
+            },
+            {
+                "id": "hierarchical",
+                "name": "Hierarchical",
+                "description": "Multi-level chunks (section → paragraph → sentence)",
+            },
+            {
+                "id": "llm",
+                "name": "LLM-based (LumberChunker)",
+                "description": "LLM-guided semantic boundary identification",
+            },
+            {
+                "id": "late",
+                "name": "Late Chunking",
+                "description": "Embed full document, then chunk the embedding space",
+            },
         ]
     }
+
+
+# --- Nexus Wave 2 (C021, SSOT §8/§9): thin inventory endpoints -----------------
+# Delegates to common_lib builders; no business logic here. Corpus rollup is
+# computed on demand over stored documents (no corpus store exists — R3).
+#
+# NOTE: the static `/corpus/inventory` route MUST stay above
+# `/{document_id}/inventory` — otherwise "corpus" binds to {document_id}.
+
+
+@router.get("/corpus/inventory", response_model=dict)
+async def get_corpus_inventory(
+    corpus_id: str = Query("default"),
+    doc_ids: str = Query(..., description="Comma-separated document IDs"),
+):
+    """Build the SSOT §9 corpus rollup over stored documents on demand.
+
+    NOTE (C021 deviation recorded): the breakdown names
+    `GET /rip/corpus/{id}/inventory`; with no corpus store (R3: no new
+    storage), this endpoint rolls up an explicit doc set instead, mounted
+    under the documents router to avoid a new prefix.
+    """
+    try:
+        from common_lib.modules.rip.feature_flags import is_enabled
+        from common_lib.modules.rip.rip_documents.corpus import (
+            build_corpus_inventory,
+        )
+        from common_lib.modules.rip.rip_documents.inventory import (
+            build_document_inventory,
+        )
+        from common_lib.modules.rip.rip_documents.service import get_doc
+
+        if not is_enabled("NEXUS_INVENTORY_ENABLED"):
+            raise HTTPException(
+                status_code=503, detail="NEXUS_INVENTORY_ENABLED is off"
+            )
+        ids = [d.strip() for d in (doc_ids or "").split(",") if d.strip()]
+        inventories = []
+        missing = []
+        for did in ids:
+            doc = await get_doc(did)
+            if doc is None:
+                missing.append(did)
+                continue
+            inv = build_document_inventory(
+                did,
+                getattr(doc, "content", "") or "",
+                source_type=getattr(doc, "source_type", "text") or "text",
+            )["inventory"]
+            if inv.get("status") == "ok":
+                inventories.append(inv)
+        result = build_corpus_inventory(corpus_id, inventories)
+        result["missing_doc_ids"] = missing
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{document_id}/inventory", response_model=dict)
+async def get_document_inventory(document_id: str):
+    """Build the SSOT §8 semantic inventory of a stored document on demand."""
+    try:
+        from common_lib.modules.rip.feature_flags import is_enabled
+        from common_lib.modules.rip.rip_documents.inventory import (
+            build_document_inventory,
+        )
+        from common_lib.modules.rip.rip_documents.service import get_doc
+
+        if not is_enabled("NEXUS_INVENTORY_ENABLED"):
+            raise HTTPException(
+                status_code=503, detail="NEXUS_INVENTORY_ENABLED is off"
+            )
+        doc = await get_doc(document_id)
+        if doc is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+        content = getattr(doc, "content", "") or ""
+        source_type = getattr(doc, "source_type", "text") or "text"
+        return build_document_inventory(document_id, content, source_type=source_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

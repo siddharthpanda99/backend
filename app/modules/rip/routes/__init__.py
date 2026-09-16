@@ -31,6 +31,11 @@ from .capabilities import router as capabilities_router
 from .experiment import router as experiment_router
 from .etl import router as etl_router
 from .unified_etl import router as unified_etl_router
+from .planner import router as planner_router
+from .coverage import router as coverage_router
+from .acquisition import router as acquisition_router
+from .truth import router as truth_router
+from .evidence import router as evidence_router
 
 router = APIRouter()
 
@@ -59,5 +64,10 @@ router.include_router(capabilities_router)
 router.include_router(experiment_router)
 router.include_router(etl_router)
 router.include_router(unified_etl_router)
+router.include_router(planner_router)
+router.include_router(coverage_router)
+router.include_router(acquisition_router)
+router.include_router(truth_router)
+router.include_router(evidence_router)
 
 __all__ = ["router"]
