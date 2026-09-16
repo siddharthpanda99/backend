@@ -62,6 +62,12 @@ def _alerts_router():
     return router
 
 
+def _context_acquisition_router():
+    from app.modules.knowledge_engine.acquisition.routes import router
+
+    return router
+
+
 def _world_model_router():
     from app.modules.knowledge.routes.world_model import router
 
@@ -1501,6 +1507,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": _alerts_router(),
             "prefix": "",
             "tags": ["Knowledge Alerts"],
+            "auth": True,
+        },
+        # ── Nexus Context Acquisition (Cluster 4) ──
+        {
+            "router": _context_acquisition_router(),
+            "prefix": "",
+            "tags": ["Nexus Context Acquisition"],
             "auth": True,
         },
         # ── Knowledge Ontology (F2 type trust boundary) ──
