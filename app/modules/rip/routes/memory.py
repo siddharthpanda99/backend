@@ -1,83 +1,141 @@
-"""RIP Memory routes — Store and search agent memories.
+"""RIP Nexus memory-integration routes — thin transport for §49-§54 (chunk C074).
 
-Uses the Memory connector for real implementations with configurable
-retention policies, index types, and match methods.
+Extends the existing RIP memory surface (store/search above) with the Wave-10
+policy/scope/promotion/conflict endpoints. Thin-router discipline: no business
+logic here; delegation to ``common_lib.modules.rip.rip_memory.*`` (lazy imports
+inside handlers). Endpoints:
+
+* ``POST /rip/memory/policy``     — §52 policy resolution + §49/§50 role map (C070)
+* ``POST /rip/memory/scope``      — §51/§85 read-gate memory filtering (C071)
+* ``POST /rip/memory/promote``    — §53 promotion with full lineage (C072)
+* ``POST /rip/memory/conflict``   — §54 reconciliation with lineage preserved (C073)
 """
 
-from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
+from __future__ import annotations
 
-from common_lib.modules.rip.rip_memory.schemas import (
-    MemoryStoreRequest,
-    MemorySearchRequest,
-    MemoryResponse,
-)
+from typing import Any
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/rip/memory", tags=["RIP — Memory"])
 
 
-@router.post("/store", response_model=MemoryResponse)
-async def store_memory(payload: MemoryStoreRequest):
-    """Store a memory record (episodic, semantic, or procedural).
+class PolicyRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    explicit_policy: str | None = None
+    tenant_override: str | None = None
 
-    Retention policies: session, persistent, decay.
-    Uses the Memory connector for real storage backends.
-    """
+
+class PolicyResponse(BaseModel):
+    result: dict[str, Any]
+
+
+class ScopeRequest(BaseModel):
+    records: list[dict[str, Any]] = Field(default_factory=list)
+    query_scope: str = Field(..., min_length=1)
+
+
+class ScopeResponse(BaseModel):
+    result: dict[str, Any]
+
+
+class PromoteRequest(BaseModel):
+    evidence: dict[str, Any]
+    gate_confidence: float | None = None
+    content_override: str | None = None
+    target: str = Field("memory", pattern="^(memory|world_model)$")
+
+
+class PromoteResponse(BaseModel):
+    result: dict[str, Any]
+
+
+class ConflictRequest(BaseModel):
+    memory: dict[str, Any]
+    evidence: dict[str, Any]
+
+
+class ConflictResponse(BaseModel):
+    result: dict[str, Any]
+
+
+@router.post("/policy", response_model=PolicyResponse)
+async def resolve_policy(payload: PolicyRequest):
+    """Resolve the effective §52 memory policy for a query (deterministic)."""
     try:
-        from common_lib.modules.rip.rip_connectors import create_memory_fn
-
-        memory_fn = await create_memory_fn(agent_id=payload.agent_id)
-        result = await memory_fn.store(
-            memory_type=payload.memory_type,
-            content=payload.content,
-            summary=payload.summary,
-            importance=payload.importance,
-            source=payload.source,
-            metadata=payload.metadata,
-            session_id=payload.session_id,
-            ttl_seconds=payload.ttl_seconds,
-            tenant_id=payload.tenant_id,
+        from common_lib.modules.rip.rip_memory.policy import (
+            apply_memory_policy,
+            resolve_memory_policy,
         )
-        return result
+
+        resolved = resolve_memory_policy(
+            query=payload.query,
+            explicit_policy=payload.explicit_policy,
+            tenant_override=payload.tenant_override,
+        )
+        return {"result": resolved}
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/search")
-async def search_memory(payload: MemorySearchRequest):
-    """Search memory records by semantic similarity and importance.
-
-    Index types: vector, keyword, hybrid.
-    Match methods: template, semantic, exact.
-    """
+@router.post("/scope", response_model=ScopeResponse)
+async def filter_by_scope(payload: ScopeRequest):
+    """§51/§85 read gate: filter memory records by query scope (fail-closed)."""
     try:
-        from common_lib.modules.rip.rip_connectors import create_memory_search_fn
-        import time
+        from common_lib.modules.rip.rip_memory.scope import filter_memory_by_scope
 
-        start = time.perf_counter()
-
-        search_fn = await create_memory_search_fn(
-            agent_id=payload.agent_id,
-            index_type="hybrid",
-            match_method="semantic",
+        result = filter_memory_by_scope(
+            query_scope=payload.query_scope, records=payload.records
         )
-        results = await search_fn(
-            query=payload.query,
-            agent_id=payload.agent_id,
-            memory_types=payload.memory_types,
-            top_k=payload.top_k,
-            min_importance=payload.min_importance,
-            include_ephemeral=payload.include_ephemeral,
-            tenant_id=payload.tenant_id,
-        )
-        elapsed = (time.perf_counter() - start) * 1000
+        return {"result": result}
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-        return {
-            "query": payload.query,
-            "agent_id": payload.agent_id,
-            "results": list(results) if results else [],
-            "count": len(results) if results else 0,
-            "latency_ms": elapsed,
-        }
+
+@router.post("/promote", response_model=PromoteResponse)
+async def promote(payload: PromoteRequest):
+    """§53/§88: promote document evidence → memory (or world-model candidate)."""
+    try:
+        if payload.target == "world_model":
+            from common_lib.modules.rip.rip_memory.promotion import (
+                promote_to_world_model,
+            )
+
+            result = promote_to_world_model(evidence=payload.evidence)
+        else:
+            from common_lib.modules.rip.rip_memory.promotion import (
+                promote_to_memory,
+            )
+
+            kwargs: dict[str, Any] = {"evidence": payload.evidence}
+            if payload.gate_confidence is not None:
+                kwargs["gate_confidence"] = payload.gate_confidence
+            if payload.content_override is not None:
+                kwargs["content_override"] = payload.content_override
+            result = promote_to_memory(**kwargs)
+        return {"result": result}
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/conflict", response_model=ConflictResponse)
+async def reconcile_conflict(payload: ConflictRequest):
+    """§54: reconcile new evidence vs stored memory (lineage preserved)."""
+    try:
+        from common_lib.modules.rip.rip_memory.conflict import (
+            reconcile_memory_conflict,
+        )
+
+        result = reconcile_memory_conflict(memory=payload.memory, evidence=payload.evidence)
+        return {"result": result}
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

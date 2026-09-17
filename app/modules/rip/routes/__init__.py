@@ -36,6 +36,8 @@ from .coverage import router as coverage_router
 from .acquisition import router as acquisition_router
 from .truth import router as truth_router
 from .evidence import router as evidence_router
+from .answer import router as answer_router
+from .debug import router as debug_router
 
 router = APIRouter()
 
@@ -69,5 +71,7 @@ router.include_router(coverage_router)
 router.include_router(acquisition_router)
 router.include_router(truth_router)
 router.include_router(evidence_router)
+router.include_router(answer_router)
+router.include_router(debug_router)
 
 __all__ = ["router"]
