@@ -74,6 +74,12 @@ def _compiler_router():
     return router
 
 
+def _communities_router():
+    from app.modules.knowledge_engine.routes.communities import router
+
+    return router
+
+
 def _world_model_router():
     from app.modules.knowledge.routes.world_model import router
 
@@ -1527,6 +1533,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": _compiler_router(),
             "prefix": "",
             "tags": ["Nexus Knowledge Compiler"],
+            "auth": True,
+        },
+        # ── Nexus Communities / Global Understanding (Cluster 3) ──
+        {
+            "router": _communities_router(),
+            "prefix": "",
+            "tags": ["Nexus Communities"],
             "auth": True,
         },
         # ── Knowledge Ontology (F2 type trust boundary) ──
