@@ -322,6 +322,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.tools.routes.index import router as tools_router
     from app.modules.memory.routes import router as cognitive_memory_router
     from app.modules.memories.routes.index import router as memories_router
+    from app.modules.decision.routes import router as decision_router
     from app.modules.vectorstores.routes import router as vectorstores_router
     from app.modules.models.routes import router as models_router
     from app.modules.models.external_routes import router as external_models_router
@@ -1202,6 +1203,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": memories_router,
             "prefix": "/memories",
             "tags": ["Memories"],
+            "auth": True,
+        },
+        {
+            "router": decision_router,
+            "prefix": "/decision",
+            "tags": ["Decision Fabric"],
             "auth": True,
         },
         {
