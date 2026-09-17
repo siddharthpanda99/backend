@@ -119,7 +119,22 @@ for route in system_router.routes:
 for route in voice_gallery_router.routes:
     main_router.routes.append(route)
 
+# Merge YuE music generation routes under /yue prefix
+try:
+    from app.modules.audio.routes.yue import router as yue_router
+
+    for route in yue_router.routes:
+        main_router.routes.append(route)
+except ImportError as _yue_import_error:  # pragma: no cover
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "audio.yue routes not mounted (import failed: %s)",
+        _yue_import_error,
+    )
+
 __all__ = ["router"]
 
 # Re-export main_router as router
 router = main_router
+
