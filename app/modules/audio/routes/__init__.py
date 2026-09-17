@@ -133,6 +133,20 @@ except ImportError as _yue_import_error:  # pragma: no cover
         _yue_import_error,
     )
 
+# Merge audio workflows catalogue and execution routes under /workflows prefix
+try:
+    from app.modules.audio.routes.workflows import router as workflows_router
+
+    for route in workflows_router.routes:
+        main_router.routes.append(route)
+except ImportError as _wf_import_error:  # pragma: no cover
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "audio.workflows routes not mounted (import failed: %s)",
+        _wf_import_error,
+    )
+
 __all__ = ["router"]
 
 # Re-export main_router as router
