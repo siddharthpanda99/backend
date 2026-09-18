@@ -180,6 +180,20 @@ async def execute_plan(plan_id: str, payload: Optional[Dict[str, Any]] = None) -
         tool_handlers=handlers,  # host-supplied handlers only; never raw plans
         max_steps=body.get("max_steps"),
     )
+    # Record the run for the execution-history surface (§57) — best-effort,
+    # never fails the run itself.
+    try:
+        from common_lib.modules.decision_engine.telemetry.history import record_execution
+
+        record = record_execution(
+            plan_id=plan_id,
+            run=run,
+            plan_version=plan.version,
+        )
+        run["executionId"] = record["executionId"]
+        run["recordedAt"] = record["recordedAt"]
+    except Exception:  # noqa: BLE001 — history is best-effort
+        pass
     return run
 
 
@@ -203,6 +217,34 @@ async def replan_plan(plan_id: str, payload: Optional[Dict[str, Any]] = None) ->
 
 
 # ── DF-056 coordination endpoints (thin) ─────────────────────────────────
+
+
+# ── §57 Execution-history endpoints (thin) ─────────────────────────────
+
+
+@router.get("/executions")
+async def list_executions(
+    plan_id: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> Dict[str, Any]:
+    """GET /executions — recorded plan runs, newest first (§57)."""
+    from common_lib.modules.decision_engine.telemetry.history import list_executions as _list
+
+    _require_fabric()
+    return _list(plan_id=plan_id, status=status, limit=limit)
+
+
+@router.get("/executions/{execution_id}")
+async def get_execution(execution_id: str) -> Dict[str, Any]:
+    """GET /executions/{execution_id} — one run incl. per-node results."""
+    from common_lib.modules.decision_engine.telemetry.history import get_execution as _get
+
+    _require_fabric()
+    record = _get(execution_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"execution {execution_id!r} not found")
+    return record
 
 
 @router.post("/coordination/intake")
