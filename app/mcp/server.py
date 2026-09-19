@@ -124,6 +124,7 @@ from app.mcp.tools.canvas_validator_tools import register_canvas_validation_tool
 from app.mcp.tools.chains_tools import register_chains_tools
 from app.mcp.tools.multiagent_tools import register_multiagent_tools
 from app.mcp.tools.dataset_management import register_dataset_management_tools
+from app.mcp.tools.decision_engine import register_decision_engine_tools
 
 # Setup MCP-specific logging
 logging.basicConfig(level=logging.INFO)
@@ -239,6 +240,7 @@ register_multiagent_tools(mcp_server)
 register_dataset_management_tools(mcp_server)
 register_behaviour_tools(mcp_server)
 register_i2w_tools(mcp_server)
+register_decision_engine_tools(mcp_server)
 
 # 3. Register Modular Resources
 register_cognitive_resources(mcp_server)

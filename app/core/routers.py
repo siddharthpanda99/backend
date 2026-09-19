@@ -688,6 +688,15 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
         return router
 
+    def _decision_engine_router():
+        # Decision Engine (Nexus Decision Fabric) — thin router layer.
+        # All business logic lives in common_lib.modules.decision_engine.
+        # The router mounts endpoints at /api/v1/decision-engine/;
+        # feature-gated by NEXUS_DECISION_FABRIC_ENABLED flag.
+        from app.modules.decision_engine.routes import router
+
+        return router
+
     def _i2w_router():
         # I2W (Instruction-to-Workflow) — Phase 7 surface.
         # Thin router layer; all business logic lives in
@@ -1209,6 +1218,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": decision_router,
             "prefix": "/decision",
             "tags": ["Decision Fabric"],
+            "auth": True,
+        },
+        {
+            "router": _decision_engine_router(),
+            "prefix": "/decision-engine",
+            "tags": ["Decision Engine"],
             "auth": True,
         },
         {
