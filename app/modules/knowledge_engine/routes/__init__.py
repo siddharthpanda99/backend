@@ -22,7 +22,7 @@ from app.modules.knowledge_engine.routes.reconcile import router as reconcile_ro
 from app.modules.knowledge_engine.routes.retrieve import router as retrieve_router
 from app.modules.knowledge_engine.routes.search import router as search_router
 
-router = APIRouter(prefix="/knowledge-engine", tags=["Knowledge Engine"])
+router = APIRouter(tags=["Knowledge Engine"])
 
 # Include all sub-routers
 router.include_router(entities_router)

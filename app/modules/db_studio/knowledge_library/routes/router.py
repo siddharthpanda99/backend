@@ -5,22 +5,37 @@ from fastapi import APIRouter, HTTPException
 
 from common_lib.modules.db_studio.knowledge_library import (
     KnowledgeLibraryService,
-    HistoryRecordCreate, HistoryRecordOut, HistorySearchRequest,
-    SavedQueryCreate, SavedQueryUpdate, SavedQueryOut,
-    SnippetCreate, SnippetUpdate, SnippetOut, SnippetVersionOut,
-    TemplateCreate, TemplateUpdate, TemplateOut,
-    CollectionCreate, CollectionUpdate, CollectionOut,
-    CollectionItemAdd, CollectionItemOut,
-    TagCreate, TagOut,
-    SearchRequest, SearchResultOut,
+    HistoryRecordCreate,
+    HistoryRecordOut,
+    HistorySearchRequest,
+    SavedQueryCreate,
+    SavedQueryUpdate,
+    SavedQueryOut,
+    SnippetCreate,
+    SnippetUpdate,
+    SnippetOut,
+    SnippetVersionOut,
+    TemplateCreate,
+    TemplateUpdate,
+    TemplateOut,
+    CollectionCreate,
+    CollectionUpdate,
+    CollectionOut,
+    CollectionItemAdd,
+    CollectionItemOut,
+    TagCreate,
+    TagOut,
+    SearchRequest,
+    SearchResultOut,
     KnowledgeLibraryDashboardOut,
 )
 
-router = APIRouter(prefix="/api/v1/knowledge-library", tags=["Query History, Snippets & Templates"])
+router = APIRouter(tags=["Query History, Snippets & Templates"])
 svc = KnowledgeLibraryService()
 
 
 # ── History ────────────────────────────────────────────────────────────
+
 
 @router.post("/history", response_model=HistoryRecordOut)
 def record_execution(req: HistoryRecordCreate):
@@ -68,6 +83,7 @@ def toggle_pin(history_id: str):
 
 # ── Saved Queries ─────────────────────────────────────────────────────
 
+
 @router.post("/queries", response_model=SavedQueryOut)
 def create_saved_query(req: SavedQueryCreate):
     return svc.create_saved_query(req)
@@ -109,6 +125,7 @@ def delete_saved_query(query_id: str):
 
 # ── Snippets ───────────────────────────────────────────────────────────
 
+
 @router.post("/snippets", response_model=SnippetOut)
 def create_snippet(req: SnippetCreate):
     return svc.create_snippet(req)
@@ -123,7 +140,9 @@ def list_snippets(
     starred: Optional[bool] = None,
     limit: int = 50,
 ):
-    return svc.list_snippets(language, category, workspace_id, team_only, starred, limit)
+    return svc.list_snippets(
+        language, category, workspace_id, team_only, starred, limit
+    )
 
 
 @router.get("/snippets/{snippet_id}", response_model=SnippetOut)
@@ -155,6 +174,7 @@ def list_snippet_versions(snippet_id: str, limit: int = 50):
 
 
 # ── Templates ──────────────────────────────────────────────────────────
+
 
 @router.post("/templates", response_model=TemplateOut)
 def create_template(req: TemplateCreate):
@@ -196,6 +216,7 @@ def delete_template(template_id: str):
 
 # ── Collections ────────────────────────────────────────────────────────
 
+
 @router.post("/collections", response_model=CollectionOut)
 def create_collection(req: CollectionCreate):
     return svc.create_collection(req)
@@ -226,7 +247,9 @@ def add_collection_item(collection_id: str, req: CollectionItemAdd):
     return svc.add_collection_item(collection_id, req)
 
 
-@router.get("/collections/{collection_id}/items", response_model=List[CollectionItemOut])
+@router.get(
+    "/collections/{collection_id}/items", response_model=List[CollectionItemOut]
+)
 def list_collection_items(collection_id: str, limit: int = 100):
     return svc.list_collection_items(collection_id, limit)
 
@@ -239,6 +262,7 @@ def remove_collection_item(item_id: str):
 
 
 # ── Tags ───────────────────────────────────────────────────────────────
+
 
 @router.post("/tags", response_model=TagOut)
 def create_tag(req: TagCreate):
@@ -259,12 +283,14 @@ def delete_tag(tag_id: str):
 
 # ── Search ─────────────────────────────────────────────────────────────
 
+
 @router.post("/search", response_model=List[SearchResultOut])
 def search(req: SearchRequest):
     return svc.search(req)
 
 
 # ── Dashboard ──────────────────────────────────────────────────────────
+
 
 @router.get("/dashboard", response_model=KnowledgeLibraryDashboardOut)
 def knowledge_library_dashboard():
