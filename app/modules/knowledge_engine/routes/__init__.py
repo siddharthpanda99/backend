@@ -19,6 +19,8 @@ from app.modules.knowledge_engine.routes.branches import router as branches_rout
 from app.modules.knowledge_engine.routes.snapshots import router as snapshots_router
 from app.modules.knowledge_engine.routes.provenance import router as provenance_router
 from app.modules.knowledge_engine.routes.reconcile import router as reconcile_router
+from app.modules.knowledge_engine.routes.retrieve import router as retrieve_router
+from app.modules.knowledge_engine.routes.search import router as search_router
 
 router = APIRouter(prefix="/knowledge-engine", tags=["Knowledge Engine"])
 
@@ -32,6 +34,8 @@ router.include_router(branches_router)
 router.include_router(snapshots_router)
 router.include_router(provenance_router)
 router.include_router(reconcile_router)
+router.include_router(retrieve_router)
+router.include_router(search_router)
 
 
 __all__ = ["router"]
