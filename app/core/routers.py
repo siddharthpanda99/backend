@@ -80,6 +80,12 @@ def _communities_router():
     return router
 
 
+def _knowledge_engine_router():
+    from app.modules.knowledge_engine.routes import router
+
+    return router
+
+
 def _world_model_router():
     from app.modules.knowledge.routes.world_model import router
 
@@ -1527,6 +1533,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": _knowledge_router(),
             "prefix": "",
             "tags": ["Knowledge Engine"],
+            "auth": True,
+        },
+        # ── Knowledge Engine Core (entities, claims, commits, branches, snapshots) ──
+        {
+            "router": _knowledge_engine_router(),
+            "prefix": "/knowledge-engine",
+            "tags": ["Knowledge Engine Core"],
             "auth": True,
         },
         # ── Knowledge World Model (F1 entity/fact ledger) ──
