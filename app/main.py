@@ -380,6 +380,17 @@ async def lifespan(app: FastAPI):
             except Exception as rip_se:
                 print(f"Warning: RIP tool registration failed: {rip_se}")
 
+            # --- WIRE: Integration bridges (RIP + Memory + data-pipeline events) ---
+            # Connects rip.*/memory.*/tools.call/data_pipeline.* event handlers and
+            # routing rules into the EventRouter (RIP integration Phases 1-5).
+            try:
+                from common_lib.modules.integration.loader import wire_all_bridges
+
+                wire_all_bridges()
+                print("Startup: Integration bridges wired (RIP, memory, data pipeline)")
+            except Exception as bridge_we:
+                print(f"Warning: Integration bridge wiring failed: {bridge_we}")
+
             # --- SEED: Observability YAML Data ---
             try:
                 from common_lib.modules.observability.bootstrap import (
