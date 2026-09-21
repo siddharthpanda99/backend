@@ -44,6 +44,12 @@ def _layouts_router():
     return router
 
 
+def _cognitive_runtime_router():
+    from app.modules.cognitive_runtime.routes import router
+
+    return router
+
+
 def _data_configs_router():
     from app.modules.workflows.routes.data_configs import router
 
@@ -2100,6 +2106,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": _layouts_router(),
             "prefix": "/layouts",
             "tags": ["Layouts"],
+            "auth": True,
+        },
+        # ── Cognitive Runtime (COGR execution runtime) ──
+        {
+            "router": _cognitive_runtime_router(),
+            "prefix": "/cognitive",
+            "tags": ["Cognitive Runtime"],
             "auth": True,
         },
     ]
