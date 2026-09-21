@@ -421,6 +421,11 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
         return router
 
+    def _verification_router():
+        from app.modules.verification.routes import router
+
+        return router
+
     def _control_center_router():
         from app.modules.control_center.routes import router
 
@@ -1631,6 +1636,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": _hitl_router(),
             "prefix": "/hitl",
             "tags": ["HITL - Policy Builder"],
+            "auth": True,
+        },
+        # ── Verification (COGR staged model-output verification) ──
+        {
+            "router": _verification_router(),
+            "prefix": "",
+            "tags": ["Verification"],
             "auth": True,
         },
         # ── Writing Studio ───────────────────────────────────────────

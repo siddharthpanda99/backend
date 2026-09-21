@@ -112,14 +112,16 @@ async def coordinate_agents(req: CoordinateRequest) -> Dict[str, Any]:
             grade = None
             if task.result and isinstance(task.result, dict):
                 grade = task.result.get("grade")
-            tasks.append(TaskResponse(
-                task_id=task.task_id or str(uuid.uuid4()),
-                description=task.description,
-                agent_role=task.agent_role,
-                status=task.status,
-                result=task.result,
-                grade=grade,
-            ))
+            tasks.append(
+                TaskResponse(
+                    task_id=task.task_id or str(uuid.uuid4()),
+                    description=task.description,
+                    agent_role=task.agent_role,
+                    status=task.status,
+                    result=task.result,
+                    grade=grade,
+                )
+            )
 
         needs_revision = False
         feedback = None
@@ -162,18 +164,26 @@ async def route_task(req: RouteRequest) -> Dict[str, Any]:
         )
 
         return {
-            "role": result.role.value if hasattr(result.role, 'value') else str(result.role),
+            "role": result.role.value
+            if hasattr(result.role, "value")
+            else str(result.role),
             "confidence": result.confidence,
             "model": {
                 "id": result.model.id,
                 "name": result.model.name,
                 "provider": result.model.provider,
-                "quality": result.model.metadata.get("quality", "good") if result.model.metadata else "good",
-            } if result.model else None,
+                "quality": result.model.metadata.get("quality", "good")
+                if result.model.metadata
+                else "good",
+            }
+            if result.model
+            else None,
             "fallback_model": {
                 "id": result.fallback_model.id,
                 "name": result.fallback_model.name,
-            } if result.fallback_model else None,
+            }
+            if result.fallback_model
+            else None,
             "explanation": result.explanation,
         }
 
@@ -203,7 +213,19 @@ async def orchestration_status() -> Dict[str, Any]:
     }
 
 
-from app.modules.orchestration.session_runtime_routes import router as session_runtime_router
+from app.modules.orchestration.session_runtime_routes import (
+    router as session_runtime_router,
+)
+
 router.include_router(session_runtime_router)
+
+try:  # COGR cognitive routing (additive; never touches existing routes)
+    from app.modules.orchestration.cognitive_routing import (
+        router as cognitive_routing_router,
+    )
+
+    router.include_router(cognitive_routing_router)
+except Exception:  # noqa: BLE001
+    pass
 
 __all__ = ["router"]
