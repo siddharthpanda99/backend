@@ -93,6 +93,8 @@ logs/
 app/uploads/
 assets/
 resources/
+GENERATED_CONTENT/
+generated_content/
 
 # Scratch directories
 scratch/external_wildcards/

@@ -18,6 +18,8 @@ from app.modules.entities.services.vector_search import get_search_service
 
 from common_lib.modules.orchestration.entities.registry_service import (
     EntityRegistryService,
+)
+from common_lib.modules.orchestration.entities.registry.utils import (
     normalize_description,
 )
 

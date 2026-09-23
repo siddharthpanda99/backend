@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from sqlalchemy import select, delete
 from common_lib.modules.data_storage.database.connection import get_session, engine
-from app.modules.schema.models import (
+from common_lib.modules.app_builder.schema.models import (
     SchemaTableRecord,
     SchemaRelationshipRecord,
     SchemaMigrationRecord,
