@@ -68,10 +68,12 @@ from common_lib.modules.data_storage.database.connection import get_session
 from common_lib.paths import GENERATED_CONTENT
 
 from app.modules.vision.routes.ops_router import router as ops_router
+from app.modules.vision.routes.qwen21_router import router as qwen21_router
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(ops_router)
+router.include_router(qwen21_router)
 controller = VisionTaskController()
 
 
