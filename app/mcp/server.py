@@ -9,6 +9,7 @@ from app.mcp.tools.discovery import register_discovery_tools
 from app.mcp.tools.agents import register_agent_tools
 from app.mcp.tools.memories import register_memory_tools
 from app.mcp.tools.models import register_model_tools
+from app.mcp.tools.open_code_review import register_open_code_review_tools
 from app.mcp.tools.workflows import register_workflow_tools
 from app.mcp.tools.workflow_configs import register_workflow_config_tools
 from app.mcp.tools.graph import register_graph_tools
@@ -145,6 +146,7 @@ register_discovery_tools(mcp_server)
 register_agent_tools(mcp_server)
 register_memory_tools(mcp_server)
 register_model_tools(mcp_server)
+register_open_code_review_tools(mcp_server)
 register_workflow_tools(mcp_server)
 register_workflow_config_tools(mcp_server)
 register_graph_tools(mcp_server)

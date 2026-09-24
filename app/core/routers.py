@@ -395,6 +395,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.configs.routes import router as configs_router
     from app.modules.sd_models.routes import router as sd_models_router
     from app.modules.audio.routes import router as audio_router
+    from app.modules.open_code_review.routes import router as open_code_review_router
     from app.mcp.routes import router as mcp_router
     from app.modules.debug.routes import router as debug_router
     from app.modules.marketplace.routes import router as marketplace_router
@@ -1208,6 +1209,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": audio_router,
             "prefix": "/audio",
             "tags": ["Audio & TTS"],
+            "auth": True,
+        },
+        {
+            "router": open_code_review_router,
+            "prefix": "/code-review",
+            "tags": ["Open Code Review"],
             "auth": True,
         },
         # ── Nodes / Sandbox ──────────────────────────────────────────
