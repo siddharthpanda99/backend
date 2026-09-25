@@ -229,3 +229,66 @@ async def execute_node(
             "error": str(e),
             "duration_ms": int((time.time() - start) * 1000),
         }
+
+
+@router.post("/nodes/route-and-execute")
+async def route_and_execute_node(body: dict) -> dict[str, Any]:
+    """Route a natural language query to the best @node via Needle 3 and execute it.
+
+    Request body:
+        {
+            "query": "extract schema for database conn_1",
+            "category": "database",         # optional
+            "confidence_threshold": 0.85,    # optional, default 0.85
+            "timeout_sec": 30               # optional
+        }
+    """
+    query = body.get("query")
+    if not query:
+        raise HTTPException(status_code=400, detail="'query' is required")
+
+    category = body.get("category")
+    threshold = float(body.get("confidence_threshold", 0.85))
+    timeout_sec = float(body.get("timeout_sec", _DEFAULT_TIMEOUT))
+
+    start = time.time()
+    try:
+        from common_lib.modules.tools.needle_router import NeedleNodeRouter
+
+        router_instance = NeedleNodeRouter(confidence_threshold=threshold)
+        loop = asyncio.get_running_loop()
+
+        result = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                lambda: router_instance.route_and_execute(query, category=category),
+            ),
+            timeout=timeout_sec,
+        )
+
+        if result is None:
+            return {
+                "routed": False,
+                "message": "No tool match met the confidence threshold",
+                "duration_ms": int((time.time() - start) * 1000),
+            }
+
+        result["routed"] = True
+        result["duration_ms"] = int((time.time() - start) * 1000)
+        return result
+
+    except asyncio.TimeoutError:
+        return {
+            "routed": False,
+            "success": False,
+            "error": f"Tool routing and execution timed out after {timeout_sec}s",
+            "duration_ms": int((time.time() - start) * 1000),
+        }
+    except Exception as e:
+        logger.exception("route_and_execute failed for query: %s", query[:60])
+        return {
+            "routed": False,
+            "success": False,
+            "error": str(e),
+            "duration_ms": int((time.time() - start) * 1000),
+        }
