@@ -111,6 +111,7 @@ async def qwen21_inpaint(
     steps: int = Form(20),
     cfg: float = Form(1.0),
     seed: int = Form(0),
+    feather_px: int = Form(16),
 ) -> dict[str, Any]:
     """Repaint the masked region (mask white = repaint)."""
     try:
@@ -123,6 +124,7 @@ async def qwen21_inpaint(
             cfg=cfg,
             seed=seed,
             negative_prompt=negative_prompt,
+            feather_px=feather_px,
         )
         return _ok(meta)
     except FileNotFoundError as e:
@@ -141,6 +143,7 @@ async def qwen21_outpaint(
     steps: int = Form(20),
     cfg: float = Form(1.0),
     seed: int = Form(0),
+    feather_px: int = Form(32),
 ) -> dict[str, Any]:
     """Expand the canvas by ``pad`` px per side, repaint the border."""
     try:
@@ -152,6 +155,7 @@ async def qwen21_outpaint(
             cfg=cfg,
             seed=seed,
             negative_prompt=negative_prompt,
+            feather_px=feather_px,
         )
         return _ok(meta)
     except FileNotFoundError as e:
