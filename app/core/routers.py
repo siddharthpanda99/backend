@@ -2136,6 +2136,8 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         },
     ]
 
+    orig_lifespan = getattr(app.router, "lifespan_context", None)
+
     for entry in ROUTER_DEFINITIONS:
         router = entry["router"]
         prefix = f"{api_prefix}{entry['prefix']}"
@@ -2143,6 +2145,14 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         deps = global_deps if entry.get("auth", True) else []
 
         app.include_router(router, prefix=prefix, tags=tags, dependencies=deps)
+
+    # FastAPI wraps `app.router.lifespan_context` on every `include_router`, creating a 225-level
+    # deep nested `_merge_lifespan_context` generator chain even though sub-routers only have a
+    # default no-op `_DefaultLifespan`. When any startup exception occurs, Python unwinds all 225 frames,
+    # spamming ~500 lines of `merged_lifespan` in the traceback and hiding the real error.
+    # Sub-routers in this platform do not define custom lifespans, so preserve top-level app lifespan directly.
+    if orig_lifespan is not None:
+        app.router.lifespan_context = orig_lifespan
 
     logger.info(
         "Startup: Registered %d routers via declarative registry (P2-1)",

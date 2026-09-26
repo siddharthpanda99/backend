@@ -206,7 +206,7 @@ async def lifespan(app: FastAPI):
                             key_id = key_result.id
 
                             dev_conn = ConnectionRecord(
-                                id=str(uuid.uuid4()),
+                                id=None,
                                 connector_id="atlassian",
                                 user_id="default",
                                 auth_scheme="api_key",
@@ -1597,6 +1597,11 @@ def create_app() -> FastAPI:
     @app.get("/readyz", include_in_schema=False)
     async def health_check():
         return get_health_data()
+
+    @app.get("/v1/models", include_in_schema=False)
+    async def v1_models_compat():
+        """OpenAI-compatible models discovery fallback for background health/client checks."""
+        return {"object": "list", "data": []}
 
     initialize_tracing()
 

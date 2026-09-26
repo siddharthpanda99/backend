@@ -23,6 +23,8 @@ from sqlmodel import Session, select, SQLModel
 from common_lib.modules.data_storage.database.connection import engine, init_db
 from common_lib.modules.project_management.init_db import get_pm_metadata
 from common_lib.modules.secrets_manager.init_db import get_sm_metadata
+from common_lib.modules.integration.ports.database import PureBase
+from common_lib.modules.integration.ports.orchestration_models import get_sd_models
 import common_lib.modules.memory.blueprint_models
 import common_lib.modules.auth.users.models
 from common_lib.modules.auth.users.models import User
@@ -59,9 +61,16 @@ def ensure_schemas() -> None:
 def ensure_tables() -> None:
     get_pm_metadata()
     get_sm_metadata()
+    get_sd_models()
     init_db()
     SQLModel.metadata.create_all(engine)
-    print("[2/5] SQLModel tables verified.")
+    PureBase.metadata.create_all(engine)
+    try:
+        from common_lib.modules.image_processing.nodes_registry.models import Base as NodeBase
+        NodeBase.metadata.create_all(engine)
+    except Exception as _node_err:
+        print(f"Warning: NodeBase tables skipped: {_node_err}")
+    print("[2/5] SQLModel & PureBase tables verified.")
 
 
 def ensure_users_and_rbac() -> None:
