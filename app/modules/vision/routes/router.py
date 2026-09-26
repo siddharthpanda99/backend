@@ -69,11 +69,13 @@ from common_lib.paths import GENERATED_CONTENT
 
 from app.modules.vision.routes.ops_router import router as ops_router
 from app.modules.vision.routes.qwen21_router import router as qwen21_router
+from app.modules.vision.routes.sota_generation import router as sota_generation_router
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(ops_router)
 router.include_router(qwen21_router)
+router.include_router(sota_generation_router)
 controller = VisionTaskController()
 
 
