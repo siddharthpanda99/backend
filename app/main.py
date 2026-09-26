@@ -1,7 +1,6 @@
 import os
 import sys
 import time
-import json
 import logging
 from pathlib import Path
 
@@ -19,12 +18,12 @@ os.environ["XFORMERS_FORCE_DISABLE_TRITON"] = "1"
 # to avoid initializing PyTorch CUDA context at startup when using cloud API providers.
 
 # --- OBSERVABILITY INITIALIZATION ---
-from common_lib.modules.observability import initialize_logging, initialize_tracing
+from common_lib.modules.observability import initialize_logging
 
 initialize_logging()
 logger = logging.getLogger(__name__)
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,7 +39,7 @@ settings = get_settings()
 import sys
 import time
 from sqlalchemy import text
-from common_lib.modules.data_storage.database.connection import engine, get_session
+from common_lib.modules.data_storage.database.connection import engine
 
 
 @asynccontextmanager
@@ -59,10 +58,6 @@ async def lifespan(app: FastAPI):
             print("Database connection established successfully.")
 
             from common_lib.modules.data_storage.database.connection import init_db
-            from common_lib.modules.workflows.standard.models.observability import (
-                WorkflowExecution,
-                WorkflowEvent,
-            )
 
             # Register all PM models (Project, ProductIdea, RoadmapItem, etc.)
             # Must happen BEFORE init_db() so tables are created in the right order
@@ -78,6 +73,9 @@ async def lifespan(app: FastAPI):
             )
 
             get_sm_metadata()
+
+            # Register Open Code Review models (must happen BEFORE init_db() so tables are created)
+            import common_lib.modules.open_code_review.models  # noqa: F401
 
             init_db()
             print("Database initialized and models registered.")
@@ -1346,7 +1344,6 @@ def get_plugin_context():
         ctx = Depends(get_plugin_context)
         ctx.tools.search(...)
     """
-    from starlette.requests import Request
 
     # This will be overridden by the dependency injection below
     raise RuntimeError("PluginContext not available — app not started yet")
