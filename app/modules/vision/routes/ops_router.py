@@ -14,7 +14,7 @@ import base64
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Body
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from common_lib.modules.image_processing.ops_service import (
     list_operations_flat,
@@ -28,6 +28,21 @@ router = APIRouter(prefix="/ops", tags=["Image Ops"])
 def _sse(event: str, data: Dict[str, Any]) -> str:
     """Build an SSE message string."""
     return "event: {}\ndata: {}\n\n".format(event, json.dumps(data))
+
+
+def _result_response(out: Any, media_type: str) -> Response:
+    """Serialize an op result: images as bytes, dict/str as JSON."""
+    if isinstance(out, dict):
+        return JSONResponse(content=out)
+    if isinstance(out, str):
+        return JSONResponse(content={"result": out})
+    return Response(content=out, media_type=media_type)
+
+
+def _b64_payload(out: Any) -> str:
+    """Coerce an op result to a base64 string for batch envelopes."""
+    raw = out if isinstance(out, bytes) else json.dumps(out).encode("utf-8")
+    return base64.b64encode(raw).decode()
 
 
 @router.get("/list")
@@ -52,13 +67,13 @@ async def run_operation(
             raise HTTPException(400, detail="Invalid JSON in params")
     try:
         out = process_image(method, raw, parsed_params)
-    except ValueError as e:
+    except (ValueError, KeyError) as e:
         raise HTTPException(404, detail=str(e))
     except Exception as e:
         logger.exception("Image op %s failed", method)
         raise HTTPException(500, detail=str(e))
     content_type = file.content_type or "image/png"
-    return Response(content=out, media_type=content_type)
+    return _result_response(out, content_type)
 
 
 @router.post("/{method}/json")
@@ -77,12 +92,12 @@ async def run_operation_json(
     params = {k: v for k, v in body.items() if k != "image"}
     try:
         out = process_image(method, image_data, params)
-    except ValueError as e:
+    except (ValueError, KeyError) as e:
         raise HTTPException(404, detail=str(e))
     except Exception as e:
         logger.exception("Image op %s failed", method)
         raise HTTPException(500, detail=str(e))
-    return Response(content=out, media_type="image/png")
+    return _result_response(out, "image/png")
 
 
 @router.post("/batch")
@@ -118,7 +133,7 @@ async def run_batch(body: Dict[str, Any] = Body(...)):
         try:
             raw = base64.b64decode(img_b64)
             out = process_image(method, raw, {**params, "output_format": out_fmt})
-            results.append(base64.b64encode(out).decode())
+            results.append(_b64_payload(out))
             errors.append("")
         except Exception as e:  # noqa: BLE001 - report per-image, continue
             logger.warning("Batch op %s image #%d failed: %s", method, idx, e)
@@ -186,7 +201,7 @@ async def run_batch_stream(
                 out = await loop.run_in_executor(
                     None, lambda r=raw: process_image(method, r, dict(params))
                 )
-                out_b64 = base64.b64encode(out).decode()
+                out_b64 = _b64_payload(out)
                 ok_count += 1
                 error_list.append("")
 
@@ -199,7 +214,9 @@ async def run_batch_stream(
                 yield _sse("result", result_data)
 
             except Exception as e:
-                logger.warning("Batch stream op %s image #%d failed: %s", method, idx, e)
+                logger.warning(
+                    "Batch stream op %s image #%d failed: %s", method, idx, e
+                )
                 error_list.append(str(e))
 
                 error_result = {
@@ -233,15 +250,27 @@ async def run_batch_stream(
 
 # Operations that benefit from progress streaming
 SLOW_OPS = {
-    "restore_face", "gfpgan_restore", "codeformer_restore",
-    "swap_face", "reactor_swap", "instantid_generate",
-    "pulid_generate", "photomaker_generate",
-    "generate_creature", "generate_scene",
-    "transform_race", "create_hybrid",
-    "transfer_style", "style_transfer",
-    "inpaint", "super_resolution", "realesrgan",
-    "virtual_try_on", "try_on_outfit",
-    "transfer_makeup", "full_beauty_enhance",
+    "restore_face",
+    "gfpgan_restore",
+    "codeformer_restore",
+    "swap_face",
+    "reactor_swap",
+    "instantid_generate",
+    "pulid_generate",
+    "photomaker_generate",
+    "generate_creature",
+    "generate_scene",
+    "transform_race",
+    "create_hybrid",
+    "transfer_style",
+    "style_transfer",
+    "inpaint",
+    "super_resolution",
+    "realesrgan",
+    "virtual_try_on",
+    "try_on_outfit",
+    "transfer_makeup",
+    "full_beauty_enhance",
     "design_tattoo",
 }
 
@@ -286,7 +315,9 @@ async def run_operation_stream(
         start_time = time.time()
 
         # Send initial progress
-        yield _sse("progress", {"percent": 0, "message": "Starting...", "phase": "Init"})
+        yield _sse(
+            "progress", {"percent": 0, "message": "Starting...", "phase": "Init"}
+        )
 
         if method in SLOW_OPS:
             # Simulate progress phases while the actual op runs in background
@@ -319,7 +350,9 @@ async def run_operation_stream(
                     remaining = max(0, est_total - elapsed)
                     progress = {
                         "percent": round(pct * 100, 1),
-                        "message": "{} (~{:.0f}s remaining)".format(phase_msg, remaining),
+                        "message": "{} (~{:.0f}s remaining)".format(
+                            phase_msg, remaining
+                        ),
                         "phase": phase_name,
                         "elapsed": round(elapsed, 1),
                     }
@@ -347,7 +380,7 @@ async def run_operation_stream(
                 return
 
             # Send final result
-            img_b64 = base64.b64encode(result_data_raw).decode()
+            img_b64 = _b64_payload(result_data_raw)
             done_progress = {
                 "percent": 100,
                 "message": "Complete!",
@@ -355,10 +388,16 @@ async def run_operation_stream(
                 "elapsed": round(elapsed, 1),
             }
             yield _sse("progress", done_progress)
-            yield _sse("result", {
-                "image": img_b64,
-                "metadata": {"method": method, "duration_ms": round(elapsed * 1000)},
-            })
+            yield _sse(
+                "result",
+                {
+                    "image": img_b64,
+                    "metadata": {
+                        "method": method,
+                        "duration_ms": round(elapsed * 1000),
+                    },
+                },
+            )
 
         else:
             # Fast operation — just run it
@@ -368,17 +407,26 @@ async def run_operation_stream(
                     None, lambda: process_image(method, image_data, params)
                 )
                 elapsed = time.time() - start_time
-                img_b64 = base64.b64encode(result_data_raw).decode()
-                yield _sse("progress", {
-                    "percent": 100,
-                    "message": "Complete!",
-                    "phase": "Done",
-                    "elapsed": round(elapsed, 1),
-                })
-                yield _sse("result", {
-                    "image": img_b64,
-                    "metadata": {"method": method, "duration_ms": round(elapsed * 1000)},
-                })
+                img_b64 = _b64_payload(result_data_raw)
+                yield _sse(
+                    "progress",
+                    {
+                        "percent": 100,
+                        "message": "Complete!",
+                        "phase": "Done",
+                        "elapsed": round(elapsed, 1),
+                    },
+                )
+                yield _sse(
+                    "result",
+                    {
+                        "image": img_b64,
+                        "metadata": {
+                            "method": method,
+                            "duration_ms": round(elapsed * 1000),
+                        },
+                    },
+                )
             except Exception as e:
                 yield _sse("error", {"message": str(e)})
 
