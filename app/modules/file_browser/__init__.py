@@ -570,13 +570,6 @@ async def set_label_handler(file_id: str, body: AddLabelRequest):
     return result
 
 
-@router.get("/storage", response_model=StorageStatsResponse)
-async def get_storage_stats_handler():
-    """Get storage statistics."""
-    _ensure_init()
-    return get_storage_stats()
-
-
 # ── Tags & Labels ─────────────────────────────────────────────────────────────
 
 
@@ -644,18 +637,6 @@ async def extract_archive_handler(file_id: str, folder_id: Optional[str] = None)
 
 @router.post("/files/{file_id}/versions")
 async def create_version_handler(file_id: str):
-    """Create a new version of a file."""
-    version = create_version(file_id)
-    if not version:
-        raise HTTPException(status_code=404, detail="File not found")
-    return version
-
-
-@router.get("/files/{file_id}/versions")
-async def list_versions_handler(file_id: str):
-    """List all versions of a file."""
-    versions = list_versions(file_id)
-    return versions
     """Create a new version of a file."""
     version = create_version(file_id)
     if not version:
@@ -765,32 +746,7 @@ async def get_preview_image_handler(file_id: str):
     return Response(content=image_data, media_type="image/jpeg")
 
 
-# ── S3-Style Versioning ─────────────────────────────────────────────────────────
-
-
-@router.post("/files/{file_id}/versions")
-async def create_version_handler(file_id: str):
-    """Create a new version of a file."""
-    version = create_version(file_id)
-    if not version:
-        raise HTTPException(status_code=404, detail="File not found")
-    return version
-
-
-@router.get("/files/{file_id}/versions")
-async def list_versions_handler(file_id: str):
-    """List all versions of a file."""
-    versions = list_versions(file_id)
-    return versions
-
-
-@router.post("/files/{file_id}/versions/{version_id}/restore")
-async def restore_version_handler(file_id: str, version_id: str):
-    """Restore a file to a specific version."""
-    result = restore_file_version(file_id, version_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Version not found")
-    return result
+# ── Version download ─────────────────────────────────────────────────────────
 
 
 @router.get("/versions/{version_id}/download")

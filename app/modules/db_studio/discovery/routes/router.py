@@ -2,6 +2,7 @@
 
 Thin FastAPI wrappers — all logic delegated to DiscoveryService.
 """
+
 from typing import Optional, Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -26,7 +27,7 @@ from common_lib.modules.db_studio.discovery.schemas import (
 )
 from common_lib.modules.db_studio.discovery.service import DiscoveryService
 
-router = APIRouter(prefix="/api/v1", tags=["Discovery"])
+router = APIRouter(prefix="", tags=["Discovery"])
 svc = DiscoveryService()
 
 
@@ -34,13 +35,16 @@ svc = DiscoveryService()
 # Search
 # ------------------------------------------------------------------ #
 
+
 @router.post("/search", response_model=SearchResponse)
 def search(body: SearchRequest):
     return svc.search(body)
 
 
 @router.get("/search/suggestions", response_model=list[SearchSuggestionOut])
-def search_suggestions(prefix: str = Query(..., max_length=256), limit: int = Query(10, ge=1, le=50)):
+def search_suggestions(
+    prefix: str = Query(..., max_length=256), limit: int = Query(10, ge=1, le=50)
+):
     return svc.get_suggestions(prefix, limit)
 
 
@@ -50,7 +54,9 @@ def recent_searches(user_id: str = "anonymous", limit: int = Query(20, ge=1, le=
 
 
 @router.post("/search/save")
-def save_search(name: str = Query(..., max_length=128), query: str = Query(..., max_length=1024)):
+def save_search(
+    name: str = Query(..., max_length=128), query: str = Query(..., max_length=1024)
+):
     return svc.save_search(name, query)
 
 
@@ -71,9 +77,11 @@ def delete_saved_search(search_id: str):
 # Index
 # ------------------------------------------------------------------ #
 
+
 @router.post("/index", response_model=SearchResponse)
 def index_asset(body: dict):
     from common_lib.modules.db_studio.discovery.schemas import IndexRequest
+
     req = IndexRequest(**body)
     result = svc.index_asset(req)
     return SearchResponse(results=[result], total=1, limit=1, offset=0)
@@ -82,6 +90,7 @@ def index_asset(body: dict):
 # ------------------------------------------------------------------ #
 # Catalog
 # ------------------------------------------------------------------ #
+
 
 @router.post("/catalog", response_model=CatalogAssetOut, status_code=201)
 def create_catalog_asset(body: CatalogAssetCreate):
@@ -134,6 +143,7 @@ def list_catalog_assets(
 # Glossary
 # ------------------------------------------------------------------ #
 
+
 @router.post("/glossary", response_model=GlossaryTermOut, status_code=201)
 def create_glossary_term(body: GlossaryTermCreate):
     return svc.create_glossary_term(body)
@@ -183,6 +193,7 @@ def list_glossary_terms(
 # Tags
 # ------------------------------------------------------------------ #
 
+
 @router.post("/tags", response_model=TagOut, status_code=201)
 def add_tag(body: TagCreate):
     return svc.add_tag(body)
@@ -210,6 +221,7 @@ def popular_tags(limit: int = Query(20, ge=1, le=100)):
 # Relationships
 # ------------------------------------------------------------------ #
 
+
 @router.post("/relationships", response_model=RelationshipOut, status_code=201)
 def create_relationship(body: RelationshipCreate):
     return svc.create_relationship(body)
@@ -231,6 +243,7 @@ def delete_relationship(rel_id: str):
 # ------------------------------------------------------------------ #
 # Recommendations
 # ------------------------------------------------------------------ #
+
 
 @router.post("/recommendations/generate", response_model=list[RecommendationOut])
 def generate_recommendations(user_id: str, limit: int = Query(5, ge=1, le=50)):
@@ -254,6 +267,7 @@ def list_recommendations(user_id: str, limit: int = Query(20, ge=1, le=100)):
 # Dashboard
 # ------------------------------------------------------------------ #
 
+
 @router.get("/discovery/dashboard", response_model=DiscoveryDashboardOut)
 def discovery_dashboard():
     return svc.get_dashboard()
@@ -262,6 +276,7 @@ def discovery_dashboard():
 # ------------------------------------------------------------------ #
 # Seed
 # ------------------------------------------------------------------ #
+
 
 @router.post("/discovery/seed")
 def seed_discovery():

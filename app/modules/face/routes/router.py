@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Body, Query
+from fastapi.requests import Request
 from fastapi.responses import Response, StreamingResponse
 from common_lib.paths import RESOURCES_ROOT
 
@@ -46,7 +47,9 @@ def _encode_image(arr: np.ndarray) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def _decode_optional_image(data: Dict[str, Any], key: str = "image") -> Optional[np.ndarray]:
+def _decode_optional_image(
+    data: Dict[str, Any], key: str = "image"
+) -> Optional[np.ndarray]:
     """Decode optional base64 image from request body."""
     val = data.get(key)
     if val:
@@ -69,7 +72,9 @@ async def detect_faces(body: Dict[str, Any] = Body(...)):
     confidence = body.get("confidence", 0.5)
     max_faces = body.get("max_faces", 10)
 
-    faces = _detect(image, detector=detector, confidence=confidence, max_faces=max_faces)
+    faces = _detect(
+        image, detector=detector, confidence=confidence, max_faces=max_faces
+    )
     return {
         "status": "success",
         "faces": faces,
@@ -157,7 +162,9 @@ async def assess_quality(body: Dict[str, Any] = Body(...)):
 @router.post("/restore")
 async def restore_face(body: Dict[str, Any] = Body(...)):
     """Restore a degraded face using CodeFormer or GFPGAN."""
-    from common_lib.modules.image_processing.services.face_operations import restore_face
+    from common_lib.modules.image_processing.services.face_operations import (
+        restore_face,
+    )
 
     image = _decode_image(body.get("image", ""))
     model = body.get("model", "codeformer")
@@ -171,7 +178,9 @@ async def restore_face(body: Dict[str, Any] = Body(...)):
 @router.post("/restore/stream")
 async def restore_face_stream(body: Dict[str, Any] = Body(...)):
     """Restore face with SSE progress streaming."""
-    from common_lib.modules.image_processing.services.face_operations import restore_face
+    from common_lib.modules.image_processing.services.face_operations import (
+        restore_face,
+    )
 
     image = _decode_image(body.get("image", ""))
     model = body.get("model", "codeformer")
@@ -179,24 +188,63 @@ async def restore_face_stream(body: Dict[str, Any] = Body(...)):
 
     async def event_generator():
         start = time.time()
-        yield _sse("progress", {"percent": 10, "message": "Detecting faces...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {"percent": 10, "message": "Detecting faces...", "phase": "Detection"},
+        )
         await asyncio.sleep(0.1)
 
-        yield _sse("progress", {"percent": 30, "message": "Loading restoration model...", "phase": "Model"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 30,
+                "message": "Loading restoration model...",
+                "phase": "Model",
+            },
+        )
         await asyncio.sleep(0.1)
 
-        yield _sse("progress", {"percent": 50, "message": "Restoring face...", "phase": "Processing"})
+        yield _sse(
+            "progress",
+            {"percent": 50, "message": "Restoring face...", "phase": "Processing"},
+        )
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, lambda: restore_face(image, model=model, fidelity=fidelity))
+        result = await loop.run_in_executor(
+            None, lambda: restore_face(image, model=model, fidelity=fidelity)
+        )
 
-        yield _sse("progress", {"percent": 90, "message": "Encoding...", "phase": "Encoding"})
+        yield _sse(
+            "progress", {"percent": 90, "message": "Encoding...", "phase": "Encoding"}
+        )
         img_b64 = _encode_image(result)
 
         elapsed = time.time() - start
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"image": img_b64, "metadata": {"model": model, "fidelity": fidelity, "duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {
+                "image": img_b64,
+                "metadata": {
+                    "model": model,
+                    "fidelity": fidelity,
+                    "duration_ms": round(elapsed * 1000),
+                },
+            },
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Swapping ────────────────────────────────────────────────────
@@ -213,7 +261,9 @@ async def swap_face(body: Dict[str, Any] = Body(...)):
     target_bbox = body.get("target_bbox")
     model = body.get("model", "inswapper")
 
-    result = swap_face(source, target, source_bbox=source_bbox, target_bbox=target_bbox, model=model)
+    result = swap_face(
+        source, target, source_bbox=source_bbox, target_bbox=target_bbox, model=model
+    )
     return {"status": "success", "image": _encode_image(result)}
 
 
@@ -228,24 +278,64 @@ async def swap_face_stream(body: Dict[str, Any] = Body(...)):
 
     async def event_generator():
         start = time.time()
-        yield _sse("progress", {"percent": 10, "message": "Detecting source face...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 10,
+                "message": "Detecting source face...",
+                "phase": "Detection",
+            },
+        )
         await asyncio.sleep(0.1)
 
-        yield _sse("progress", {"percent": 30, "message": "Detecting target face...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 30,
+                "message": "Detecting target face...",
+                "phase": "Detection",
+            },
+        )
         await asyncio.sleep(0.1)
 
-        yield _sse("progress", {"percent": 50, "message": "Swapping face...", "phase": "Processing"})
+        yield _sse(
+            "progress",
+            {"percent": 50, "message": "Swapping face...", "phase": "Processing"},
+        )
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, lambda: swap_face(source, target, model=model))
+        result = await loop.run_in_executor(
+            None, lambda: swap_face(source, target, model=model)
+        )
 
-        yield _sse("progress", {"percent": 90, "message": "Blending...", "phase": "Post-process"})
+        yield _sse(
+            "progress",
+            {"percent": 90, "message": "Blending...", "phase": "Post-process"},
+        )
         img_b64 = _encode_image(result)
 
         elapsed = time.time() - start
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"image": img_b64, "metadata": {"model": model, "duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {
+                "image": img_b64,
+                "metadata": {"model": model, "duration_ms": round(elapsed * 1000)},
+            },
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Identity ────────────────────────────────────────────────────
@@ -271,7 +361,9 @@ async def compute_embedding(body: Dict[str, Any] = Body(...)):
 @router.post("/identity/compare")
 async def compare_faces(body: Dict[str, Any] = Body(...)):
     """Compare two face embeddings for identity similarity."""
-    from common_lib.modules.image_processing.services.face_operations import compare_faces
+    from common_lib.modules.image_processing.services.face_operations import (
+        compare_faces,
+    )
 
     emb_a = body.get("embedding_a")
     emb_b = body.get("embedding_b")
@@ -283,7 +375,11 @@ async def compare_faces(body: Dict[str, Any] = Body(...)):
         "status": "success",
         "similarity": similarity,
         "match": similarity > 0.5,
-        "confidence": "high" if similarity > 0.8 else "medium" if similarity > 0.5 else "low",
+        "confidence": "high"
+        if similarity > 0.8
+        else "medium"
+        if similarity > 0.5
+        else "low",
     }
 
 
@@ -293,7 +389,9 @@ async def compare_faces(body: Dict[str, Any] = Body(...)):
 @router.post("/expression")
 async def edit_expression(body: Dict[str, Any] = Body(...)):
     """Edit facial expression (smile, sad, surprised, angry, serious, neutral)."""
-    from common_lib.modules.image_processing.services.face_operations import edit_expression
+    from common_lib.modules.image_processing.services.face_operations import (
+        edit_expression,
+    )
 
     image = _decode_image(body.get("image", ""))
     expression = body.get("expression", "smile")
@@ -306,24 +404,61 @@ async def edit_expression(body: Dict[str, Any] = Body(...)):
 @router.post("/expression/stream")
 async def edit_expression_stream(body: Dict[str, Any] = Body(...)):
     """Edit expression with SSE progress streaming."""
-    from common_lib.modules.image_processing.services.face_operations import edit_expression
+    from common_lib.modules.image_processing.services.face_operations import (
+        edit_expression,
+    )
+
     image = _decode_image(body.get("image", ""))
     expression = body.get("expression", "smile")
     strength = body.get("strength", 0.5)
 
     async def event_generator():
         t0 = time.time()
-        yield _sse("progress", {"percent": 10, "message": "Detecting face landmarks...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 10,
+                "message": "Detecting face landmarks...",
+                "phase": "Detection",
+            },
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 30, "message": f"Applying {expression}...", "phase": "Editing"})
+        yield _sse(
+            "progress",
+            {"percent": 30, "message": f"Applying {expression}...", "phase": "Editing"},
+        )
         result = edit_expression(image, expression=expression, strength=strength)
         elapsed = time.time() - t0
         img_b64 = _encode_image(result)
-        yield _sse("progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"})
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"image": img_b64, "metadata": {"expression": expression, "strength": strength, "duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"}
+        )
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {
+                "image": img_b64,
+                "metadata": {
+                    "expression": expression,
+                    "strength": strength,
+                    "duration_ms": round(elapsed * 1000),
+                },
+            },
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Age ─────────────────────────────────────────────────────────
@@ -332,7 +467,9 @@ async def edit_expression_stream(body: Dict[str, Any] = Body(...)):
 @router.post("/age")
 async def transform_age(body: Dict[str, Any] = Body(...)):
     """Transform face age (5-80)."""
-    from common_lib.modules.image_processing.services.face_operations import transform_age
+    from common_lib.modules.image_processing.services.face_operations import (
+        transform_age,
+    )
 
     image = _decode_image(body.get("image", ""))
     target_age = body.get("target_age", 30)
@@ -344,23 +481,59 @@ async def transform_age(body: Dict[str, Any] = Body(...)):
 @router.post("/age/stream")
 async def transform_age_stream(body: Dict[str, Any] = Body(...)):
     """Transform age with SSE progress streaming."""
-    from common_lib.modules.image_processing.services.face_operations import transform_age
+    from common_lib.modules.image_processing.services.face_operations import (
+        transform_age,
+    )
+
     image = _decode_image(body.get("image", ""))
     target_age = body.get("target_age", 30)
 
     async def event_generator():
         t0 = time.time()
-        yield _sse("progress", {"percent": 10, "message": "Detecting face...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {"percent": 10, "message": "Detecting face...", "phase": "Detection"},
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 40, "message": f"Transforming to age {target_age}...", "phase": "Processing"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 40,
+                "message": f"Transforming to age {target_age}...",
+                "phase": "Processing",
+            },
+        )
         result = transform_age(image, target_age=target_age)
         elapsed = time.time() - t0
         img_b64 = _encode_image(result)
-        yield _sse("progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"})
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"image": img_b64, "metadata": {"target_age": target_age, "duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"}
+        )
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {
+                "image": img_b64,
+                "metadata": {
+                    "target_age": target_age,
+                    "duration_ms": round(elapsed * 1000),
+                },
+            },
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Relighting ──────────────────────────────────────────────────
@@ -369,21 +542,28 @@ async def transform_age_stream(body: Dict[str, Any] = Body(...)):
 @router.post("/relight")
 async def relight_face(body: Dict[str, Any] = Body(...)):
     """Relight face with directional lighting."""
-    from common_lib.modules.image_processing.services.face_operations import relight_face
+    from common_lib.modules.image_processing.services.face_operations import (
+        relight_face,
+    )
 
     image = _decode_image(body.get("image", ""))
     direction = body.get("direction", "front")
     color = body.get("color", [255, 255, 255])
     intensity = body.get("intensity", 0.7)
 
-    result = relight_face(image, light_direction=direction, light_color=tuple(color), intensity=intensity)
+    result = relight_face(
+        image, light_direction=direction, light_color=tuple(color), intensity=intensity
+    )
     return {"status": "success", "image": _encode_image(result)}
 
 
 @router.post("/relight/stream")
 async def relight_face_stream(body: Dict[str, Any] = Body(...)):
     """Relight face with SSE progress streaming."""
-    from common_lib.modules.image_processing.services.face_operations import relight_face
+    from common_lib.modules.image_processing.services.face_operations import (
+        relight_face,
+    )
+
     image = _decode_image(body.get("image", ""))
     direction = body.get("direction", "front")
     color = body.get("color", [255, 255, 255])
@@ -391,17 +571,56 @@ async def relight_face_stream(body: Dict[str, Any] = Body(...)):
 
     async def event_generator():
         t0 = time.time()
-        yield _sse("progress", {"percent": 10, "message": "Detecting face...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {"percent": 10, "message": "Detecting face...", "phase": "Detection"},
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 40, "message": f"Relighting from {direction}...", "phase": "Processing"})
-        result = relight_face(image, light_direction=direction, light_color=tuple(color), intensity=intensity)
+        yield _sse(
+            "progress",
+            {
+                "percent": 40,
+                "message": f"Relighting from {direction}...",
+                "phase": "Processing",
+            },
+        )
+        result = relight_face(
+            image,
+            light_direction=direction,
+            light_color=tuple(color),
+            intensity=intensity,
+        )
         elapsed = time.time() - t0
         img_b64 = _encode_image(result)
-        yield _sse("progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"})
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"image": img_b64, "metadata": {"direction": direction, "intensity": intensity, "duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"}
+        )
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {
+                "image": img_b64,
+                "metadata": {
+                    "direction": direction,
+                    "intensity": intensity,
+                    "duration_ms": round(elapsed * 1000),
+                },
+            },
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Eyes ────────────────────────────────────────────────────────
@@ -467,18 +686,40 @@ async def face_enhance_stream(body: Dict[str, Any] = Body(...)):
 
     async def event_generator():
         t0 = time.time()
-        yield _sse("progress", {"percent": 5, "message": "Analyzing face...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {"percent": 5, "message": "Analyzing face...", "phase": "Detection"},
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 20, "message": "Smoothing skin...", "phase": "Skin"})
+        yield _sse(
+            "progress", {"percent": 20, "message": "Smoothing skin...", "phase": "Skin"}
+        )
         await asyncio.sleep(0)
         result = full_beautification(image, **params)
         elapsed = time.time() - t0
         img_b64 = _encode_image(result)
-        yield _sse("progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"})
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"image": img_b64, "metadata": {"duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"}
+        )
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {"image": img_b64, "metadata": {"duration_ms": round(elapsed * 1000)}},
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Makeup ───────────────────────────────────────────────────
@@ -547,7 +788,9 @@ async def design_tattoo(body: Dict[str, Any] = Body(...)):
     colors = body.get("colors")
     body_part = body.get("body_part")
 
-    result = tattoo_design(prompt=prompt, style=style, colors=colors, body_part=body_part)
+    result = tattoo_design(
+        prompt=prompt, style=style, colors=colors, body_part=body_part
+    )
     return {"status": "success", "image": _encode_image(result)}
 
 
@@ -579,7 +822,9 @@ async def remove_tattoo(body: Dict[str, Any] = Body(...)):
     tattoo_region = body.get("tattoo_region")
     fade_sessions = body.get("fade_sessions", 0)
 
-    result = tattoo_remove(image, tattoo_region=tattoo_region, fade_sessions=fade_sessions)
+    result = tattoo_remove(
+        image, tattoo_region=tattoo_region, fade_sessions=fade_sessions
+    )
     return {"status": "success", "image": _encode_image(result)}
 
 
@@ -660,6 +905,7 @@ async def get_hardware_info():
 def _check_model_exists(*paths: str) -> bool:
     """Check if any of the given model file paths exist."""
     import os
+
     return any(os.path.isfile(p) for p in paths)
 
 
@@ -682,27 +928,39 @@ async def health_check():
         # Detection
         "insightface_scrfd": _check_importable("insightface", "FaceAnalysis"),
         "insightface_models": _check_model_exists(
-            os.path.join(os.path.expanduser("~"), ".insightface", "models", "buffalo_l", "det_10g.onnx"),
-        ) if _check_importable("insightface", "FaceAnalysis") else False,
-
+            os.path.join(
+                os.path.expanduser("~"),
+                ".insightface",
+                "models",
+                "buffalo_l",
+                "det_10g.onnx",
+            ),
+        )
+        if _check_importable("insightface", "FaceAnalysis")
+        else False,
         # Restoration
         "codeformer": _check_model_exists(
-            os.path.join(resources, "image_models", "reactor", "facerestore", "CodeFormer.pth"),
+            os.path.join(
+                resources, "image_models", "reactor", "facerestore", "CodeFormer.pth"
+            ),
         ),
         "gfpgan": _check_model_exists(
-            os.path.join(resources, "image_models", "reactor", "facerestore", "GFPGANv1.4.pth"),
+            os.path.join(
+                resources, "image_models", "reactor", "facerestore", "GFPGANv1.4.pth"
+            ),
         ),
-
         # Face parsing
         "bisenet_parsing": _check_model_exists(
-            os.path.join(resources, "image_models", "face", "parsing", "79999_iter.pth"),
+            os.path.join(
+                resources, "image_models", "face", "parsing", "79999_iter.pth"
+            ),
         ),
-
         # Swapping
         "inswapper_128": _check_model_exists(
-            os.path.join(resources, "image_models", "insightface", "models", "inswapper_128.onnx"),
+            os.path.join(
+                resources, "image_models", "insightface", "models", "inswapper_128.onnx"
+            ),
         ),
-
         # Dependencies
         "opencv": _check_importable("cv2", "imread"),
         "mediapipe": _check_importable("mediapipe", "solutions"),
@@ -712,7 +970,13 @@ async def health_check():
 
     available_count = sum(1 for v in models.values() if v)
     total_count = len(models)
-    overall = "healthy" if available_count >= 5 else "degraded" if available_count >= 3 else "unhealthy"
+    overall = (
+        "healthy"
+        if available_count >= 5
+        else "degraded"
+        if available_count >= 3
+        else "unhealthy"
+    )
 
     return {
         "status": "success",
@@ -723,7 +987,8 @@ async def health_check():
         "operations": {
             "detect": models.get("insightface_scrfd", False),
             "restore": models.get("codeformer", False) or models.get("gfpgan", False),
-            "swap": models.get("inswapper_128", False) and models.get("insightface_scrfd", False),
+            "swap": models.get("inswapper_128", False)
+            and models.get("insightface_scrfd", False),
             "expression": models.get("bisenet_parsing", False),
             "age": models.get("bisenet_parsing", False),
             "relight": models.get("opencv", False),
@@ -764,7 +1029,9 @@ async def health_models():
         models[name.replace(".pth", "").lower()] = {
             "available": os.path.isfile(path),
             "path": path,
-            "size_mb": round(os.path.getsize(path) / 1024 / 1024, 1) if os.path.isfile(path) else 0,
+            "size_mb": round(os.path.getsize(path) / 1024 / 1024, 1)
+            if os.path.isfile(path)
+            else 0,
         }
 
     # ── Face parsing ──
@@ -772,16 +1039,24 @@ async def health_models():
     models["bisenet_parsing"] = {
         "available": os.path.isfile(os.path.join(parsing_dir, "79999_iter.pth")),
         "path": os.path.join(parsing_dir, "79999_iter.pth"),
-        "size_mb": round(os.path.getsize(os.path.join(parsing_dir, "79999_iter.pth")) / 1024 / 1024, 1)
-            if os.path.isfile(os.path.join(parsing_dir, "79999_iter.pth")) else 0,
+        "size_mb": round(
+            os.path.getsize(os.path.join(parsing_dir, "79999_iter.pth")) / 1024 / 1024,
+            1,
+        )
+        if os.path.isfile(os.path.join(parsing_dir, "79999_iter.pth"))
+        else 0,
     }
 
     # ── Swapping models ──
-    inswapper_path = os.path.join(resources, "image_models", "insightface", "models", "inswapper_128.onnx")
+    inswapper_path = os.path.join(
+        resources, "image_models", "insightface", "models", "inswapper_128.onnx"
+    )
     models["inswapper_128"] = {
         "available": os.path.isfile(inswapper_path),
         "path": inswapper_path,
-        "size_mb": round(os.path.getsize(inswapper_path) / 1024 / 1024, 1) if os.path.isfile(inswapper_path) else 0,
+        "size_mb": round(os.path.getsize(inswapper_path) / 1024 / 1024, 1)
+        if os.path.isfile(inswapper_path)
+        else 0,
     }
 
     available = sum(1 for m in models.values() if m["available"])
@@ -796,26 +1071,74 @@ async def health_models():
 # Model health map: operation → list of model file paths to check
 _OPERATION_MODELS: Dict[str, List[str]] = {
     "detect": [
-        os.path.join(os.path.expanduser("~"), ".insightface", "models", "buffalo_l", "det_10g.onnx"),
+        os.path.join(
+            os.path.expanduser("~"),
+            ".insightface",
+            "models",
+            "buffalo_l",
+            "det_10g.onnx",
+        ),
     ],
     "restore": [
-        os.path.join(str(RESOURCES_ROOT) if 'RESOURCES_ROOT' in dir() else "resources", "image_models", "reactor", "facerestore", "CodeFormer.pth"),
-        os.path.join(str(RESOURCES_ROOT) if 'RESOURCES_ROOT' in dir() else "resources", "image_models", "reactor", "facerestore", "GFPGANv1.4.pth"),
+        os.path.join(
+            str(RESOURCES_ROOT) if "RESOURCES_ROOT" in dir() else "resources",
+            "image_models",
+            "reactor",
+            "facerestore",
+            "CodeFormer.pth",
+        ),
+        os.path.join(
+            str(RESOURCES_ROOT) if "RESOURCES_ROOT" in dir() else "resources",
+            "image_models",
+            "reactor",
+            "facerestore",
+            "GFPGANv1.4.pth",
+        ),
     ],
     "swap": [
-        os.path.join(str(RESOURCES_ROOT) if 'RESOURCES_ROOT' in dir() else "resources", "image_models", "insightface", "models", "inswapper_128.onnx"),
+        os.path.join(
+            str(RESOURCES_ROOT) if "RESOURCES_ROOT" in dir() else "resources",
+            "image_models",
+            "insightface",
+            "models",
+            "inswapper_128.onnx",
+        ),
     ],
     "expression": [
-        os.path.join(str(RESOURCES_ROOT) if 'RESOURCES_ROOT' in dir() else "resources", "image_models", "face", "parsing", "79999_iter.pth"),
+        os.path.join(
+            str(RESOURCES_ROOT) if "RESOURCES_ROOT" in dir() else "resources",
+            "image_models",
+            "face",
+            "parsing",
+            "79999_iter.pth",
+        ),
     ],
     "age": [
-        os.path.join(str(RESOURCES_ROOT) if 'RESOURCES_ROOT' in dir() else "resources", "image_models", "face", "parsing", "79999_iter.pth"),
+        os.path.join(
+            str(RESOURCES_ROOT) if "RESOURCES_ROOT" in dir() else "resources",
+            "image_models",
+            "face",
+            "parsing",
+            "79999_iter.pth",
+        ),
     ],
     "eyes": [
-        os.path.join(str(RESOURCES_ROOT) if 'RESOURCES_ROOT' in dir() else "resources", "image_models", "face", "parsing", "79999_iter.pth"),
+        os.path.join(
+            str(RESOURCES_ROOT) if "RESOURCES_ROOT" in dir() else "resources",
+            "image_models",
+            "face",
+            "parsing",
+            "79999_iter.pth",
+        ),
     ],
     "mouth": [
-        os.path.join(str(RESOURCES_ROOT) if 'RESOURCES_ROOT' in dir() else "resources", "image_models", "face", "parsing", "79999_iter.pth"),
+        os.path.join(
+            str(RESOURCES_ROOT) if "RESOURCES_ROOT" in dir() else "resources",
+            "image_models",
+            "face",
+            "parsing",
+            "79999_iter.pth",
+        ),
     ],
 }
 
@@ -829,24 +1152,45 @@ async def health_operation(operation: str):
     resources = str(_RES)
     home = os.path.expanduser("~")
     op_models: Dict[str, List[str]] = {
-        "detect": [os.path.join(home, ".insightface", "models", "buffalo_l", "det_10g.onnx")],
-        "restore": [
-            os.path.join(resources, "image_models", "reactor", "facerestore", "CodeFormer.pth"),
-            os.path.join(resources, "image_models", "reactor", "facerestore", "GFPGANv1.4.pth"),
+        "detect": [
+            os.path.join(home, ".insightface", "models", "buffalo_l", "det_10g.onnx")
         ],
-        "swap": [os.path.join(resources, "image_models", "insightface", "models", "inswapper_128.onnx")],
-        "expression": [os.path.join(resources, "image_models", "face", "parsing", "79999_iter.pth")],
-        "age": [os.path.join(resources, "image_models", "face", "parsing", "79999_iter.pth")],
+        "restore": [
+            os.path.join(
+                resources, "image_models", "reactor", "facerestore", "CodeFormer.pth"
+            ),
+            os.path.join(
+                resources, "image_models", "reactor", "facerestore", "GFPGANv1.4.pth"
+            ),
+        ],
+        "swap": [
+            os.path.join(
+                resources, "image_models", "insightface", "models", "inswapper_128.onnx"
+            )
+        ],
+        "expression": [
+            os.path.join(resources, "image_models", "face", "parsing", "79999_iter.pth")
+        ],
+        "age": [
+            os.path.join(resources, "image_models", "face", "parsing", "79999_iter.pth")
+        ],
         "relight": [],
-        "eyes": [os.path.join(resources, "image_models", "face", "parsing", "79999_iter.pth")],
-        "mouth": [os.path.join(resources, "image_models", "face", "parsing", "79999_iter.pth")],
+        "eyes": [
+            os.path.join(resources, "image_models", "face", "parsing", "79999_iter.pth")
+        ],
+        "mouth": [
+            os.path.join(resources, "image_models", "face", "parsing", "79999_iter.pth")
+        ],
         "enhance": [],
         "makeup": [],
         "tattoo": [],
     }
 
     if operation not in op_models:
-        raise HTTPException(404, detail=f"Unknown operation: {operation}. Known: {list(op_models.keys())}")
+        raise HTTPException(
+            404,
+            detail=f"Unknown operation: {operation}. Known: {list(op_models.keys())}",
+        )
 
     required = op_models[operation]
     available = [_check_model_exists(p) for p in required]
@@ -859,7 +1203,9 @@ async def health_operation(operation: str):
         "models": {
             os.path.basename(p): {"path": p, "exists": exists}
             for p, exists in zip(required, available)
-        } if required else {"note": "CPU-only operation, no models required"},
+        }
+        if required
+        else {"note": "CPU-only operation, no models required"},
     }
 
 
@@ -874,13 +1220,26 @@ async def health_identity():
     models = {}
 
     # InstantID
-    instantid_path = os.path.join(resources, "image_models", "face", "ip_adapter_faceid")
+    instantid_path = os.path.join(
+        resources, "image_models", "face", "ip_adapter_faceid"
+    )
     instantid_main = os.path.join(instantid_path, "ip-adapter.bin")
-    instantid_hf = os.path.join(resources, "image_models", "instantid", "ip-adapter.bin")
+    instantid_hf = os.path.join(
+        resources, "image_models", "instantid", "ip-adapter.bin"
+    )
     models["instantid"] = {
         "available": _check_model_exists(instantid_main, instantid_hf),
         "path": instantid_main if os.path.isfile(instantid_main) else instantid_hf,
-        "size_mb": round(os.path.getsize(instantid_main if os.path.isfile(instantid_main) else instantid_hf) / 1024 / 1024, 1) if _check_model_exists(instantid_main, instantid_hf) else 0,
+        "size_mb": round(
+            os.path.getsize(
+                instantid_main if os.path.isfile(instantid_main) else instantid_hf
+            )
+            / 1024
+            / 1024,
+            1,
+        )
+        if _check_model_exists(instantid_main, instantid_hf)
+        else 0,
         "description": "IP-Adapter FaceID + ControlNet — best quality identity preservation",
         "method": "instantid",
     }
@@ -891,7 +1250,9 @@ async def health_identity():
     models["pulid"] = {
         "available": _check_model_exists(pulid_file),
         "path": pulid_file,
-        "size_mb": round(os.path.getsize(pulid_file) / 1024 / 1024, 1) if os.path.isfile(pulid_file) else 0,
+        "size_mb": round(os.path.getsize(pulid_file) / 1024 / 1024, 1)
+        if os.path.isfile(pulid_file)
+        else 0,
         "description": "PuLID — lightweight identity preservation, good speed/quality balance",
         "method": "pulid",
     }
@@ -902,18 +1263,24 @@ async def health_identity():
     models["photomaker"] = {
         "available": _check_model_exists(pm_file),
         "path": pm_file,
-        "size_mb": round(os.path.getsize(pm_file) / 1024 / 1024, 1) if os.path.isfile(pm_file) else 0,
+        "size_mb": round(os.path.getsize(pm_file) / 1024 / 1024, 1)
+        if os.path.isfile(pm_file)
+        else 0,
         "description": "PhotoMaker — multi-reference identity preservation, best consistency",
         "method": "photomaker",
     }
 
     # IP-Adapter FaceID
-    ip_faceid_path = os.path.join(resources, "image_models", "face", "ip_adapter_faceid")
+    ip_faceid_path = os.path.join(
+        resources, "image_models", "face", "ip_adapter_faceid"
+    )
     ip_faceid_file = os.path.join(ip_faceid_path, "ip-adapter-faceid-plusv2.bin")
     models["ip_adapter_faceid"] = {
         "available": _check_model_exists(ip_faceid_file),
         "path": ip_faceid_file,
-        "size_mb": round(os.path.getsize(ip_faceid_file) / 1024 / 1024, 1) if os.path.isfile(ip_faceid_file) else 0,
+        "size_mb": round(os.path.getsize(ip_faceid_file) / 1024 / 1024, 1)
+        if os.path.isfile(ip_faceid_file)
+        else 0,
         "description": "IP-Adapter FaceID — lightweight face identity adapter",
         "method": "ip_adapter_faceid",
     }
@@ -922,6 +1289,7 @@ async def health_identity():
     vram_info = {"total_mb": 0, "used_mb": 0, "free_mb": 0, "gpu_name": "none"}
     try:
         import torch
+
         if torch.cuda.is_available():
             vram_info["gpu_name"] = torch.cuda.get_device_name(0)
             total = torch.cuda.get_device_properties(0).total_mem
@@ -949,7 +1317,9 @@ _IDENTITY_MODEL_SOURCES: Dict[str, Dict[str, Any]] = {
         "repo_id": "InstantX/InstantID",
         "filename": "ip-adapter.bin",
         "subfolder": "ip-adapter",
-        "dest_dir": os.path.join(str(RESOURCES_ROOT), "image_models", "face", "ip_adapter_faceid"),
+        "dest_dir": os.path.join(
+            str(RESOURCES_ROOT), "image_models", "face", "ip_adapter_faceid"
+        ),
         "dest_filename": "ip-adapter.bin",
     },
     "pulid": {
@@ -961,14 +1331,18 @@ _IDENTITY_MODEL_SOURCES: Dict[str, Dict[str, Any]] = {
     "photomaker": {
         "repo_id": "TencentARC/PhotoMaker",
         "filename": "PhotoMaker.bin",
-        "dest_dir": os.path.join(str(RESOURCES_ROOT), "image_models", "face", "photomaker"),
+        "dest_dir": os.path.join(
+            str(RESOURCES_ROOT), "image_models", "face", "photomaker"
+        ),
         "dest_filename": "photomaker.bin",
     },
     "ip_adapter_faceid": {
         "repo_id": "h94/IP-Adapter-FaceID",
         "filename": "ip-adapter-faceid-plusv2.bin",
         "subfolder": "models",
-        "dest_dir": os.path.join(str(RESOURCES_ROOT), "image_models", "face", "ip_adapter_faceid"),
+        "dest_dir": os.path.join(
+            str(RESOURCES_ROOT), "image_models", "face", "ip_adapter_faceid"
+        ),
         "dest_filename": "ip-adapter-faceid-plusv2.bin",
     },
 }
@@ -979,7 +1353,10 @@ async def download_identity_model(data: Dict[str, Any] = Body(...)):
     """Download an identity model from HuggingFace. Non-streaming version."""
     model_id = data.get("model")
     if not model_id or model_id not in _IDENTITY_MODEL_SOURCES:
-        raise HTTPException(400, detail=f"Unknown model: {model_id}. Available: {list(_IDENTITY_MODEL_SOURCES.keys())}")
+        raise HTTPException(
+            400,
+            detail=f"Unknown model: {model_id}. Available: {list(_IDENTITY_MODEL_SOURCES.keys())}",
+        )
 
     source = _IDENTITY_MODEL_SOURCES[model_id]
     dest_dir = Path(source["dest_dir"])
@@ -987,7 +1364,11 @@ async def download_identity_model(data: Dict[str, Any] = Body(...)):
     dest_path = dest_dir / source["dest_filename"]
 
     if dest_path.exists():
-        return {"status": "success", "message": "Already downloaded", "path": str(dest_path)}
+        return {
+            "status": "success",
+            "message": "Already downloaded",
+            "path": str(dest_path),
+        }
 
     try:
         from huggingface_hub import hf_hub_download
@@ -1001,6 +1382,7 @@ async def download_identity_model(data: Dict[str, Any] = Body(...)):
 
         downloaded = hf_hub_download(**kwargs)
         import shutil
+
         shutil.copy2(str(downloaded), str(dest_path))
 
         size_mb = round(dest_path.stat().st_size / 1024 / 1024, 1)
@@ -1023,17 +1405,40 @@ async def download_identity_model_stream(data: Dict[str, Any] = Body(...)):
 
     async def generate():
         if dest_path.exists():
-            yield _sse("progress", {"percent": 100, "message": "Already downloaded", "phase": "Done"})
-            yield _sse("result", {"path": str(dest_path), "size_mb": round(dest_path.stat().st_size / 1024 / 1024, 1)})
+            yield _sse(
+                "progress",
+                {"percent": 100, "message": "Already downloaded", "phase": "Done"},
+            )
+            yield _sse(
+                "result",
+                {
+                    "path": str(dest_path),
+                    "size_mb": round(dest_path.stat().st_size / 1024 / 1024, 1),
+                },
+            )
             return
 
-        yield _sse("progress", {"percent": 0, "message": f"Starting download from {source['repo_id']}...", "phase": "Init"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 0,
+                "message": f"Starting download from {source['repo_id']}...",
+                "phase": "Init",
+            },
+        )
 
         try:
             import shutil
             from huggingface_hub import hf_hub_download
 
-            yield _sse("progress", {"percent": 10, "message": "Connecting to HuggingFace...", "phase": "Connect"})
+            yield _sse(
+                "progress",
+                {
+                    "percent": 10,
+                    "message": "Connecting to HuggingFace...",
+                    "phase": "Connect",
+                },
+            )
 
             kwargs_download: Dict[str, Any] = {
                 "repo_id": source["repo_id"],
@@ -1042,17 +1447,34 @@ async def download_identity_model_stream(data: Dict[str, Any] = Body(...)):
             if source.get("subfolder"):
                 kwargs_download["subfolder"] = source["subfolder"]
 
-            yield _sse("progress", {"percent": 20, "message": "Downloading model file...", "phase": "Download"})
+            yield _sse(
+                "progress",
+                {
+                    "percent": 20,
+                    "message": "Downloading model file...",
+                    "phase": "Download",
+                },
+            )
 
             # Download with progress tracking
             downloaded_path = hf_hub_download(**kwargs_download)
 
-            yield _sse("progress", {"percent": 80, "message": "Copying to destination...", "phase": "Install"})
+            yield _sse(
+                "progress",
+                {
+                    "percent": 80,
+                    "message": "Copying to destination...",
+                    "phase": "Install",
+                },
+            )
 
             shutil.copy2(str(downloaded_path), str(dest_path))
 
             size_mb = round(dest_path.stat().st_size / 1024 / 1024, 1)
-            yield _sse("progress", {"percent": 100, "message": f"Downloaded {size_mb}MB", "phase": "Done"})
+            yield _sse(
+                "progress",
+                {"percent": 100, "message": f"Downloaded {size_mb}MB", "phase": "Done"},
+            )
             yield _sse("result", {"path": str(dest_path), "size_mb": size_mb})
         except Exception as e:
             yield _sse("error", {"message": str(e)})
@@ -1074,7 +1496,10 @@ async def generate_sticker(body: Dict[str, Any] = Body(...)):
         border_color: Border color hex.
         border_width: Border width in pixels.
     """
-    from common_lib.modules.image_processing.services.compositing_service import generate_sticker as _gen_sticker, STICKER_STYLES
+    from common_lib.modules.image_processing.services.compositing_service import (
+        generate_sticker as _gen_sticker,
+        STICKER_STYLES,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1082,7 +1507,10 @@ async def generate_sticker(body: Dict[str, Any] = Body(...)):
 
     style = body.get("style", "flat")
     if style not in STICKER_STYLES:
-        raise HTTPException(400, detail=f"Unknown style '{style}'. Available: {list(STICKER_STYLES.keys())}")
+        raise HTTPException(
+            400,
+            detail=f"Unknown style '{style}'. Available: {list(STICKER_STYLES.keys())}",
+        )
 
     img = _decode_image(image_b64)
     result = _gen_sticker(
@@ -1112,7 +1540,9 @@ async def sticker_from_photo(body: Dict[str, Any] = Body(...)):
         style: Sticker style.
         subject_hint: Optional hint for subject detection.
     """
-    from common_lib.modules.image_processing.services.compositing_service import sticker_from_photo as _sticker_photo
+    from common_lib.modules.image_processing.services.compositing_service import (
+        sticker_from_photo as _sticker_photo,
+    )
 
     photo_b64 = body.get("photo")
     if not photo_b64:
@@ -1146,7 +1576,9 @@ async def generate_character_pack(body: Dict[str, Any] = Body(...)):
         expressions: List of expressions (happy, sad, surprised, angry, love, waving, etc.).
         style: Sticker style.
     """
-    from common_lib.modules.image_processing.services.compositing_service import generate_character_pack as _char_pack
+    from common_lib.modules.image_processing.services.compositing_service import (
+        generate_character_pack as _char_pack,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1162,7 +1594,11 @@ async def generate_character_pack(body: Dict[str, Any] = Body(...)):
     return {
         "status": "success",
         "stickers": [
-            {"expression": s["expression"], "image": _encode_image(s["image"]), "style": s["style"]}
+            {
+                "expression": s["expression"],
+                "image": _encode_image(s["image"]),
+                "style": s["style"],
+            }
             for s in result["stickers"]
         ],
         "count": result["count"],
@@ -1183,7 +1619,10 @@ async def generate_logo(body: Dict[str, Any] = Body(...)):
         colors: List of hex colors.
         tagline: Optional tagline.
     """
-    from common_lib.modules.image_processing.services.compositing_service import generate_logo as _gen_logo, LOGO_STYLES
+    from common_lib.modules.image_processing.services.compositing_service import (
+        generate_logo as _gen_logo,
+        LOGO_STYLES,
+    )
 
     brand_name = body.get("brand_name")
     if not brand_name:
@@ -1191,7 +1630,10 @@ async def generate_logo(body: Dict[str, Any] = Body(...)):
 
     style = body.get("style", "minimal")
     if style not in LOGO_STYLES:
-        raise HTTPException(400, detail=f"Unknown style '{style}'. Available: {list(LOGO_STYLES.keys())}")
+        raise HTTPException(
+            400,
+            detail=f"Unknown style '{style}'. Available: {list(LOGO_STYLES.keys())}",
+        )
 
     result = _gen_logo(
         brand_name=brand_name,
@@ -1218,7 +1660,9 @@ async def vectorize_logo(body: Dict[str, Any] = Body(...)):
         image: Base64 raster logo image.
         format: Output format ('svg' or 'eps').
     """
-    from common_lib.modules.image_processing.services.compositing_service import vectorize_logo as _vec_logo
+    from common_lib.modules.image_processing.services.compositing_service import (
+        vectorize_logo as _vec_logo,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1245,7 +1689,9 @@ async def logo_variations(body: Dict[str, Any] = Body(...)):
         image: Base64 logo image.
         variations: List of variation types (dark_mode, monochrome, light_mode).
     """
-    from common_lib.modules.image_processing.services.compositing_service import generate_logo_variations as _logo_vars
+    from common_lib.modules.image_processing.services.compositing_service import (
+        generate_logo_variations as _logo_vars,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1279,12 +1725,16 @@ async def composite_insert_subject(body: Dict[str, Any] = Body(...)):
         position: [x, y] placement coordinates.
         scale: Scale factor for subject (default 1.0).
     """
-    from common_lib.modules.image_processing.services.compositing_service import insert_subject as _insert
+    from common_lib.modules.image_processing.services.compositing_service import (
+        insert_subject as _insert,
+    )
 
     bg_b64 = body.get("background")
     sub_b64 = body.get("subject_image")
     if not bg_b64 or not sub_b64:
-        raise HTTPException(400, detail="background and subject_image (base64) are required")
+        raise HTTPException(
+            400, detail="background and subject_image (base64) are required"
+        )
 
     bg = _decode_image(bg_b64)
     subject = _decode_image(sub_b64)
@@ -1317,12 +1767,16 @@ async def composite_overlay(body: Dict[str, Any] = Body(...)):
         blend_mode: normal, multiply, screen, overlay, soft_light, etc.
         opacity: Overlay opacity 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.compositing_service import overlay_image as _overlay
+    from common_lib.modules.image_processing.services.compositing_service import (
+        overlay_image as _overlay,
+    )
 
     base_b64 = body.get("base_image")
     overlay_b64 = body.get("overlay_image")
     if not base_b64 or not overlay_b64:
-        raise HTTPException(400, detail="base_image and overlay_image (base64) are required")
+        raise HTTPException(
+            400, detail="base_image and overlay_image (base64) are required"
+        )
 
     base = _decode_image(base_b64)
     overlay = _decode_image(overlay_b64)
@@ -1355,7 +1809,9 @@ async def composite_harmonize(body: Dict[str, Any] = Body(...)):
         color_temperature: 0.0 (cool) to 1.0 (warm).
         intensity: Harmonization strength 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.compositing_service import harmonize_composite as _harmonize
+    from common_lib.modules.image_processing.services.compositing_service import (
+        harmonize_composite as _harmonize,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1388,14 +1844,20 @@ async def composite_add_shadow(body: Dict[str, Any] = Body(...)):
         shadow_blur: Blur radius.
         shadow_color: Shadow color hex.
     """
-    from common_lib.modules.image_processing.services.compositing_service import add_shadow as _shadow
+    from common_lib.modules.image_processing.services.compositing_service import (
+        add_shadow as _shadow,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
         raise HTTPException(400, detail="image (base64) is required")
 
     img = _decode_image(image_b64)
-    mask = _decode_image(body["subject_mask"]).getchannel("A") if body.get("subject_mask") else None
+    mask = (
+        _decode_image(body["subject_mask"]).getchannel("A")
+        if body.get("subject_mask")
+        else None
+    )
 
     result = _shadow(
         image=img,
@@ -1427,7 +1889,9 @@ async def composite_add_text(body: Dict[str, Any] = Body(...)):
         bg_color: Optional background color hex.
         opacity: Text opacity 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.compositing_service import add_text_overlay as _text
+    from common_lib.modules.image_processing.services.compositing_service import (
+        add_text_overlay as _text,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1467,7 +1931,9 @@ async def composite_product_shot(body: Dict[str, Any] = Body(...)):
         scale: Product scale relative to scene.
         add_reflection: Add reflection below product.
     """
-    from common_lib.modules.image_processing.services.compositing_service import product_shot as _prod_shot
+    from common_lib.modules.image_processing.services.compositing_service import (
+        product_shot as _prod_shot,
+    )
 
     product_b64 = body.get("product_image")
     if not product_b64:
@@ -1476,7 +1942,9 @@ async def composite_product_shot(body: Dict[str, Any] = Body(...)):
     prod = _decode_image(product_b64)
     result = _prod_shot(
         product=prod,
-        scene_description=body.get("scene_description", "marble countertop, soft studio lighting"),
+        scene_description=body.get(
+            "scene_description", "marble countertop, soft studio lighting"
+        ),
         position=body.get("position", "center"),
         scale=body.get("scale", 0.5),
         add_reflection=body.get("add_reflection", True),
@@ -1497,7 +1965,10 @@ async def composite_product_shot(body: Dict[str, Any] = Body(...)):
 @router.get("/composite/workflows")
 async def list_composite_workflows():
     """List available composite workflow templates."""
-    from common_lib.modules.image_processing.services.composite_workflows import list_composite_workflows as _list
+    from common_lib.modules.image_processing.services.composite_workflows import (
+        list_composite_workflows as _list,
+    )
+
     workflows = _list()
     return {"status": "success", "workflows": workflows, "total": len(workflows)}
 
@@ -1515,7 +1986,9 @@ async def style_face(body: Dict[str, Any] = Body(...)):
         style_prompt: Text description of desired face style.
         strength: Transfer strength 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.style_transfer_service import face_style_transfer
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        face_style_transfer,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1551,7 +2024,9 @@ async def style_hairstyle(body: Dict[str, Any] = Body(...)):
         hair_mask: Optional base64 hair region mask.
         strength: Transfer strength 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.style_transfer_service import hairstyle_transfer
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        hairstyle_transfer,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1559,7 +2034,11 @@ async def style_hairstyle(body: Dict[str, Any] = Body(...)):
 
     img = _decode_image(image_b64)
     ref = _decode_image(body["reference"]) if body.get("reference") else None
-    mask = _decode_image(body["hair_mask"]).getchannel("A") if body.get("hair_mask") else None
+    mask = (
+        _decode_image(body["hair_mask"]).getchannel("A")
+        if body.get("hair_mask")
+        else None
+    )
 
     result = hairstyle_transfer(
         image=img,
@@ -1593,7 +2072,10 @@ async def style_art(body: Dict[str, Any] = Body(...)):
         strength: Style strength 0.0-1.0.
         style_reference: Optional base64 reference image for IP-Adapter.
     """
-    from common_lib.modules.image_processing.services.style_transfer_service import art_style_transfer, ART_STYLES
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        art_style_transfer,
+        ART_STYLES,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1601,10 +2083,14 @@ async def style_art(body: Dict[str, Any] = Body(...)):
 
     style = body.get("style", "oil_painting")
     if style not in ART_STYLES:
-        raise HTTPException(400, detail=f"Unknown style '{style}'. Available: {list(ART_STYLES.keys())}")
+        raise HTTPException(
+            400, detail=f"Unknown style '{style}'. Available: {list(ART_STYLES.keys())}"
+        )
 
     img = _decode_image(image_b64)
-    ref = _decode_image(body["style_reference"]) if body.get("style_reference") else None
+    ref = (
+        _decode_image(body["style_reference"]) if body.get("style_reference") else None
+    )
 
     result = art_style_transfer(
         image=img,
@@ -1627,7 +2113,10 @@ async def style_art(body: Dict[str, Any] = Body(...)):
 @router.post("/style/art/stream")
 async def style_art_stream(body: Dict[str, Any] = Body(...)):
     """Art style transfer with SSE progress streaming."""
-    from common_lib.modules.image_processing.services.style_transfer_service import art_style_transfer, ART_STYLES
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        art_style_transfer,
+        ART_STYLES,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1636,23 +2125,69 @@ async def style_art_stream(body: Dict[str, Any] = Body(...)):
     if style not in ART_STYLES:
         raise HTTPException(400, detail=f"Unknown style '{style}'")
     img = _decode_image(image_b64)
-    ref = _decode_image(body["style_reference"]) if body.get("style_reference") else None
+    ref = (
+        _decode_image(body["style_reference"]) if body.get("style_reference") else None
+    )
 
     async def event_generator():
         t0 = time.time()
-        yield _sse("progress", {"percent": 5, "message": f"Loading {style} model...", "phase": "Model"})
+        yield _sse(
+            "progress",
+            {"percent": 5, "message": f"Loading {style} model...", "phase": "Model"},
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 20, "message": "Analyzing composition...", "phase": "Analysis"})
+        yield _sse(
+            "progress",
+            {"percent": 20, "message": "Analyzing composition...", "phase": "Analysis"},
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 50, "message": f"Applying {style} style...", "phase": "Processing"})
-        result = art_style_transfer(image=img, style=style, strength=body.get("strength", 0.7), style_reference=ref)
+        yield _sse(
+            "progress",
+            {
+                "percent": 50,
+                "message": f"Applying {style} style...",
+                "phase": "Processing",
+            },
+        )
+        result = art_style_transfer(
+            image=img,
+            style=style,
+            strength=body.get("strength", 0.7),
+            style_reference=ref,
+        )
         elapsed = time.time() - t0
         img_b64 = _encode_image(result["image"])
-        yield _sse("progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"})
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"image": img_b64, "metadata": {"style": result["style"], "category": result["category"], "prompt": result["prompt"], "model": result["model"], "duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"}
+        )
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {
+                "image": img_b64,
+                "metadata": {
+                    "style": result["style"],
+                    "category": result["category"],
+                    "prompt": result["prompt"],
+                    "model": result["model"],
+                    "duration_ms": round(elapsed * 1000),
+                },
+            },
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Additional Streaming Endpoints ──────────────────────────
@@ -1661,7 +2196,10 @@ async def style_art_stream(body: Dict[str, Any] = Body(...)):
 @router.post("/makeup/stream")
 async def apply_makeup_stream(body: Dict[str, Any] = Body(...)):
     """Apply makeup with SSE progress streaming."""
-    from common_lib.modules.image_processing.services.beauty_operations import makeup_transfer, makeup_preset
+    from common_lib.modules.image_processing.services.beauty_operations import (
+        makeup_transfer,
+        makeup_preset,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1673,11 +2211,28 @@ async def apply_makeup_stream(body: Dict[str, Any] = Body(...)):
 
     async def event_generator():
         t0 = time.time()
-        yield _sse("progress", {"percent": 5, "message": "Detecting face regions...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 5,
+                "message": "Detecting face regions...",
+                "phase": "Detection",
+            },
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 15, "message": "Mapping makeup regions...", "phase": "Analysis"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 15,
+                "message": "Mapping makeup regions...",
+                "phase": "Analysis",
+            },
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 30, "message": "Applying makeup...", "phase": "Processing"})
+        yield _sse(
+            "progress",
+            {"percent": 30, "message": "Applying makeup...", "phase": "Processing"},
+        )
         if preset:
             result = makeup_preset(img, preset_id=preset)
         else:
@@ -1685,17 +2240,43 @@ async def apply_makeup_stream(body: Dict[str, Any] = Body(...)):
             result = makeup_transfer(img, reference, region=region, intensity=intensity)
         elapsed = time.time() - t0
         img_b64 = _encode_image(result)
-        yield _sse("progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"})
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"image": img_b64, "metadata": {"region": region, "intensity": intensity, "duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"}
+        )
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {
+                "image": img_b64,
+                "metadata": {
+                    "region": region,
+                    "intensity": intensity,
+                    "duration_ms": round(elapsed * 1000),
+                },
+            },
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/tattoo/place/stream")
 async def place_tattoo_stream(body: Dict[str, Any] = Body(...)):
     """Place tattoo with SSE progress streaming."""
-    from common_lib.modules.image_processing.services.skin_operations import tattoo_place
+    from common_lib.modules.image_processing.services.skin_operations import (
+        tattoo_place,
+    )
 
     image_b64 = body.get("image")
     tattoo_b64 = body.get("tattoo")
@@ -1707,25 +2288,69 @@ async def place_tattoo_stream(body: Dict[str, Any] = Body(...)):
 
     async def event_generator():
         t0 = time.time()
-        yield _sse("progress", {"percent": 5, "message": "Detecting body region...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {"percent": 5, "message": "Detecting body region...", "phase": "Detection"},
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 25, "message": f"Mapping to {body_part}...", "phase": "Mapping"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 25,
+                "message": f"Mapping to {body_part}...",
+                "phase": "Mapping",
+            },
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 50, "message": "Placing tattoo with perspective...", "phase": "Processing"})
-        result = tattoo_place(img, tattoo, body_part=body_part, x=body.get("x"), y=body.get("y"))
+        yield _sse(
+            "progress",
+            {
+                "percent": 50,
+                "message": "Placing tattoo with perspective...",
+                "phase": "Processing",
+            },
+        )
+        result = tattoo_place(
+            img, tattoo, body_part=body_part, x=body.get("x"), y=body.get("y")
+        )
         elapsed = time.time() - t0
         img_b64 = _encode_image(result)
-        yield _sse("progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"})
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"image": img_b64, "metadata": {"body_part": body_part, "duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"}
+        )
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {
+                "image": img_b64,
+                "metadata": {
+                    "body_part": body_part,
+                    "duration_ms": round(elapsed * 1000),
+                },
+            },
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/style/face/stream")
 async def style_face_stream(body: Dict[str, Any] = Body(...)):
     """Face style transfer with SSE progress streaming."""
-    from common_lib.modules.image_processing.services.style_transfer_service import face_style_transfer
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        face_style_transfer,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1735,25 +2360,62 @@ async def style_face_stream(body: Dict[str, Any] = Body(...)):
 
     async def event_generator():
         t0 = time.time()
-        yield _sse("progress", {"percent": 5, "message": "Detecting face...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {"percent": 5, "message": "Detecting face...", "phase": "Detection"},
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 25, "message": "Analyzing style reference...", "phase": "Analysis"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 25,
+                "message": "Analyzing style reference...",
+                "phase": "Analysis",
+            },
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 50, "message": "Applying face style...", "phase": "Processing"})
-        result = face_style_transfer(image=img, style=style, strength=body.get("strength", 0.7))
+        yield _sse(
+            "progress",
+            {"percent": 50, "message": "Applying face style...", "phase": "Processing"},
+        )
+        result = face_style_transfer(
+            image=img, style=style, strength=body.get("strength", 0.7)
+        )
         elapsed = time.time() - t0
         img_b64 = _encode_image(result)
-        yield _sse("progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"})
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"image": img_b64, "metadata": {"style": style, "duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"}
+        )
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {
+                "image": img_b64,
+                "metadata": {"style": style, "duration_ms": round(elapsed * 1000)},
+            },
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/style/hairstyle/stream")
 async def style_hairstyle_stream(body: Dict[str, Any] = Body(...)):
     """Hairstyle transfer with SSE progress streaming."""
-    from common_lib.modules.image_processing.services.style_transfer_service import hairstyle_transfer
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        hairstyle_transfer,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1763,25 +2425,65 @@ async def style_hairstyle_stream(body: Dict[str, Any] = Body(...)):
 
     async def event_generator():
         t0 = time.time()
-        yield _sse("progress", {"percent": 5, "message": "Detecting face and hair region...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 5,
+                "message": "Detecting face and hair region...",
+                "phase": "Detection",
+            },
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 30, "message": "Segmenting hair...", "phase": "Segmentation"})
+        yield _sse(
+            "progress",
+            {"percent": 30, "message": "Segmenting hair...", "phase": "Segmentation"},
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 55, "message": "Transferring hairstyle...", "phase": "Processing"})
-        result = hairstyle_transfer(image=img, reference=ref, strength=body.get("strength", 0.7))
+        yield _sse(
+            "progress",
+            {
+                "percent": 55,
+                "message": "Transferring hairstyle...",
+                "phase": "Processing",
+            },
+        )
+        result = hairstyle_transfer(
+            image=img, reference=ref, strength=body.get("strength", 0.7)
+        )
         elapsed = time.time() - t0
         img_b64 = _encode_image(result)
-        yield _sse("progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"})
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"image": img_b64, "metadata": {"duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress", {"percent": 90, "message": "Encoding...", "phase": "Encode"}
+        )
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {"image": img_b64, "metadata": {"duration_ms": round(elapsed * 1000)}},
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/video/animate-portrait/stream")
 async def video_animate_portrait_stream(body: Dict[str, Any] = Body(...)):
     """Animate portrait with SSE progress streaming."""
-    from common_lib.modules.image_processing.services.video_animation_service import animate_portrait, _encode_frames_as_gif, _encode_frames_as_webp
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        animate_portrait,
+        _encode_frames_as_gif,
+        _encode_frames_as_webp,
+    )
 
     image_b64 = body.get("source_image")
     if not image_b64:
@@ -1795,31 +2497,86 @@ async def video_animate_portrait_stream(body: Dict[str, Any] = Body(...)):
         fps = body.get("fps", 25.0)
         duration = body.get("duration_s", 3.0)
         total_frames = int(fps * duration)
-        yield _sse("progress", {"percent": 5, "message": "Detecting face landmarks...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 5,
+                "message": "Detecting face landmarks...",
+                "phase": "Detection",
+            },
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 15, "message": "Extracting motion vectors...", "phase": "Analysis"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 15,
+                "message": "Extracting motion vectors...",
+                "phase": "Analysis",
+            },
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 30, "message": f"Generating {total_frames} frames ({motion})...", "phase": "Generation"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 30,
+                "message": f"Generating {total_frames} frames ({motion})...",
+                "phase": "Generation",
+            },
+        )
         result = animate_portrait(
-            source_image=img, motion_type=motion,
-            duration_s=duration, fps=fps,
+            source_image=img,
+            motion_type=motion,
+            duration_s=duration,
+            fps=fps,
             driving_video_frames=driving,
             motion_seed=body.get("motion_seed"),
         )
         elapsed = time.time() - t0
-        yield _sse("progress", {"percent": 80, "message": "Encoding GIF/WebP...", "phase": "Encode"})
+        yield _sse(
+            "progress",
+            {"percent": 80, "message": "Encoding GIF/WebP...", "phase": "Encode"},
+        )
         gif_b64 = _encode_frames_as_gif(result["frames"], result["fps"])
         webp_b64 = _encode_frames_as_webp(result["frames"], result["fps"])
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"gif": gif_b64, "webp": webp_b64, "metadata": {"frame_count": result["frame_count"], "fps": result["fps"], "duration_s": result["duration_s"], "model": result["model"], "duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {
+                "gif": gif_b64,
+                "webp": webp_b64,
+                "metadata": {
+                    "frame_count": result["frame_count"],
+                    "fps": result["fps"],
+                    "duration_s": result["duration_s"],
+                    "model": result["model"],
+                    "duration_ms": round(elapsed * 1000),
+                },
+            },
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/video/talking-avatar/stream")
 async def video_talking_avatar_stream(body: Dict[str, Any] = Body(...)):
     """Talking avatar with SSE progress streaming."""
-    from common_lib.modules.image_processing.services.video_animation_service import talking_head, _encode_frames_as_gif, _encode_frames_as_webp
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        talking_head,
+        _encode_frames_as_gif,
+        _encode_frames_as_webp,
+    )
     import base64 as _b64
 
     image_b64 = body.get("portrait_image")
@@ -1830,32 +2587,78 @@ async def video_talking_avatar_stream(body: Dict[str, Any] = Body(...)):
 
     async def event_generator():
         t0 = time.time()
-        yield _sse("progress", {"percent": 5, "message": "Analyzing portrait...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {"percent": 5, "message": "Analyzing portrait...", "phase": "Detection"},
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 15, "message": "Processing audio track...", "phase": "Audio"})
+        yield _sse(
+            "progress",
+            {"percent": 15, "message": "Processing audio track...", "phase": "Audio"},
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 30, "message": "Generating talking head frames...", "phase": "Generation"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 30,
+                "message": "Generating talking head frames...",
+                "phase": "Generation",
+            },
+        )
         result = talking_head(
-            portrait_image=img, audio_data=audio,
+            portrait_image=img,
+            audio_data=audio,
             expression_strength=body.get("expression_strength", 0.8),
             duration_s=body.get("duration_s", 5.0),
             fps=body.get("fps", 25.0),
             quality_refine=body.get("quality_refine", False),
         )
         elapsed = time.time() - t0
-        yield _sse("progress", {"percent": 80, "message": "Encoding video...", "phase": "Encode"})
+        yield _sse(
+            "progress",
+            {"percent": 80, "message": "Encoding video...", "phase": "Encode"},
+        )
         gif_b64 = _encode_frames_as_gif(result["frames"], result["fps"])
         webp_b64 = _encode_frames_as_webp(result["frames"], result["fps"])
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"gif": gif_b64, "webp": webp_b64, "metadata": {"frame_count": result["frame_count"], "fps": result["fps"], "duration_s": result["duration_s"], "model": result["model"], "duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {
+                "gif": gif_b64,
+                "webp": webp_b64,
+                "metadata": {
+                    "frame_count": result["frame_count"],
+                    "fps": result["fps"],
+                    "duration_s": result["duration_s"],
+                    "model": result["model"],
+                    "duration_ms": round(elapsed * 1000),
+                },
+            },
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/video/lip-sync/stream")
 async def video_lip_sync_stream(body: Dict[str, Any] = Body(...)):
     """Lip sync with SSE progress streaming."""
-    from common_lib.modules.image_processing.services.video_animation_service import lip_sync, _encode_frames_as_gif, _encode_frames_as_webp
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        lip_sync,
+        _encode_frames_as_gif,
+        _encode_frames_as_webp,
+    )
     import base64 as _b64
 
     image_b64 = body.get("image") or body.get("source_image")
@@ -1866,30 +2669,74 @@ async def video_lip_sync_stream(body: Dict[str, Any] = Body(...)):
 
     async def event_generator():
         t0 = time.time()
-        yield _sse("progress", {"percent": 5, "message": "Detecting face...", "phase": "Detection"})
+        yield _sse(
+            "progress",
+            {"percent": 5, "message": "Detecting face...", "phase": "Detection"},
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 20, "message": "Analyzing audio phonemes...", "phase": "Audio"})
+        yield _sse(
+            "progress",
+            {"percent": 20, "message": "Analyzing audio phonemes...", "phase": "Audio"},
+        )
         await asyncio.sleep(0)
-        yield _sse("progress", {"percent": 40, "message": "Syncing lip movements...", "phase": "Processing"})
+        yield _sse(
+            "progress",
+            {
+                "percent": 40,
+                "message": "Syncing lip movements...",
+                "phase": "Processing",
+            },
+        )
         result = lip_sync(
-            source_image=img, audio_data=audio,
+            source_image=img,
+            audio_data=audio,
             fps=body.get("fps", 25.0),
             quality=body.get("quality", "standard"),
         )
         elapsed = time.time() - t0
-        yield _sse("progress", {"percent": 80, "message": "Encoding video...", "phase": "Encode"})
+        yield _sse(
+            "progress",
+            {"percent": 80, "message": "Encoding video...", "phase": "Encode"},
+        )
         gif_b64 = _encode_frames_as_gif(result["frames"], result["fps"])
         webp_b64 = _encode_frames_as_webp(result["frames"], result["fps"])
-        yield _sse("progress", {"percent": 100, "message": "Complete!", "phase": "Done", "elapsed": round(elapsed, 1)})
-        yield _sse("result", {"gif": gif_b64, "webp": webp_b64, "metadata": {"frame_count": result["frame_count"], "fps": result["fps"], "duration_s": result["duration_s"], "duration_ms": round(elapsed * 1000)}})
+        yield _sse(
+            "progress",
+            {
+                "percent": 100,
+                "message": "Complete!",
+                "phase": "Done",
+                "elapsed": round(elapsed, 1),
+            },
+        )
+        yield _sse(
+            "result",
+            {
+                "gif": gif_b64,
+                "webp": webp_b64,
+                "metadata": {
+                    "frame_count": result["frame_count"],
+                    "fps": result["fps"],
+                    "duration_s": result["duration_s"],
+                    "duration_ms": round(elapsed * 1000),
+                },
+            },
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/style/art-styles")
 async def list_art_styles():
     """List all available art styles."""
-    from common_lib.modules.image_processing.services.style_transfer_service import list_art_styles as _list
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        list_art_styles as _list,
+    )
+
     return {"status": "success", "styles": _list()}
 
 
@@ -1901,7 +2748,9 @@ async def style_enhance(body: Dict[str, Any] = Body(...)):
         image: Base64 source image.
         strength: Enhancement strength 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.style_transfer_service import auto_enhance
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        auto_enhance,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1930,7 +2779,10 @@ async def style_lut(body: Dict[str, Any] = Body(...)):
         lut_id: LUT preset ID.
         intensity: LUT strength 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.style_transfer_service import apply_lut, LUT_PRESETS
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        apply_lut,
+        LUT_PRESETS,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -1938,7 +2790,9 @@ async def style_lut(body: Dict[str, Any] = Body(...)):
 
     lut_id = body.get("lut_id", "cinematic_teal_orange")
     if lut_id not in LUT_PRESETS:
-        raise HTTPException(400, detail=f"Unknown LUT '{lut_id}'. Available: {list(LUT_PRESETS.keys())}")
+        raise HTTPException(
+            400, detail=f"Unknown LUT '{lut_id}'. Available: {list(LUT_PRESETS.keys())}"
+        )
 
     img = _decode_image(image_b64)
     result = apply_lut(image=img, lut_id=lut_id, intensity=body.get("intensity", 0.85))
@@ -1955,7 +2809,10 @@ async def style_lut(body: Dict[str, Any] = Body(...)):
 @router.get("/style/luts")
 async def list_luts():
     """List all available LUT presets."""
-    from common_lib.modules.image_processing.services.style_transfer_service import list_luts as _list
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        list_luts as _list,
+    )
+
     return {"status": "success", "luts": _list()}
 
 
@@ -1968,7 +2825,9 @@ async def style_instruct(body: Dict[str, Any] = Body(...)):
         instruction: Text instruction (e.g. 'make it sunset', 'add fog', 'vintage look').
         strength: Edit strength 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.style_transfer_service import instruction_edit
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        instruction_edit,
+    )
 
     image_b64 = body.get("image")
     instruction = body.get("instruction")
@@ -1978,7 +2837,9 @@ async def style_instruct(body: Dict[str, Any] = Body(...)):
         raise HTTPException(400, detail="instruction is required")
 
     img = _decode_image(image_b64)
-    result = instruction_edit(image=img, instruction=instruction, strength=body.get("strength", 0.7))
+    result = instruction_edit(
+        image=img, instruction=instruction, strength=body.get("strength", 0.7)
+    )
 
     return {
         "status": "success",
@@ -1999,7 +2860,9 @@ async def style_sky_replace(body: Dict[str, Any] = Body(...)):
         sky_reference: Optional base64 sky reference image.
         blend_horizon: Blend zone height at horizon.
     """
-    from common_lib.modules.image_processing.services.style_transfer_service import sky_replace
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        sky_replace,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -2033,14 +2896,20 @@ async def style_bokeh(body: Dict[str, Any] = Body(...)):
         subject_mask: Optional base64 mask of sharp subject.
         depth_map: Optional base64 depth map.
     """
-    from common_lib.modules.image_processing.services.style_transfer_service import background_blur
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        background_blur,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
         raise HTTPException(400, detail="image (base64) is required")
 
     img = _decode_image(image_b64)
-    mask = _decode_image(body["subject_mask"]).getchannel("A") if body.get("subject_mask") else None
+    mask = (
+        _decode_image(body["subject_mask"]).getchannel("A")
+        if body.get("subject_mask")
+        else None
+    )
     depth = _decode_image(body["depth_map"]) if body.get("depth_map") else None
 
     result = background_blur(
@@ -2067,7 +2936,10 @@ async def style_weather(body: Dict[str, Any] = Body(...)):
         effect_type: 'rain', 'snow', 'fog', 'storm', 'mist'.
         intensity: Effect strength 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.style_transfer_service import weather_effect, WEATHER_EFFECTS
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        weather_effect,
+        WEATHER_EFFECTS,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -2075,10 +2947,15 @@ async def style_weather(body: Dict[str, Any] = Body(...)):
 
     effect_type = body.get("effect_type", "rain")
     if effect_type not in WEATHER_EFFECTS:
-        raise HTTPException(400, detail=f"Unknown effect '{effect_type}'. Available: {list(WEATHER_EFFECTS.keys())}")
+        raise HTTPException(
+            400,
+            detail=f"Unknown effect '{effect_type}'. Available: {list(WEATHER_EFFECTS.keys())}",
+        )
 
     img = _decode_image(image_b64)
-    result = weather_effect(image=img, effect_type=effect_type, intensity=body.get("intensity", 0.5))
+    result = weather_effect(
+        image=img, effect_type=effect_type, intensity=body.get("intensity", 0.5)
+    )
 
     return {
         "status": "success",
@@ -2097,7 +2974,10 @@ async def style_time_of_day(body: Dict[str, Any] = Body(...)):
         target_time: 'golden_hour', 'blue_hour', 'noon', 'night', 'overcast', 'sunset', 'sunrise'.
         strength: Transform strength 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.style_transfer_service import time_of_day, TIME_OF_DAY_PRESETS
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        time_of_day,
+        TIME_OF_DAY_PRESETS,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -2105,10 +2985,15 @@ async def style_time_of_day(body: Dict[str, Any] = Body(...)):
 
     target = body.get("target_time", "golden_hour")
     if target not in TIME_OF_DAY_PRESETS:
-        raise HTTPException(400, detail=f"Unknown time '{target}'. Available: {list(TIME_OF_DAY_PRESETS.keys())}")
+        raise HTTPException(
+            400,
+            detail=f"Unknown time '{target}'. Available: {list(TIME_OF_DAY_PRESETS.keys())}",
+        )
 
     img = _decode_image(image_b64)
-    result = time_of_day(image=img, target_time=target, strength=body.get("strength", 0.7))
+    result = time_of_day(
+        image=img, target_time=target, strength=body.get("strength", 0.7)
+    )
 
     return {
         "status": "success",
@@ -2127,7 +3012,10 @@ async def style_season(body: Dict[str, Any] = Body(...)):
         target_season: 'spring', 'summer', 'autumn', 'winter'.
         strength: Transform strength 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.style_transfer_service import season_transform, SEASON_PRESETS
+    from common_lib.modules.image_processing.services.style_transfer_service import (
+        season_transform,
+        SEASON_PRESETS,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -2135,10 +3023,15 @@ async def style_season(body: Dict[str, Any] = Body(...)):
 
     target = body.get("target_season", "autumn")
     if target not in SEASON_PRESETS:
-        raise HTTPException(400, detail=f"Unknown season '{target}'. Available: {list(SEASON_PRESETS.keys())}")
+        raise HTTPException(
+            400,
+            detail=f"Unknown season '{target}'. Available: {list(SEASON_PRESETS.keys())}",
+        )
 
     img = _decode_image(image_b64)
-    result = season_transform(image=img, target_season=target, strength=body.get("strength", 0.7))
+    result = season_transform(
+        image=img, target_season=target, strength=body.get("strength", 0.7)
+    )
 
     return {
         "status": "success",
@@ -2165,7 +3058,8 @@ async def style_turbo_preview(body: Dict[str, Any] = Body(...)):
         preview_size: Max dimension for preview (default 256px for speed).
     """
     from common_lib.modules.image_processing.services.style_transfer_service import (
-        art_style_transfer, ART_STYLES,
+        art_style_transfer,
+        ART_STYLES,
     )
 
     image_b64 = body.get("image")
@@ -2219,7 +3113,8 @@ async def style_turbo_lut_preview(body: Dict[str, Any] = Body(...)):
         intensity: LUT strength 0.0-1.0.
     """
     from common_lib.modules.image_processing.services.style_transfer_service import (
-        apply_lut, LUT_PRESETS,
+        apply_lut,
+        LUT_PRESETS,
     )
 
     image_b64 = body.get("image")
@@ -2262,7 +3157,9 @@ async def style_magic_edit(body: Dict[str, Any] = Body(...)):
         prompt: Text description of what to generate in the region.
         strength: Inpainting strength 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.inpaint_service import InpaintService
+    from common_lib.modules.image_processing.services.inpaint_service import (
+        InpaintService,
+    )
 
     image_b64 = body.get("image")
     mask_b64 = body.get("mask")
@@ -2271,9 +3168,16 @@ async def style_magic_edit(body: Dict[str, Any] = Body(...)):
         raise HTTPException(400, detail="image, mask, and prompt are required")
 
     service = InpaintService()
-    result = service.inpaint(image_base64=image_b64, mask_base64=mask_b64, prompt=prompt)
+    result = service.inpaint(
+        image_base64=image_b64, mask_base64=mask_b64, prompt=prompt
+    )
 
-    return {"status": "success", "image": result, "prompt": prompt, "method": "magic_edit"}
+    return {
+        "status": "success",
+        "image": result,
+        "prompt": prompt,
+        "method": "magic_edit",
+    }
 
 
 @router.post("/style/erase")
@@ -2288,7 +3192,9 @@ async def style_erase(body: Dict[str, Any] = Body(...)):
         mask: Base64 mask of objects to erase.
         strength: Inpainting strength 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.inpaint_service import InpaintService
+    from common_lib.modules.image_processing.services.inpaint_service import (
+        InpaintService,
+    )
 
     image_b64 = body.get("image")
     mask_b64 = body.get("mask")
@@ -2333,42 +3239,51 @@ async def style_expand(body: Dict[str, Any] = Body(...)):
     new_w, new_h = w, h
     pad_left, pad_top, pad_right, pad_bottom = 0, 0, 0, 0
 
-    if direction in ('all', 'left'):
-        pad_left = expand_px; new_w += expand_px
-    if direction in ('all', 'right'):
-        pad_right = expand_px; new_w += expand_px
-    if direction in ('all', 'up'):
-        pad_top = expand_px; new_h += expand_px
-    if direction in ('all', 'down'):
-        pad_bottom = expand_px; new_h += expand_px
+    if direction in ("all", "left"):
+        pad_left = expand_px
+        new_w += expand_px
+    if direction in ("all", "right"):
+        pad_right = expand_px
+        new_w += expand_px
+    if direction in ("all", "up"):
+        pad_top = expand_px
+        new_h += expand_px
+    if direction in ("all", "down"):
+        pad_bottom = expand_px
+        new_h += expand_px
 
     # Create expanded canvas with edge-colour fill
-    expanded = Image.new('RGBA', (new_w, new_h), (0, 0, 0, 0))
-    expanded.paste(img.convert('RGBA'), (pad_left, pad_top))
+    expanded = Image.new("RGBA", (new_w, new_h), (0, 0, 0, 0))
+    expanded.paste(img.convert("RGBA"), (pad_left, pad_top))
 
     # Create mask for the expanded region
-    mask = Image.new('L', (new_w, new_h), 255)
-    mask.paste(Image.new('L', (w, h), 0), (pad_left, pad_top))
+    mask = Image.new("L", (new_w, new_h), 255)
+    mask.paste(Image.new("L", (w, h), 0), (pad_left, pad_top))
 
     # Inpaint the expanded region
-    from common_lib.modules.image_processing.services.inpaint_service import InpaintService
+    from common_lib.modules.image_processing.services.inpaint_service import (
+        InpaintService,
+    )
+
     service = InpaintService()
     import base64, io
+
     buf = io.BytesIO()
-    expanded.save(buf, format='PNG')
+    expanded.save(buf, format="PNG")
     exp_b64 = base64.b64encode(buf.getvalue()).decode()
     buf2 = io.BytesIO()
-    mask.save(buf2, format='PNG')
+    mask.save(buf2, format="PNG")
     mask_b64 = base64.b64encode(buf2.getvalue()).decode()
 
     result_b64 = service.inpaint(
         image_base64=exp_b64,
         mask_base64=mask_b64,
-        prompt=prompt or 'seamless extension of the scene',
+        prompt=prompt or "seamless extension of the scene",
     )
 
     return {
-        "status": "success", "image": result_b64,
+        "status": "success",
+        "image": result_b64,
         "original_size": [w, h],
         "expanded_size": [new_w, new_h],
         "direction": direction,
@@ -2394,29 +3309,31 @@ async def style_grab_subject(body: Dict[str, Any] = Body(...)):
 
     # Simple threshold-based extraction (production would use SAM 2 / BiRefNet)
     import numpy as np
-    arr = np.array(img.convert('RGBA'))
+
+    arr = np.array(img.convert("RGBA"))
     gray = np.mean(arr[:, :, :3], axis=2)
 
     # Simple foreground extraction via Otsu-like threshold
     threshold = np.mean(gray)
     fg_mask = (gray > threshold).astype(np.uint8) * 255
-    fg_mask_img = Image.fromarray(fg_mask, 'L')
+    fg_mask_img = Image.fromarray(fg_mask, "L")
 
     # Create subject with transparency
-    subject = img.convert('RGBA')
+    subject = img.convert("RGBA")
     subject.putalpha(fg_mask_img)
 
     # Create background without subject
-    bg = img.convert('RGBA')
-    bg_mask = Image.fromarray(255 - fg_mask, 'L')
+    bg = img.convert("RGBA")
+    bg_mask = Image.fromarray(255 - fg_mask, "L")
     bg.putalpha(bg_mask)
 
     import base64, io
+
     sub_buf = io.BytesIO()
-    subject.save(sub_buf, format='PNG')
+    subject.save(sub_buf, format="PNG")
     sub_b64 = base64.b64encode(sub_buf.getvalue()).decode()
     bg_buf = io.BytesIO()
-    bg.save(bg_buf, format='PNG')
+    bg.save(bg_buf, format="PNG")
     bg_b64 = base64.b64encode(bg_buf.getvalue()).decode()
 
     return {
@@ -2443,7 +3360,8 @@ async def style_decompose_layers(body: Dict[str, Any] = Body(...)):
 
     img = _decode_image(image_b64)
     import numpy as np, base64, io
-    arr = np.array(img.convert('RGB'))
+
+    arr = np.array(img.convert("RGB"))
     h, w = arr.shape[:2]
 
     # Simple decomposition: foreground (bright) vs background (dark)
@@ -2453,11 +3371,11 @@ async def style_decompose_layers(body: Dict[str, Any] = Body(...)):
     bg_mask = 255 - fg_mask
 
     def _to_b64(mask_arr, original, invert=False):
-        layer = original.convert('RGBA')
-        m = Image.fromarray(mask_arr if not invert else (255 - mask_arr), 'L')
+        layer = original.convert("RGBA")
+        m = Image.fromarray(mask_arr if not invert else (255 - mask_arr), "L")
         layer.putalpha(m)
         buf = io.BytesIO()
-        layer.save(buf, format='PNG')
+        layer.save(buf, format="PNG")
         return base64.b64encode(buf.getvalue()).decode()
 
     bg_layer = _to_b64(bg_mask, img)
@@ -2489,7 +3407,9 @@ async def video_animate_portrait(body: Dict[str, Any] = Body(...)):
         driving_video_frames: Optional list of base64 driving video frames.
         motion_seed: Random seed for reproducibility.
     """
-    from common_lib.modules.image_processing.services.video_animation_service import animate_portrait
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        animate_portrait,
+    )
 
     image_b64 = body.get("source_image")
     if not image_b64:
@@ -2508,7 +3428,11 @@ async def video_animate_portrait(body: Dict[str, Any] = Body(...)):
     )
 
     # Encode frames
-    from common_lib.modules.image_processing.services.video_animation_service import _encode_frames_as_gif, _encode_frames_as_webp
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        _encode_frames_as_gif,
+        _encode_frames_as_webp,
+    )
+
     gif_b64 = _encode_frames_as_gif(result["frames"], result["fps"])
     webp_b64 = _encode_frames_as_webp(result["frames"], result["fps"])
 
@@ -2538,7 +3462,9 @@ async def video_talking_avatar(body: Dict[str, Any] = Body(...)):
         fps: Frames per second.
         quality_refine: Apply per-frame face restoration.
     """
-    from common_lib.modules.image_processing.services.video_animation_service import talking_head
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        talking_head,
+    )
     import base64 as _b64
 
     image_b64 = body.get("portrait_image")
@@ -2557,7 +3483,11 @@ async def video_talking_avatar(body: Dict[str, Any] = Body(...)):
         quality_refine=body.get("quality_refine", False),
     )
 
-    from common_lib.modules.image_processing.services.video_animation_service import _encode_frames_as_gif, _encode_frames_as_webp
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        _encode_frames_as_gif,
+        _encode_frames_as_webp,
+    )
+
     gif_b64 = _encode_frames_as_gif(result["frames"], result["fps"])
     webp_b64 = _encode_frames_as_webp(result["frames"], result["fps"])
 
@@ -2585,7 +3515,9 @@ async def video_lip_sync(body: Dict[str, Any] = Body(...)):
         duration_s: Duration if generating from source_image.
         fps: Frame rate.
     """
-    from common_lib.modules.image_processing.services.video_animation_service import lip_sync
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        lip_sync,
+    )
     import base64 as _b64
 
     frames = [_decode_image(f) for f in body.get("video_frames", [])] or None
@@ -2593,7 +3525,9 @@ async def video_lip_sync(body: Dict[str, Any] = Body(...)):
     audio = _b64.b64decode(body["audio_data"]) if body.get("audio_data") else None
 
     if not frames and not source:
-        raise HTTPException(400, detail="Either video_frames or source_image is required")
+        raise HTTPException(
+            400, detail="Either video_frames or source_image is required"
+        )
 
     result = lip_sync(
         video_frames=frames,
@@ -2604,7 +3538,11 @@ async def video_lip_sync(body: Dict[str, Any] = Body(...)):
         fps=body.get("fps", 25.0),
     )
 
-    from common_lib.modules.image_processing.services.video_animation_service import _encode_frames_as_gif, _encode_frames_as_webp
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        _encode_frames_as_gif,
+        _encode_frames_as_webp,
+    )
+
     gif_b64 = _encode_frames_as_gif(result["frames"], result["fps"])
     webp_b64 = _encode_frames_as_webp(result["frames"], result["fps"])
 
@@ -2633,7 +3571,9 @@ async def video_generate(body: Dict[str, Any] = Body(...)):
         seed: Random seed.
         fps: Frames per second.
     """
-    from common_lib.modules.image_processing.services.video_animation_service import text_to_video
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        text_to_video,
+    )
 
     prompt = body.get("prompt")
     if not prompt:
@@ -2649,7 +3589,11 @@ async def video_generate(body: Dict[str, Any] = Body(...)):
         fps=body.get("fps", 24.0),
     )
 
-    from common_lib.modules.image_processing.services.video_animation_service import _encode_frames_as_gif, _encode_frames_as_webp
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        _encode_frames_as_gif,
+        _encode_frames_as_webp,
+    )
+
     gif_b64 = _encode_frames_as_gif(result["frames"], result["fps"])
     webp_b64 = _encode_frames_as_webp(result["frames"], result["fps"])
 
@@ -2680,7 +3624,9 @@ async def video_animate_image(body: Dict[str, Any] = Body(...)):
         tier: 'fast', 'standard', 'premium'.
         fps: Frames per second.
     """
-    from common_lib.modules.image_processing.services.video_animation_service import image_to_video
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        image_to_video,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -2696,7 +3642,11 @@ async def video_animate_image(body: Dict[str, Any] = Body(...)):
         fps=body.get("fps", 24.0),
     )
 
-    from common_lib.modules.image_processing.services.video_animation_service import _encode_frames_as_gif, _encode_frames_as_webp
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        _encode_frames_as_gif,
+        _encode_frames_as_webp,
+    )
+
     gif_b64 = _encode_frames_as_gif(result["frames"], result["fps"])
     webp_b64 = _encode_frames_as_webp(result["frames"], result["fps"])
 
@@ -2724,14 +3674,20 @@ async def video_style_transfer(body: Dict[str, Any] = Body(...)):
         consistency_strength: Temporal consistency 0.0-1.0.
         fps: Frame rate.
     """
-    from common_lib.modules.image_processing.services.video_animation_service import video_style_transfer as _vst
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        video_style_transfer as _vst,
+    )
 
     frames_b64 = body.get("video_frames", [])
     if not frames_b64:
-        raise HTTPException(400, detail="video_frames (list of base64 images) is required")
+        raise HTTPException(
+            400, detail="video_frames (list of base64 images) is required"
+        )
 
     frames = [_decode_image(f) for f in frames_b64]
-    ref = _decode_image(body["style_reference"]) if body.get("style_reference") else None
+    ref = (
+        _decode_image(body["style_reference"]) if body.get("style_reference") else None
+    )
 
     result = _vst(
         video_frames=frames,
@@ -2741,7 +3697,11 @@ async def video_style_transfer(body: Dict[str, Any] = Body(...)):
         fps=body.get("fps", 25.0),
     )
 
-    from common_lib.modules.image_processing.services.video_animation_service import _encode_frames_as_gif, _encode_frames_as_webp
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        _encode_frames_as_gif,
+        _encode_frames_as_webp,
+    )
+
     gif_b64 = _encode_frames_as_gif(result["frames"], result["fps"])
     webp_b64 = _encode_frames_as_webp(result["frames"], result["fps"])
 
@@ -2767,11 +3727,15 @@ async def video_expression_retarget(body: Dict[str, Any] = Body(...)):
         expression_delta: Dict of expression deltas (smile, eyebrow, eyes_open, mouth_open, head_tilt).
         fps: Frame rate.
     """
-    from common_lib.modules.image_processing.services.video_animation_service import expression_retarget
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        expression_retarget,
+    )
 
     frames_b64 = body.get("video_frames", [])
     if not frames_b64:
-        raise HTTPException(400, detail="video_frames (list of base64 images) is required")
+        raise HTTPException(
+            400, detail="video_frames (list of base64 images) is required"
+        )
 
     frames = [_decode_image(f) for f in frames_b64]
 
@@ -2781,7 +3745,11 @@ async def video_expression_retarget(body: Dict[str, Any] = Body(...)):
         fps=body.get("fps", 25.0),
     )
 
-    from common_lib.modules.image_processing.services.video_animation_service import _encode_frames_as_gif, _encode_frames_as_webp
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        _encode_frames_as_gif,
+        _encode_frames_as_webp,
+    )
+
     gif_b64 = _encode_frames_as_gif(result["frames"], result["fps"])
     webp_b64 = _encode_frames_as_webp(result["frames"], result["fps"])
 
@@ -2799,7 +3767,10 @@ async def video_expression_retarget(body: Dict[str, Any] = Body(...)):
 @router.get("/video/routing")
 async def video_model_routing():
     """Get the full model routing table for video operations."""
-    from common_lib.modules.image_processing.services.video_animation_service import get_model_routing
+    from common_lib.modules.image_processing.services.video_animation_service import (
+        get_model_routing,
+    )
+
     return {"status": "success", **get_model_routing()}
 
 
@@ -2822,7 +3793,8 @@ async def agent_run(body: Dict[str, Any] = Body(...)):
         quality_threshold: Min quality score (default 0.85).
     """
     from common_lib.modules.image_processing.services.agentic_workflow_service import (
-        execute_pipeline, TaskType,
+        execute_pipeline,
+        TaskType,
     )
 
     user_request = body.get("user_request", "")
@@ -2851,12 +3823,16 @@ async def agent_run(body: Dict[str, Any] = Body(...)):
         "run_id": state.run_id,
         "phase": state.phase.value,
         "final_image": state.final_image,
-        "quality_report": state.quality_report.to_dict() if state.quality_report else None,
+        "quality_report": state.quality_report.to_dict()
+        if state.quality_report
+        else None,
         "iterations": state.iteration_count,
         "trace_summary": {
             "steps_planned": len(state.plan.steps) if state.plan else 0,
             "steps_executed": len([t for t in state.trace if "tool" in t]),
-            "elapsed_s": round(state.completed_at - state.started_at, 2) if state.completed_at else 0,
+            "elapsed_s": round(state.completed_at - state.started_at, 2)
+            if state.completed_at
+            else 0,
         },
     }
 
@@ -2871,7 +3847,8 @@ async def agent_plan(body: Dict[str, Any] = Body(...)):
         custom_steps: Optional custom pipeline steps.
     """
     from common_lib.modules.image_processing.services.agentic_workflow_service import (
-        plan_pipeline, TaskType,
+        plan_pipeline,
+        TaskType,
     )
 
     task_type_str = body.get("task_type", "custom")
@@ -2901,7 +3878,9 @@ async def agent_critique(body: Dict[str, Any] = Body(...)):
         reference_image: Optional base64 reference.
         quality_threshold: Min score (default 0.85).
     """
-    from common_lib.modules.image_processing.services.agentic_workflow_service import assess_quality
+    from common_lib.modules.image_processing.services.agentic_workflow_service import (
+        assess_quality,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -2922,7 +3901,10 @@ async def agent_critique(body: Dict[str, Any] = Body(...)):
 @router.get("/agent/tools")
 async def agent_tools():
     """List all tools available to agents."""
-    from common_lib.modules.image_processing.services.agentic_workflow_service import ToolRegistry
+    from common_lib.modules.image_processing.services.agentic_workflow_service import (
+        ToolRegistry,
+    )
+
     registry = ToolRegistry()
     return {
         "status": "success",
@@ -2937,7 +3919,10 @@ async def agent_tools():
 @router.get("/agent/custom-tools")
 async def agent_custom_tools_list():
     """List all user-registered custom tools."""
-    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_registry,
+    )
+
     reg = get_custom_tool_registry()
     return {
         "status": "success",
@@ -2949,7 +3934,10 @@ async def agent_custom_tools_list():
 @router.get("/agent/custom-tools/agent-format")
 async def agent_custom_tools_agent_format():
     """List custom tools in the format the agent system expects."""
-    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_registry,
+    )
+
     reg = get_custom_tool_registry()
     return {
         "status": "success",
@@ -2962,8 +3950,10 @@ async def agent_custom_tools_agent_format():
 async def agent_custom_tool_register(body: Dict[str, Any] = Body(...)):
     """Register a new custom tool from an HTTP API endpoint."""
     from common_lib.modules.image_processing.services.custom_tool_registry import (
-        get_custom_tool_registry, CustomToolDef,
+        get_custom_tool_registry,
+        CustomToolDef,
     )
+
     reg = get_custom_tool_registry()
 
     # Validate required fields
@@ -3002,7 +3992,10 @@ async def agent_custom_tool_register(body: Dict[str, Any] = Body(...)):
 @router.put("/agent/custom-tools/{tool_id}")
 async def agent_custom_tool_update(tool_id: str, body: Dict[str, Any] = Body(...)):
     """Update an existing custom tool."""
-    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_registry,
+    )
+
     reg = get_custom_tool_registry()
     updated = reg.update(tool_id, body)
     if not updated:
@@ -3013,7 +4006,10 @@ async def agent_custom_tool_update(tool_id: str, body: Dict[str, Any] = Body(...
 @router.delete("/agent/custom-tools/{tool_id}")
 async def agent_custom_tool_delete(tool_id: str):
     """Delete a custom tool."""
-    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_registry,
+    )
+
     reg = get_custom_tool_registry()
     if not reg.delete(tool_id):
         raise HTTPException(404, detail=f"Tool '{tool_id}' not found")
@@ -3023,7 +4019,10 @@ async def agent_custom_tool_delete(tool_id: str):
 @router.post("/agent/custom-tools/{tool_id}/toggle")
 async def agent_custom_tool_toggle(tool_id: str, body: Dict[str, Any] = Body(...)):
     """Enable or disable a custom tool."""
-    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_registry,
+    )
+
     reg = get_custom_tool_registry()
     enabled = body.get("enabled", True)
     updated = reg.toggle_enabled(tool_id, enabled)
@@ -3036,8 +4035,10 @@ async def agent_custom_tool_toggle(tool_id: str, body: Dict[str, Any] = Body(...
 async def agent_custom_tool_test(tool_id: str, body: Dict[str, Any] = Body(...)):
     """Test a custom tool by executing it with sample params."""
     from common_lib.modules.image_processing.services.custom_tool_registry import (
-        get_custom_tool_registry, get_custom_tool_executor,
+        get_custom_tool_registry,
+        get_custom_tool_executor,
     )
+
     executor = get_custom_tool_executor()
     params = body.get("params", {})
     result = await executor.execute(tool_id, params)
@@ -3047,7 +4048,10 @@ async def agent_custom_tool_test(tool_id: str, body: Dict[str, Any] = Body(...))
 @router.get("/agent/custom-tools/search")
 async def agent_custom_tool_search(q: str = ""):
     """Search custom tools by name, description, category, or tags."""
-    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_registry,
+    )
+
     reg = get_custom_tool_registry()
     tools = reg.search(q) if q else reg.list_all()
     return {"status": "success", "tools": [t.to_dict() for t in tools]}
@@ -3056,7 +4060,10 @@ async def agent_custom_tool_search(q: str = ""):
 @router.delete("/agent/custom-tools")
 async def agent_custom_tools_clear():
     """Delete all custom tools."""
-    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_registry
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_registry,
+    )
+
     reg = get_custom_tool_registry()
     count = reg.clear_all()
     return {"status": "success", "deleted_count": count}
@@ -3068,7 +4075,10 @@ async def agent_custom_tools_clear():
 @router.get("/agent/custom-tools/cache/stats")
 async def agent_custom_tools_cache_stats():
     """Get response cache statistics."""
-    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_executor
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_executor,
+    )
+
     executor = get_custom_tool_executor()
     return {"status": "success", "cache": executor.cache_stats()}
 
@@ -3076,7 +4086,10 @@ async def agent_custom_tools_cache_stats():
 @router.post("/agent/custom-tools/cache/clear")
 async def agent_custom_tools_cache_clear():
     """Clear the response cache."""
-    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_executor
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_executor,
+    )
+
     executor = get_custom_tool_executor()
     executor.clear_cache()
     return {"status": "success", "message": "Cache cleared"}
@@ -3085,7 +4098,10 @@ async def agent_custom_tools_cache_clear():
 @router.post("/agent/custom-tools/cache/reset-stats")
 async def agent_custom_tools_cache_reset_stats():
     """Reset cache statistics counters."""
-    from common_lib.modules.image_processing.services.custom_tool_registry import get_custom_tool_executor
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_executor,
+    )
+
     executor = get_custom_tool_executor()
     executor.cache.clear_stats()
     return {"status": "success", "message": "Stats reset"}
@@ -3097,7 +4113,10 @@ async def agent_custom_tools_cache_reset_stats():
 @router.get("/agent/chains")
 async def agent_chains_list():
     """List all registered tool chains."""
-    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    from common_lib.modules.image_processing.services.tool_chain_registry import (
+        get_tool_chain_registry,
+    )
+
     reg = get_tool_chain_registry()
     return {
         "status": "success",
@@ -3109,7 +4128,10 @@ async def agent_chains_list():
 @router.get("/agent/chains/agent-format")
 async def agent_chains_agent_format():
     """List chains in agent-callable format."""
-    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    from common_lib.modules.image_processing.services.tool_chain_registry import (
+        get_tool_chain_registry,
+    )
+
     reg = get_tool_chain_registry()
     return {
         "status": "success",
@@ -3120,7 +4142,10 @@ async def agent_chains_agent_format():
 @router.get("/agent/chains/templates")
 async def agent_chain_templates():
     """List pre-built chain templates."""
-    from common_lib.modules.image_processing.services.tool_chain_registry import _seed_chain_templates
+    from common_lib.modules.image_processing.services.tool_chain_registry import (
+        _seed_chain_templates,
+    )
+
     templates = _seed_chain_templates()
     return {
         "status": "success",
@@ -3133,14 +4158,17 @@ async def agent_chain_templates():
 async def agent_chain_template_install(template_id: str):
     """Install a template as a new chain."""
     from common_lib.modules.image_processing.services.tool_chain_registry import (
-        get_tool_chain_registry, _seed_chain_templates,
+        get_tool_chain_registry,
+        _seed_chain_templates,
     )
+
     templates = {t.id: t for t in _seed_chain_templates()}
     template = templates.get(template_id)
     if not template:
         raise HTTPException(404, detail=f"Template '{template_id}' not found")
     # Create a new chain from the template with fresh IDs
     import copy
+
     new_chain = copy.deepcopy(template)
     new_chain.id = f"chain_{__import__('uuid').uuid4().hex[:12]}"
     new_chain.name = f"{template.name} (copy)"
@@ -3156,8 +4184,11 @@ async def agent_chain_template_install(template_id: str):
 async def agent_chain_create(body: Dict[str, Any] = Body(...)):
     """Create a new tool chain."""
     from common_lib.modules.image_processing.services.tool_chain_registry import (
-        get_tool_chain_registry, ToolChain, ChainStep,
+        get_tool_chain_registry,
+        ToolChain,
+        ChainStep,
     )
+
     reg = get_tool_chain_registry()
     if not body.get("name"):
         raise HTTPException(400, detail="name is required")
@@ -3182,7 +4213,10 @@ async def agent_chain_create(body: Dict[str, Any] = Body(...)):
 @router.get("/agent/chains/{chain_id}")
 async def agent_chain_get(chain_id: str):
     """Get a specific tool chain."""
-    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    from common_lib.modules.image_processing.services.tool_chain_registry import (
+        get_tool_chain_registry,
+    )
+
     reg = get_tool_chain_registry()
     chain = reg.get(chain_id)
     if not chain:
@@ -3193,7 +4227,10 @@ async def agent_chain_get(chain_id: str):
 @router.put("/agent/chains/{chain_id}")
 async def agent_chain_update(chain_id: str, body: Dict[str, Any] = Body(...)):
     """Update a tool chain."""
-    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    from common_lib.modules.image_processing.services.tool_chain_registry import (
+        get_tool_chain_registry,
+    )
+
     reg = get_tool_chain_registry()
     updated = reg.update(chain_id, body)
     if not updated:
@@ -3204,7 +4241,10 @@ async def agent_chain_update(chain_id: str, body: Dict[str, Any] = Body(...)):
 @router.delete("/agent/chains/{chain_id}")
 async def agent_chain_delete(chain_id: str):
     """Delete a tool chain."""
-    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    from common_lib.modules.image_processing.services.tool_chain_registry import (
+        get_tool_chain_registry,
+    )
+
     reg = get_tool_chain_registry()
     if not reg.delete(chain_id):
         raise HTTPException(404, detail=f"Chain '{chain_id}' not found")
@@ -3214,7 +4254,10 @@ async def agent_chain_delete(chain_id: str):
 @router.post("/agent/chains/{chain_id}/toggle")
 async def agent_chain_toggle(chain_id: str, body: Dict[str, Any] = Body(...)):
     """Enable or disable a tool chain."""
-    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    from common_lib.modules.image_processing.services.tool_chain_registry import (
+        get_tool_chain_registry,
+    )
+
     reg = get_tool_chain_registry()
     updated = reg.update(chain_id, {"enabled": body.get("enabled", True)})
     if not updated:
@@ -3226,8 +4269,10 @@ async def agent_chain_toggle(chain_id: str, body: Dict[str, Any] = Body(...)):
 async def agent_chain_run(chain_id: str, body: Dict[str, Any] = Body(...)):
     """Execute a tool chain with given parameters."""
     from common_lib.modules.image_processing.services.tool_chain_registry import (
-        get_tool_chain_registry, get_tool_chain_executor,
+        get_tool_chain_registry,
+        get_tool_chain_executor,
     )
+
     reg = get_tool_chain_registry()
     chain = reg.get(chain_id)
     if not chain:
@@ -3246,7 +4291,9 @@ async def agent_chain_run(chain_id: str, body: Dict[str, Any] = Body(...)):
             "chain_name": result.chain_name,
             "status": result.status,
             "steps": [asdict(s) for s in result.steps],
-            "final_output": {k: v for k, v in result.final_output.items() if k != "image"},
+            "final_output": {
+                k: v for k, v in result.final_output.items() if k != "image"
+            },
             "has_image": "image" in result.final_output,
             "total_duration_ms": result.total_duration_ms,
         },
@@ -3256,7 +4303,10 @@ async def agent_chain_run(chain_id: str, body: Dict[str, Any] = Body(...)):
 @router.get("/agent/chains/search")
 async def agent_chain_search(q: str = ""):
     """Search tool chains."""
-    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    from common_lib.modules.image_processing.services.tool_chain_registry import (
+        get_tool_chain_registry,
+    )
+
     reg = get_tool_chain_registry()
     chains = reg.search(q) if q else reg.list_all()
     return {"status": "success", "chains": [c.to_dict() for c in chains]}
@@ -3265,7 +4315,10 @@ async def agent_chain_search(q: str = ""):
 @router.delete("/agent/chains")
 async def agent_chains_clear():
     """Delete all tool chains."""
-    from common_lib.modules.image_processing.services.tool_chain_registry import get_tool_chain_registry
+    from common_lib.modules.image_processing.services.tool_chain_registry import (
+        get_tool_chain_registry,
+    )
+
     reg = get_tool_chain_registry()
     count = reg.clear_all()
     return {"status": "success", "deleted_count": count}
@@ -3277,7 +4330,10 @@ async def agent_chains_clear():
 @router.get("/agent/marketplace")
 async def agent_marketplace_list():
     """List all marketplace tools."""
-    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    from common_lib.modules.image_processing.services.tool_marketplace import (
+        get_tool_marketplace,
+    )
+
     mp = get_tool_marketplace()
     return {
         "status": "success",
@@ -3291,7 +4347,10 @@ async def agent_marketplace_list():
 @router.get("/agent/marketplace/search")
 async def agent_marketplace_search(q: str = ""):
     """Search marketplace tools."""
-    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    from common_lib.modules.image_processing.services.tool_marketplace import (
+        get_tool_marketplace,
+    )
+
     mp = get_tool_marketplace()
     tools = mp.search(q) if q else mp.list_all()
     return {"status": "success", "tools": [t.to_dict() for t in tools]}
@@ -3300,15 +4359,25 @@ async def agent_marketplace_search(q: str = ""):
 @router.get("/agent/marketplace/categories")
 async def agent_marketplace_categories():
     """List marketplace categories with counts."""
-    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    from common_lib.modules.image_processing.services.tool_marketplace import (
+        get_tool_marketplace,
+    )
+
     mp = get_tool_marketplace()
-    return {"status": "success", "categories": mp.list_categories(), "tags": mp.list_tags()}
+    return {
+        "status": "success",
+        "categories": mp.list_categories(),
+        "tags": mp.list_tags(),
+    }
 
 
 @router.get("/agent/marketplace/{tool_id}")
 async def agent_marketplace_get(tool_id: str):
     """Get a specific marketplace tool."""
-    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    from common_lib.modules.image_processing.services.tool_marketplace import (
+        get_tool_marketplace,
+    )
+
     mp = get_tool_marketplace()
     tool = mp.get(tool_id)
     if not tool:
@@ -3319,10 +4388,14 @@ async def agent_marketplace_get(tool_id: str):
 @router.post("/agent/marketplace/{tool_id}/install")
 async def agent_marketplace_install(tool_id: str):
     """Install a marketplace tool as a custom tool."""
-    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
-    from common_lib.modules.image_processing.services.custom_tool_registry import (
-        get_custom_tool_registry, CustomToolDef,
+    from common_lib.modules.image_processing.services.tool_marketplace import (
+        get_tool_marketplace,
     )
+    from common_lib.modules.image_processing.services.custom_tool_registry import (
+        get_custom_tool_registry,
+        CustomToolDef,
+    )
+
     mp = get_tool_marketplace()
     tool_def = mp.install(tool_id)
     if not tool_def:
@@ -3337,7 +4410,10 @@ async def agent_marketplace_install(tool_id: str):
 @router.post("/agent/marketplace/{tool_id}/rate")
 async def agent_marketplace_rate(tool_id: str, body: Dict[str, Any] = Body(...)):
     """Rate a marketplace tool."""
-    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    from common_lib.modules.image_processing.services.tool_marketplace import (
+        get_tool_marketplace,
+    )
+
     mp = get_tool_marketplace()
     rating = body.get("rating", 3)
     tool = mp.rate(tool_id, rating)
@@ -3350,8 +4426,10 @@ async def agent_marketplace_rate(tool_id: str, body: Dict[str, Any] = Body(...))
 async def agent_marketplace_add(body: Dict[str, Any] = Body(...)):
     """Add a custom tool to the marketplace."""
     from common_lib.modules.image_processing.services.tool_marketplace import (
-        get_tool_marketplace, MarketplaceTool,
+        get_tool_marketplace,
+        MarketplaceTool,
     )
+
     mp = get_tool_marketplace()
     tool = MarketplaceTool.from_dict(body)
     added = mp.add_custom(tool)
@@ -3361,7 +4439,10 @@ async def agent_marketplace_add(body: Dict[str, Any] = Body(...)):
 @router.delete("/agent/marketplace/{tool_id}")
 async def agent_marketplace_remove(tool_id: str):
     """Remove a custom marketplace entry."""
-    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    from common_lib.modules.image_processing.services.tool_marketplace import (
+        get_tool_marketplace,
+    )
+
     mp = get_tool_marketplace()
     if not mp.remove_custom(tool_id):
         raise HTTPException(400, detail="Cannot remove seeded tool or tool not found")
@@ -3371,7 +4452,10 @@ async def agent_marketplace_remove(tool_id: str):
 @router.get("/agent/marketplace/export/json")
 async def agent_marketplace_export():
     """Export all marketplace tools as JSON."""
-    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    from common_lib.modules.image_processing.services.tool_marketplace import (
+        get_tool_marketplace,
+    )
+
     mp = get_tool_marketplace()
     return {"status": "success", "json": mp.export_json()}
 
@@ -3379,7 +4463,10 @@ async def agent_marketplace_export():
 @router.post("/agent/marketplace/import/json")
 async def agent_marketplace_import(body: Dict[str, Any] = Body(...)):
     """Import marketplace tools from JSON."""
-    from common_lib.modules.image_processing.services.tool_marketplace import get_tool_marketplace
+    from common_lib.modules.image_processing.services.tool_marketplace import (
+        get_tool_marketplace,
+    )
+
     mp = get_tool_marketplace()
     json_str = body.get("json", "")
     if not json_str:
@@ -3391,7 +4478,10 @@ async def agent_marketplace_import(body: Dict[str, Any] = Body(...)):
 @router.get("/agent/templates")
 async def agent_templates():
     """List all predefined pipeline templates."""
-    from common_lib.modules.image_processing.services.agentic_workflow_service import list_pipeline_templates
+    from common_lib.modules.image_processing.services.agentic_workflow_service import (
+        list_pipeline_templates,
+    )
+
     return {
         "status": "success",
         "templates": list_pipeline_templates(),
@@ -3401,7 +4491,10 @@ async def agent_templates():
 @router.get("/agent/task-types")
 async def agent_task_types():
     """List all supported task types."""
-    from common_lib.modules.image_processing.services.agentic_workflow_service import TaskType
+    from common_lib.modules.image_processing.services.agentic_workflow_service import (
+        TaskType,
+    )
+
     return {
         "status": "success",
         "task_types": [t.value for t in TaskType],
@@ -3412,7 +4505,8 @@ async def agent_task_types():
 async def agent_run_stream(body: Dict[str, Any] = Body(...)):
     """Execute agentic pipeline with SSE streaming for real-time progress."""
     from common_lib.modules.image_processing.services.agentic_workflow_service import (
-        execute_pipeline, AgentPhase,
+        execute_pipeline,
+        AgentPhase,
     )
 
     image_b64 = body.get("image")
@@ -3427,23 +4521,35 @@ async def agent_run_stream(body: Dict[str, Any] = Body(...)):
 
     async def stream_events():
         try:
-            yield _sse("started", {"request": user_request[:200], "task_type": task_type})
+            yield _sse(
+                "started", {"request": user_request[:200], "task_type": task_type}
+            )
             state = execute_pipeline(
-                user_request, image_b64, task_type=task_type,
-                reference_image_b64=ref, max_iterations=max_iterations,
+                user_request,
+                image_b64,
+                task_type=task_type,
+                reference_image_b64=ref,
+                max_iterations=max_iterations,
                 quality_threshold=threshold,
             )
             # Stream trace events
             for entry in state.trace:
                 yield _sse("step", entry)
             # Final result
-            yield _sse("complete", {
-                "status": state.phase.value,
-                "quality": state.quality_report.iqa_score if state.quality_report else None,
-                "iterations": state.iteration_count,
-                "duration_ms": round((state.completed_at - state.started_at) * 1000) if state.completed_at else 0,
-                "has_final_image": bool(state.final_image),
-            })
+            yield _sse(
+                "complete",
+                {
+                    "status": state.phase.value,
+                    "quality": state.quality_report.iqa_score
+                    if state.quality_report
+                    else None,
+                    "iterations": state.iteration_count,
+                    "duration_ms": round((state.completed_at - state.started_at) * 1000)
+                    if state.completed_at
+                    else 0,
+                    "has_final_image": bool(state.final_image),
+                },
+            )
         except Exception as exc:
             yield _sse("error", {"error": str(exc)})
 
@@ -3454,7 +4560,8 @@ async def agent_run_stream(body: Dict[str, Any] = Body(...)):
 async def agent_run_parallel(body: Dict[str, Any] = Body(...)):
     """Execute agentic pipeline with parallel step execution."""
     from common_lib.modules.image_processing.services.agentic_workflow_service import (
-        execute_pipeline_parallel, TaskType,
+        execute_pipeline_parallel,
+        TaskType,
     )
 
     image_b64 = body.get("image")
@@ -3475,13 +4582,20 @@ async def agent_run_parallel(body: Dict[str, Any] = Body(...)):
         tt = TaskType.CUSTOM
 
     state = execute_pipeline_parallel(
-        user_request, image_b64, task_type=tt,
-        reference_image_b64=ref, parallel_groups=parallel_groups,
-        max_iterations=max_iterations, quality_threshold=threshold,
+        user_request,
+        image_b64,
+        task_type=tt,
+        reference_image_b64=ref,
+        parallel_groups=parallel_groups,
+        max_iterations=max_iterations,
+        quality_threshold=threshold,
         max_workers=max_workers,
     )
 
-    from common_lib.modules.image_processing.services.agentic_workflow_service import get_trace_summary
+    from common_lib.modules.image_processing.services.agentic_workflow_service import (
+        get_trace_summary,
+    )
+
     return {
         "status": "success",
         "trace": get_trace_summary(state),
@@ -3494,17 +4608,26 @@ async def agent_checkpoint_save(body: Dict[str, Any] = Body(...)):
     """Save agent state checkpoint for resume later."""
     import json as _json
     import os
-    checkpoint_dir = os.path.join(os.path.expanduser("~"), ".platform", "agent_checkpoints")
+
+    checkpoint_dir = os.path.join(
+        os.path.expanduser("~"), ".platform", "agent_checkpoints"
+    )
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     run_id = body.get("run_id", str(__import__("uuid").uuid4())[:12])
     state_data = body.get("state", {})
     filepath = os.path.join(checkpoint_dir, f"checkpoint_{run_id}.json")
     with open(filepath, "w") as f:
-        _json.dump({"run_id": run_id, "phase": state_data.get("phase", "unknown"),
-                     "current_image": state_data.get("current_image"),
-                     "iteration": state_data.get("iteration", 0),
-                     "trace": state_data.get("trace", [])}, f)
+        _json.dump(
+            {
+                "run_id": run_id,
+                "phase": state_data.get("phase", "unknown"),
+                "current_image": state_data.get("current_image"),
+                "iteration": state_data.get("iteration", 0),
+                "trace": state_data.get("trace", []),
+            },
+            f,
+        )
     return {"status": "success", "run_id": run_id, "filepath": filepath}
 
 
@@ -3513,7 +4636,10 @@ async def agent_checkpoint_load(run_id: str):
     """Load an agent state checkpoint."""
     import json as _json
     import os
-    checkpoint_dir = os.path.join(os.path.expanduser("~"), ".platform", "agent_checkpoints")
+
+    checkpoint_dir = os.path.join(
+        os.path.expanduser("~"), ".platform", "agent_checkpoints"
+    )
     filepath = os.path.join(checkpoint_dir, f"checkpoint_{run_id}.json")
     if not os.path.exists(filepath):
         raise HTTPException(404, f"Checkpoint '{run_id}' not found")
@@ -3526,7 +4652,8 @@ async def agent_checkpoint_load(run_id: str):
 async def agent_comfyui_workflow(body: Dict[str, Any] = Body(...)):
     """Build a ComfyUI workflow JSON from a pipeline plan."""
     from common_lib.modules.image_processing.services.agentic_workflow_service import (
-        build_comfyui_workflow, TaskType,
+        build_comfyui_workflow,
+        TaskType,
     )
 
     user_request = body.get("request", "enhance this image")
@@ -3543,7 +4670,9 @@ async def agent_comfyui_workflow(body: Dict[str, Any] = Body(...)):
 @router.post("/agent/critique/batch")
 async def agent_critique_batch(body: Dict[str, Any] = Body(...)):
     """Assess quality of multiple images at once."""
-    from common_lib.modules.image_processing.services.agentic_workflow_service import assess_quality
+    from common_lib.modules.image_processing.services.agentic_workflow_service import (
+        assess_quality,
+    )
 
     images = body.get("images", [])
     ref = body.get("reference")
@@ -3558,14 +4687,20 @@ async def agent_critique_batch(body: Dict[str, Any] = Body(...)):
 @router.get("/agent/history")
 async def agent_history(limit: int = 20):
     """List recent agent execution runs."""
-    from common_lib.modules.image_processing.services.agentic_workflow_service import list_agent_runs
+    from common_lib.modules.image_processing.services.agentic_workflow_service import (
+        list_agent_runs,
+    )
+
     return {"status": "success", "runs": list_agent_runs(limit)}
 
 
 @router.get("/agent/approval/pending")
 async def agent_approval_pending():
     """List pending approval gates."""
-    from common_lib.modules.image_processing.services.agentic_workflow_service import ApprovalGate
+    from common_lib.modules.image_processing.services.agentic_workflow_service import (
+        ApprovalGate,
+    )
+
     gate = ApprovalGate()
     return {"status": "success", "pending": gate.get_pending()}
 
@@ -3583,7 +4718,9 @@ async def generate_3d_from_image(body: Dict[str, Any] = Body(...)):
         quality: 'fast', 'standard', 'premium'.
         resolution: Mesh grid resolution.
     """
-    from common_lib.modules.image_processing.services.three_d_generation_service import generate_3d_from_image as _gen3d
+    from common_lib.modules.image_processing.services.three_d_generation_service import (
+        generate_3d_from_image as _gen3d,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -3618,7 +4755,9 @@ async def generate_3d_from_text(body: Dict[str, Any] = Body(...)):
         output_format: 'glb', '3dgs'.
         resolution: Mesh resolution.
     """
-    from common_lib.modules.image_processing.services.three_d_generation_service import generate_3d_from_text as _gen3d_text
+    from common_lib.modules.image_processing.services.three_d_generation_service import (
+        generate_3d_from_text as _gen3d_text,
+    )
 
     prompt = body.get("prompt")
     if not prompt:
@@ -3651,7 +4790,9 @@ async def depth_estimate(body: Dict[str, Any] = Body(...)):
         model: 'relative' or 'metric'.
         size: 'small', 'base', 'large'.
     """
-    from common_lib.modules.image_processing.services.three_d_generation_service import estimate_depth
+    from common_lib.modules.image_processing.services.three_d_generation_service import (
+        estimate_depth,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -3683,7 +4824,9 @@ async def surface_normals(body: Dict[str, Any] = Body(...)):
     Args:
         image: Base64 source image.
     """
-    from common_lib.modules.image_processing.services.three_d_generation_service import estimate_surface_normals
+    from common_lib.modules.image_processing.services.three_d_generation_service import (
+        estimate_surface_normals,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -3709,7 +4852,9 @@ async def novel_views(body: Dict[str, Any] = Body(...)):
         image: Base64 source image.
         angles: List of angles in degrees.
     """
-    from common_lib.modules.image_processing.services.three_d_generation_service import generate_novel_views
+    from common_lib.modules.image_processing.services.three_d_generation_service import (
+        generate_novel_views,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -3739,7 +4884,9 @@ async def turntable(body: Dict[str, Any] = Body(...)):
         frames: Number of frames.
         format: 'gif' or 'webp'.
     """
-    from common_lib.modules.image_processing.services.three_d_generation_service import generate_turntable
+    from common_lib.modules.image_processing.services.three_d_generation_service import (
+        generate_turntable,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -3772,7 +4919,9 @@ async def body_reconstruct(body: Dict[str, Any] = Body(...)):
         image: Base64 source image.
         model: 'standard' or 'premium'.
     """
-    from common_lib.modules.image_processing.services.three_d_generation_service import reconstruct_3d_body
+    from common_lib.modules.image_processing.services.three_d_generation_service import (
+        reconstruct_3d_body,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -3800,7 +4949,9 @@ async def face_reconstruct_3d(body: Dict[str, Any] = Body(...)):
         image: Base64 source image.
         face_bbox: Optional [x1, y1, x2, y2] face bounding box.
     """
-    from common_lib.modules.image_processing.services.three_d_generation_service import reconstruct_3d_face
+    from common_lib.modules.image_processing.services.three_d_generation_service import (
+        reconstruct_3d_face,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -3820,7 +4971,10 @@ async def face_reconstruct_3d(body: Dict[str, Any] = Body(...)):
 @router.get("/3d/models")
 async def list_3d_models():
     """List all 3D generation models and capabilities."""
-    from common_lib.modules.image_processing.services.three_d_generation_service import list_3d_models as _list
+    from common_lib.modules.image_processing.services.three_d_generation_service import (
+        list_3d_models as _list,
+    )
+
     return {"status": "success", **_list()}
 
 
@@ -3834,8 +4988,10 @@ async def list_loras(
 ):
     """List available LoRA models with metadata."""
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        LoRARegistry, seed_default_loras,
+        LoRARegistry,
+        seed_default_loras,
     )
+
     registry = LoRARegistry()
     if not registry.list_all():
         seed_default_loras(registry)
@@ -3850,22 +5006,35 @@ async def list_loras(
     loras = []
     for e in results:
         d = {
-            'lora_id': e.lora_id, 'name': e.name, 'category': e.category,
-            'base_model': e.base_model, 'tags': e.tags,
-            'trigger_words': e.trigger_words, 'recommended_weight': e.recommended_weight,
-            'description': e.description,
+            "lora_id": e.lora_id,
+            "name": e.name,
+            "category": e.category,
+            "base_model": e.base_model,
+            "tags": e.tags,
+            "trigger_words": e.trigger_words,
+            "recommended_weight": e.recommended_weight,
+            "description": e.description,
         }
         loras.append(d)
     categories = registry.list_categories()
-    return {"status": "success", "loras": loras, "total": len(loras), "categories": categories, "base_models": registry.list_base_models()}
+    return {
+        "status": "success",
+        "loras": loras,
+        "total": len(loras),
+        "categories": categories,
+        "base_models": registry.list_base_models(),
+    }
 
 
 @router.post("/lora/download")
 async def download_lora(data: Dict[str, Any]):
     """Download a LoRA model from HuggingFace or CivitAI with progress."""
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        download_lora as _download, LoRARegistry, seed_default_loras,
+        download_lora as _download,
+        LoRARegistry,
+        seed_default_loras,
     )
+
     lora_id = data.get("lora_id")
     if not lora_id:
         return {"status": "error", "error": "lora_id required"}
@@ -3874,15 +5043,21 @@ async def download_lora(data: Dict[str, Any]):
         seed_default_loras(registry)
     destination = data.get("destination")
     source = data.get("source")
-    return {"status": "success", **_download(registry, lora_id=lora_id, destination=destination, source=source)}
+    return {
+        "status": "success",
+        **_download(registry, lora_id=lora_id, destination=destination, source=source),
+    }
 
 
 @router.post("/lora/download/stream")
 async def download_lora_stream(data: Dict[str, Any]):
     """Download a LoRA with SSE streaming progress."""
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        download_lora, LoRARegistry, seed_default_loras,
+        download_lora,
+        LoRARegistry,
+        seed_default_loras,
     )
+
     lora_id = data.get("lora_id")
     if not lora_id:
         raise HTTPException(400, "lora_id required")
@@ -3891,18 +5066,40 @@ async def download_lora_stream(data: Dict[str, Any]):
         seed_default_loras(registry)
 
     async def event_generator():
-        yield _sse("progress", {"percent": 0, "message": "Preparing download...", "phase": "Init"})
-        result = download_lora(registry, lora_id=lora_id, destination=data.get("destination"), source=data.get("source"))
+        yield _sse(
+            "progress",
+            {"percent": 0, "message": "Preparing download...", "phase": "Init"},
+        )
+        result = download_lora(
+            registry,
+            lora_id=lora_id,
+            destination=data.get("destination"),
+            source=data.get("source"),
+        )
         if result.get("status") == "exists":
-            yield _sse("progress", {"percent": 100, "message": "Already downloaded", "phase": "Done"})
+            yield _sse(
+                "progress",
+                {"percent": 100, "message": "Already downloaded", "phase": "Done"},
+            )
             yield _sse("result", result)
         elif result.get("status") == "success":
-            yield _sse("progress", {"percent": 100, "message": f"Downloaded {result.get('size_bytes', 0)} bytes", "phase": "Done"})
+            yield _sse(
+                "progress",
+                {
+                    "percent": 100,
+                    "message": f"Downloaded {result.get('size_bytes', 0)} bytes",
+                    "phase": "Done",
+                },
+            )
             yield _sse("result", result)
         else:
             yield _sse("error", {"message": result.get("message", "Download failed")})
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/lora/apply")
@@ -3911,13 +5108,18 @@ async def apply_lora(data: Dict[str, Any]):
     from common_lib.modules.image_processing.services.lora_registry_service import (
         apply_lora as _apply,
     )
+
     image_b64 = data.get("image")
     lora_id = data.get("lora_id")
     if not lora_id:
         return {"status": "error", "error": "lora_id required"}
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        LoRARegistry, seed_default_loras, compose_loras, apply_lora,
+        LoRARegistry,
+        seed_default_loras,
+        compose_loras,
+        apply_lora,
     )
+
     registry = LoRARegistry()
     if not registry.list_all():
         seed_default_loras(registry)
@@ -3936,6 +5138,7 @@ async def list_lora_compositions():
     from common_lib.modules.image_processing.services.lora_registry_service import (
         list_composition_templates,
     )
+
     templates = list_composition_templates()
     return {"status": "success", "compositions": templates, "total": len(templates)}
 
@@ -3944,14 +5147,20 @@ async def list_lora_compositions():
 async def compose_loras(data: Dict[str, Any]):
     """Apply multiple LoRAs with balanced weights."""
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        LoRARegistry, seed_default_loras, apply_lora as _apply_fn,
+        LoRARegistry,
+        seed_default_loras,
+        apply_lora as _apply_fn,
     )
+
     loras = data.get("loras", [])
     if not loras:
         return {"status": "error", "error": "loras list required"}
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        LoRARegistry, seed_default_loras, compose_loras,
+        LoRARegistry,
+        seed_default_loras,
+        compose_loras,
     )
+
     registry = LoRARegistry()
     if not registry.list_all():
         seed_default_loras(registry)
@@ -3967,8 +5176,10 @@ async def compose_loras(data: Dict[str, Any]):
 async def detect_lora_conflicts():
     """Detect potential conflicts between installed LoRAs."""
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        detect_conflicts as _detect, LoRARegistry,
+        detect_conflicts as _detect,
+        LoRARegistry,
     )
+
     registry = LoRARegistry()
     all_ids = [e.lora_id for e in registry.list_all()]
     conflicts = _detect(registry, all_ids)
@@ -3979,8 +5190,10 @@ async def detect_lora_conflicts():
 async def recommend_loras(data: Dict[str, Any]):
     """Recommend LoRAs for a task based on quality scores and compatibility."""
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        LoRARegistry, seed_default_loras,
+        LoRARegistry,
+        seed_default_loras,
     )
+
     task = data.get("task")
     if not task:
         return {"status": "error", "error": "task required"}
@@ -3991,10 +5204,17 @@ async def recommend_loras(data: Dict[str, Any]):
     matches = registry.search(query=task)
     if not matches:
         matches = registry.list_all()[:top_k]
-    recs = [{'lora_id': e.lora_id, 'name': e.name, 'weight': e.recommended_weight,
-             'category': e.category, 'base_model': e.base_model,
-             'description': e.description}
-            for e in matches[:top_k]]
+    recs = [
+        {
+            "lora_id": e.lora_id,
+            "name": e.name,
+            "weight": e.recommended_weight,
+            "category": e.category,
+            "base_model": e.base_model,
+            "description": e.description,
+        }
+        for e in matches[:top_k]
+    ]
     return {"status": "success", "task": task, "recommendations": recs}
 
 
@@ -4005,8 +5225,10 @@ async def recommend_loras(data: Dict[str, Any]):
 async def lora_stats():
     """Get LoRA registry statistics."""
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        LoRARegistry, seed_default_loras,
+        LoRARegistry,
+        seed_default_loras,
     )
+
     registry = LoRARegistry()
     if not registry.list_all():
         seed_default_loras(registry)
@@ -4028,8 +5250,10 @@ async def lora_stats():
 async def get_lora(lora_id: str):
     """Get a single LoRA entry by ID."""
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        LoRARegistry, seed_default_loras,
+        LoRARegistry,
+        seed_default_loras,
     )
+
     registry = LoRARegistry()
     if not registry.list_all():
         seed_default_loras(registry)
@@ -4043,8 +5267,10 @@ async def get_lora(lora_id: str):
 async def add_lora(data: Dict[str, Any]):
     """Register a new LoRA in the registry."""
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        LoRARegistry, LoRAEntry,
+        LoRARegistry,
+        LoRAEntry,
     )
+
     lora_id = data.get("lora_id")
     name = data.get("name")
     if not lora_id or not name:
@@ -4076,16 +5302,27 @@ async def add_lora(data: Dict[str, Any]):
 async def update_lora(lora_id: str, data: Dict[str, Any]):
     """Update LoRA metadata."""
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        LoRARegistry, seed_default_loras,
+        LoRARegistry,
+        seed_default_loras,
     )
+
     registry = LoRARegistry()
     if not registry.list_all():
         seed_default_loras(registry)
     # Filter to allowed update fields
     allowed = {
-        "name", "category", "subcategory", "trigger_words", "recommended_weight",
-        "weight_range", "conflicts_with", "works_well_with", "civitai_url",
-        "hf_url", "tags", "description",
+        "name",
+        "category",
+        "subcategory",
+        "trigger_words",
+        "recommended_weight",
+        "weight_range",
+        "conflicts_with",
+        "works_well_with",
+        "civitai_url",
+        "hf_url",
+        "tags",
+        "description",
     }
     updates = {k: v for k, v in data.items() if k in allowed}
     updated = registry.update(lora_id, updates)
@@ -4098,8 +5335,10 @@ async def update_lora(lora_id: str, data: Dict[str, Any]):
 async def delete_lora(lora_id: str):
     """Remove a LoRA from the registry."""
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        LoRARegistry, seed_default_loras,
+        LoRARegistry,
+        seed_default_loras,
     )
+
     registry = LoRARegistry()
     if not registry.list_all():
         seed_default_loras(registry)
@@ -4113,8 +5352,12 @@ async def delete_lora(lora_id: str):
 async def validate_lora_composition(data: Dict[str, Any]):
     """Validate a multi-LoRA composition without applying it."""
     from common_lib.modules.image_processing.services.lora_registry_service import (
-        LoRARegistry, seed_default_loras, compose_loras, detect_conflicts,
+        LoRARegistry,
+        seed_default_loras,
+        compose_loras,
+        detect_conflicts,
     )
+
     lora_ids = data.get("lora_ids", [])
     if not lora_ids:
         raise HTTPException(400, detail="lora_ids list required")
@@ -4123,7 +5366,9 @@ async def validate_lora_composition(data: Dict[str, Any]):
         seed_default_loras(registry)
     weights = data.get("weights")
     base_model = data.get("base_model", "sdxl")
-    composition = compose_loras(registry, lora_ids=lora_ids, weights=weights, base_model=base_model)
+    composition = compose_loras(
+        registry, lora_ids=lora_ids, weights=weights, base_model=base_model
+    )
     conflicts = detect_conflicts(registry, lora_ids)
     return {
         "status": "success",
@@ -4143,32 +5388,51 @@ async def validate_lora_composition(data: Dict[str, Any]):
 @router.post("/control/preprocess")
 async def control_preprocess(body: Dict[str, Any] = Body(...)):
     """Preprocess image to extract control signal (canny, depth, pose, etc.)."""
-    from common_lib.modules.image_processing.services.advanced_control_service import preprocess_control, PREPROCESSORS
+    from common_lib.modules.image_processing.services.advanced_control_service import (
+        preprocess_control,
+        PREPROCESSORS,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
         raise HTTPException(400, detail="image (base64) required")
     control_type = body.get("control_type", "canny")
     if control_type not in PREPROCESSORS:
-        raise HTTPException(400, detail=f"Unknown type '{control_type}'. Available: {list(PREPROCESSORS.keys())}")
+        raise HTTPException(
+            400,
+            detail=f"Unknown type '{control_type}'. Available: {list(PREPROCESSORS.keys())}",
+        )
 
     img = _decode_image(image_b64)
-    kwargs = {k: v for k, v in body.items() if k not in ("image", "control_type") and isinstance(v, (int, float, str, bool))}
+    kwargs = {
+        k: v
+        for k, v in body.items()
+        if k not in ("image", "control_type") and isinstance(v, (int, float, str, bool))
+    }
     result = preprocess_control(img, control_type, **kwargs)
-    return {"status": "success", "image": _encode_image(result), "control_type": control_type}
+    return {
+        "status": "success",
+        "image": _encode_image(result),
+        "control_type": control_type,
+    }
 
 
 @router.get("/control/preprocessors")
 async def control_list_preprocessors():
     """List all available ControlNet preprocessors."""
-    from common_lib.modules.image_processing.services.advanced_control_service import PREPROCESSORS
+    from common_lib.modules.image_processing.services.advanced_control_service import (
+        PREPROCESSORS,
+    )
+
     return {"status": "success", "preprocessors": list(PREPROCESSORS.keys())}
 
 
 @router.post("/control/generate")
 async def control_generate(body: Dict[str, Any] = Body(...)):
     """ControlNet-guided image generation."""
-    from common_lib.modules.image_processing.services.advanced_control_service import controlnet_generate
+    from common_lib.modules.image_processing.services.advanced_control_service import (
+        controlnet_generate,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -4185,15 +5449,22 @@ async def control_generate(body: Dict[str, Any] = Body(...)):
         seed=body.get("seed"),
         control_weight=body.get("control_weight", 0.8),
     )
-    return {"status": "success", "image": _encode_image(result["image"]),
-            "control_image": _encode_image(result["control_image"]),
-            "metadata": {k: v for k, v in result.items() if k not in ("image", "control_image")}}
+    return {
+        "status": "success",
+        "image": _encode_image(result["image"]),
+        "control_image": _encode_image(result["control_image"]),
+        "metadata": {
+            k: v for k, v in result.items() if k not in ("image", "control_image")
+        },
+    }
 
 
 @router.post("/control/ip-adapter")
 async def control_ip_adapter(body: Dict[str, Any] = Body(...)):
     """IP-Adapter conditioning (style, face identity, composition)."""
-    from common_lib.modules.image_processing.services.advanced_control_service import ip_adapter_condition
+    from common_lib.modules.image_processing.services.advanced_control_service import (
+        ip_adapter_condition,
+    )
 
     image_b64 = body.get("image")
     ref_b64 = body.get("reference")
@@ -4203,19 +5474,26 @@ async def control_ip_adapter(body: Dict[str, Any] = Body(...)):
     img = _decode_image(image_b64)
     ref = _decode_image(ref_b64)
     result = ip_adapter_condition(
-        image=img, reference=ref,
+        image=img,
+        reference=ref,
         variant=body.get("variant", "plus"),
         weight=body.get("weight", 0.8),
         is_faceid=body.get("is_faceid", False),
         prompt=body.get("prompt", ""),
     )
-    return {"status": "success", "image": _encode_image(result["image"]), "metadata": {k: v for k, v in result.items() if k != "image"}}
+    return {
+        "status": "success",
+        "image": _encode_image(result["image"]),
+        "metadata": {k: v for k, v in result.items() if k != "image"},
+    }
 
 
 @router.post("/control/reference-only")
 async def control_reference_only(body: Dict[str, Any] = Body(...)):
     """Reference-only generation (attention coupling, no IP-Adapter)."""
-    from common_lib.modules.image_processing.services.advanced_control_service import reference_only
+    from common_lib.modules.image_processing.services.advanced_control_service import (
+        reference_only,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -4227,20 +5505,29 @@ async def control_reference_only(body: Dict[str, Any] = Body(...)):
         style_strength=body.get("style_strength", 0.7),
         content_strength=body.get("content_strength", 0.5),
     )
-    return {"status": "success", "image": _encode_image(result["image"]), "metadata": {k: v for k, v in result.items() if k != "image"}}
+    return {
+        "status": "success",
+        "image": _encode_image(result["image"]),
+        "metadata": {k: v for k, v in result.items() if k != "image"},
+    }
 
 
 @router.get("/control/recipes")
 async def control_recipes():
     """List all multi-conditioning recipes."""
-    from common_lib.modules.image_processing.services.advanced_control_service import get_recipes
+    from common_lib.modules.image_processing.services.advanced_control_service import (
+        get_recipes,
+    )
+
     return {"status": "success", "recipes": get_recipes()}
 
 
 @router.post("/control/apply-recipe")
 async def control_apply_recipe(body: Dict[str, Any] = Body(...)):
     """Apply a multi-conditioning recipe."""
-    from common_lib.modules.image_processing.services.advanced_control_service import apply_recipe
+    from common_lib.modules.image_processing.services.advanced_control_service import (
+        apply_recipe,
+    )
 
     image_b64 = body.get("image")
     if not image_b64:
@@ -4248,28 +5535,40 @@ async def control_apply_recipe(body: Dict[str, Any] = Body(...)):
     img = _decode_image(image_b64)
     ref = _decode_image(body["reference"]) if body.get("reference") else None
     result = apply_recipe(
-        image=img, recipe_name=body.get("recipe", "portrait"),
-        prompt=body.get("prompt", ""), reference=ref,
+        image=img,
+        recipe_name=body.get("recipe", "portrait"),
+        prompt=body.get("prompt", ""),
+        reference=ref,
     )
     if "error" in result:
         raise HTTPException(400, detail=result["error"])
-    return {"status": "success", "image": _encode_image(result["image"]),
-            "recipe": result["recipe"], "model": result["model"],
-            "controls_applied": result["controls_applied"],
-            "duration_ms": result["duration_ms"]}
+    return {
+        "status": "success",
+        "image": _encode_image(result["image"]),
+        "recipe": result["recipe"],
+        "model": result["model"],
+        "controls_applied": result["controls_applied"],
+        "duration_ms": result["duration_ms"],
+    }
 
 
 @router.get("/control/sampler-guide")
 async def control_sampler_guide():
     """Get sampler/scheduler optimization guide."""
-    from common_lib.modules.image_processing.services.advanced_control_service import get_sampler_guide
+    from common_lib.modules.image_processing.services.advanced_control_service import (
+        get_sampler_guide,
+    )
+
     return {"status": "success", **get_sampler_guide()}
 
 
 @router.post("/control/recommend")
 async def control_recommend(body: Dict[str, Any] = Body(...)):
     """Recommend sampler, CFG, and steps for task/quality/model."""
-    from common_lib.modules.image_processing.services.advanced_control_service import recommend_settings
+    from common_lib.modules.image_processing.services.advanced_control_service import (
+        recommend_settings,
+    )
+
     result = recommend_settings(
         task=body.get("task", "portrait"),
         quality=body.get("quality", "standard"),
@@ -4281,20 +5580,34 @@ async def control_recommend(body: Dict[str, Any] = Body(...)):
 @router.post("/control/prompt-weight")
 async def control_prompt_weight(body: Dict[str, Any] = Body(...)):
     """Apply prompt weighting syntax."""
-    from common_lib.modules.image_processing.services.advanced_control_service import apply_prompt_weighting, schedule_prompt
+    from common_lib.modules.image_processing.services.advanced_control_service import (
+        apply_prompt_weighting,
+        schedule_prompt,
+    )
+
     prompt = body.get("prompt", "")
     weights = body.get("weights", {})
     result = apply_prompt_weighting(prompt, weights)
     scheduled = None
     if body.get("early_concept") and body.get("refined_concept"):
-        scheduled = schedule_prompt(body["early_concept"], body["refined_concept"], body.get("switch_ratio", 0.4))
-    return {"status": "success", "weighted_prompt": result, "scheduled_prompt": scheduled}
+        scheduled = schedule_prompt(
+            body["early_concept"],
+            body["refined_concept"],
+            body.get("switch_ratio", 0.4),
+        )
+    return {
+        "status": "success",
+        "weighted_prompt": result,
+        "scheduled_prompt": scheduled,
+    }
 
 
 @router.post("/control/flux")
 async def control_flux(body: Dict[str, Any] = Body(...)):
     """FLUX native control (Canny, Depth, Fill, Kontext)."""
-    from common_lib.modules.image_processing.services.advanced_control_service import flux_control
+    from common_lib.modules.image_processing.services.advanced_control_service import (
+        flux_control,
+    )
 
     image_b64 = body.get("image")
     img = _decode_image(image_b64) if image_b64 else None
@@ -4304,8 +5617,12 @@ async def control_flux(body: Dict[str, Any] = Body(...)):
         control_type=body.get("control_type", "canny"),
         strength=body.get("strength", 0.7),
     )
-    return {"status": "success", "image": _encode_image(result["image"]),
-            "control_type": result["control_type"], "duration_ms": result["duration_ms"]}
+    return {
+        "status": "success",
+        "image": _encode_image(result["image"]),
+        "control_type": result["control_type"],
+        "duration_ms": result["duration_ms"],
+    }
 
 
 # ── NEX Preset Packages (§22, §24, §91) ──────────────────────────
@@ -4316,7 +5633,9 @@ import base64 as _b64
 @router.post("/preset/nex/export")
 async def preset_nex_export(body: Dict[str, Any] = Body(...)):
     """Export a face editing preset as a .nex ZIP package with provenance."""
-    from common_lib.modules.image_processing.services.nex_preset_service import export_nex_preset
+    from common_lib.modules.image_processing.services.nex_preset_service import (
+        export_nex_preset,
+    )
     from fastapi.responses import Response
 
     name = body.get("name", "Untitled Preset")
@@ -4337,6 +5656,7 @@ async def preset_nex_export(body: Dict[str, Any] = Body(...)):
         try:
             from PIL import Image as _PilImage
             import io as _io
+
             if thumb_b64.startswith("data:"):
                 thumb_b64 = thumb_b64.split(",", 1)[1]
             thumb_bytes = _b64.b64decode(thumb_b64)
@@ -4345,23 +5665,34 @@ async def preset_nex_export(body: Dict[str, Any] = Body(...)):
             pass
 
     zip_bytes = export_nex_preset(
-        name=name, description=description, tool_name=tool_name,
-        tool_method=tool_method, params=params, category=category,
-        tags=tags, author=author, thumbnail_image=thumbnail,
-        model=model, provider=provider,
+        name=name,
+        description=description,
+        tool_name=tool_name,
+        tool_method=tool_method,
+        params=params,
+        category=category,
+        tags=tags,
+        author=author,
+        thumbnail_image=thumbnail,
+        model=model,
+        provider=provider,
     )
 
     return Response(
         content=zip_bytes,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{name.replace(chr(32), "_")}.nex"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{name.replace(chr(32), "_")}.nex"'
+        },
     )
 
 
 @router.post("/preset/nex/import")
 async def preset_nex_import(body: Dict[str, Any] = Body(...)):
     """Import a .nex preset package and extract configuration."""
-    from common_lib.modules.image_processing.services.nex_preset_service import import_nex_preset
+    from common_lib.modules.image_processing.services.nex_preset_service import (
+        import_nex_preset,
+    )
 
     zip_b64 = body.get("zip_data")
     if not zip_b64:
@@ -4378,7 +5709,9 @@ async def preset_nex_import(body: Dict[str, Any] = Body(...)):
 @router.post("/preset/nex/verify")
 async def preset_nex_verify(body: Dict[str, Any] = Body(...)):
     """Verify integrity of a .nex preset package."""
-    from common_lib.modules.image_processing.services.nex_preset_service import verify_nex_preset
+    from common_lib.modules.image_processing.services.nex_preset_service import (
+        verify_nex_preset,
+    )
 
     zip_b64 = body.get("zip_data")
     if not zip_b64:
@@ -4395,7 +5728,9 @@ async def preset_nex_verify(body: Dict[str, Any] = Body(...)):
 @router.post("/preset/nex/export-collection")
 async def preset_nex_export_collection(body: Dict[str, Any] = Body(...)):
     """Export multiple presets as a single .nex collection package."""
-    from common_lib.modules.image_processing.services.nex_preset_service import export_nex_preset_collection
+    from common_lib.modules.image_processing.services.nex_preset_service import (
+        export_nex_preset_collection,
+    )
     from fastapi.responses import Response
 
     presets = body.get("presets", [])
@@ -4406,14 +5741,18 @@ async def preset_nex_export_collection(body: Dict[str, Any] = Body(...)):
     return Response(
         content=zip_bytes,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{collection_name.replace(chr(32), "_")}.nex"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{collection_name.replace(chr(32), "_")}.nex"'
+        },
     )
 
 
 @router.post("/preset/nex/import-collection")
 async def preset_nex_import_collection(body: Dict[str, Any] = Body(...)):
     """Import a .nex collection package containing multiple presets."""
-    from common_lib.modules.image_processing.services.nex_preset_service import import_nex_preset_collection
+    from common_lib.modules.image_processing.services.nex_preset_service import (
+        import_nex_preset_collection,
+    )
 
     zip_b64 = body.get("zip_data")
     if not zip_b64:
@@ -4439,30 +5778,41 @@ def _build_route_index() -> None:
     if _ROUTE_INDEX:
         return
     for r in router.routes:
-        if not hasattr(r, 'path') or not hasattr(r, 'methods'):
+        if not hasattr(r, "path") or not hasattr(r, "methods"):
             continue
-        doc = ''
-        if hasattr(r, 'endpoint') and r.endpoint:
-            doc = (r.endpoint.__doc__ or '').strip()
+        doc = ""
+        if hasattr(r, "endpoint") and r.endpoint:
+            doc = (r.endpoint.__doc__ or "").strip()
         # Build searchable text from path + name + docstring
-        path_words = [w for w in r.path.replace('/', ' ').replace('-', ' ').replace('_', ' ').split() if w]
-        name_words = (r.name or '').replace('_', ' ').split()
-        doc_words = doc.lower().replace('/', ' ').replace('-', ' ').replace('_', ' ').split()
+        path_words = [
+            w
+            for w in r.path.replace("/", " ")
+            .replace("-", " ")
+            .replace("_", " ")
+            .split()
+            if w
+        ]
+        name_words = (r.name or "").replace("_", " ").split()
+        doc_words = (
+            doc.lower().replace("/", " ").replace("-", " ").replace("_", " ").split()
+        )
         # Extract category from path (first segment)
-        segments = [s for s in r.path.split('/') if s]
-        category = segments[0] if segments else 'general'
+        segments = [s for s in r.path.split("/") if s]
+        category = segments[0] if segments else "general"
         # Tags from path segments
         tags = list(set(segments + name_words[:3]))
-        _ROUTE_INDEX.append({
-            'path': r.path,
-            'methods': list(r.methods or []),
-            'name': r.name or '',
-            'summary': doc.split('\n')[0] if doc else '',
-            'full_doc': doc,
-            'category': category,
-            'tags': tags,
-            'search_text': ' '.join(path_words + name_words + doc_words).lower(),
-        })
+        _ROUTE_INDEX.append(
+            {
+                "path": r.path,
+                "methods": list(r.methods or []),
+                "name": r.name or "",
+                "summary": doc.split("\n")[0] if doc else "",
+                "full_doc": doc,
+                "category": category,
+                "tags": tags,
+                "search_text": " ".join(path_words + name_words + doc_words).lower(),
+            }
+        )
 
 
 _build_route_index()
@@ -4491,26 +5841,30 @@ async def face_search(
     # Filter by category
     if category:
         cat_lower = category.lower()
-        results = [r for r in results if cat_lower in r['category'].lower() or cat_lower in r['search_text']]
+        results = [
+            r
+            for r in results
+            if cat_lower in r["category"].lower() or cat_lower in r["search_text"]
+        ]
 
     # Filter by HTTP method
     if method:
         method_upper = method.upper()
-        results = [r for r in results if method_upper in r['methods']]
+        results = [r for r in results if method_upper in r["methods"]]
 
     # Filter by tag
     if tag:
         tag_lower = tag.lower()
-        results = [r for r in results if any(tag_lower in t.lower() for t in r['tags'])]
+        results = [r for r in results if any(tag_lower in t.lower() for t in r["tags"])]
 
     # Full-text search with scoring
     if query:
         scored = []
         for route in results:
             score = 0
-            text = route['search_text']
-            name = route['name'].lower()
-            summary = route['summary'].lower()
+            text = route["search_text"]
+            name = route["name"].lower()
+            summary = route["summary"].lower()
 
             # Exact match in name (highest score)
             if query == name:
@@ -4525,7 +5879,7 @@ async def face_search(
             elif query in summary:
                 score += 40
             # Path contains query
-            elif query in route['path'].lower():
+            elif query in route["path"].lower():
                 score += 30
             # Any word matches
             else:
@@ -4552,16 +5906,16 @@ async def face_search(
         "total": len(results),
         "results": [
             {
-                "path": r['path'],
-                "methods": r['methods'],
-                "name": r['name'],
-                "summary": r['summary'],
-                "category": r['category'],
-                "tags": r['tags'],
+                "path": r["path"],
+                "methods": r["methods"],
+                "name": r["name"],
+                "summary": r["summary"],
+                "category": r["category"],
+                "tags": r["tags"],
             }
             for r in results
         ],
-        "categories": list(set(r['category'] for r in _ROUTE_INDEX)),
+        "categories": list(set(r["category"] for r in _ROUTE_INDEX)),
         "total_endpoints": len(_ROUTE_INDEX),
     }
 
@@ -4573,7 +5927,7 @@ async def face_search_categories():
         _build_route_index()
     cats: Dict[str, int] = {}
     for r in _ROUTE_INDEX:
-        cats[r['category']] = cats.get(r['category'], 0) + 1
+        cats[r["category"]] = cats.get(r["category"], 0) + 1
     return {"status": "success", "categories": cats, "total": len(_ROUTE_INDEX)}
 
 
@@ -4584,7 +5938,7 @@ async def face_search_tags():
         _build_route_index()
     tags: Dict[str, int] = {}
     for r in _ROUTE_INDEX:
-        for t in r['tags']:
+        for t in r["tags"]:
             tags[t] = tags.get(t, 0) + 1
     sorted_tags = sorted(tags.items(), key=lambda x: x[1], reverse=True)
     return {"status": "success", "tags": dict(sorted_tags), "total_unique": len(tags)}
@@ -4605,6 +5959,7 @@ async def face_quality_gate(request: Request):
     from common_lib.modules.image_processing.services.face_quality_gate import (
         apply_quality_gate,
     )
+
     body = await request.json()
     image = _decode_image(body)
     if image is None:
@@ -4639,6 +5994,7 @@ async def face_quality_assess(request: Request):
     from common_lib.modules.image_processing.services.face_quality_gate import (
         detect_and_assess_faces,
     )
+
     body = await request.json()
     image = _decode_image(body)
     if image is None:
@@ -4691,7 +6047,7 @@ async def marketplace_publish_template(body: Dict[str, Any] = Body(...)):
         "author": author,
         "tags": tags,
         "category": category,
-        "published_at": __import__('datetime').datetime.utcnow().isoformat(),
+        "published_at": __import__("datetime").datetime.utcnow().isoformat(),
         "downloads": 0,
         "rating": 0.0,
     }
@@ -4721,13 +6077,16 @@ async def marketplace_delete_template(template_id: str):
 
 
 @router.get("/marketplace/templates/search")
-async def marketplace_search_templates(
-    q: str = "", category: str = "", tag: str = ""
-):
+async def marketplace_search_templates(q: str = "", category: str = "", tag: str = ""):
     """Search community templates by name, category, or tag."""
     results = _community_templates
     if q:
-        results = [t for t in results if q.lower() in t["name"].lower() or q.lower() in t.get("description", "").lower()]
+        results = [
+            t
+            for t in results
+            if q.lower() in t["name"].lower()
+            or q.lower() in t.get("description", "").lower()
+        ]
     if category:
         results = [t for t in results if t.get("category") == category]
     if tag:
@@ -4752,6 +6111,7 @@ async def marketplace_rate_template(template_id: str, body: Dict[str, Any] = Bod
 
 
 # ── Reviews ────────────────────────────────────────────────────
+
 
 @router.get("/marketplace/templates/{template_id}/reviews")
 async def marketplace_list_reviews(template_id: str):
@@ -4781,7 +6141,7 @@ async def marketplace_add_review(template_id: str, body: Dict[str, Any] = Body(.
                 "author": author,
                 "text": text,
                 "rating": rating,
-                "created_at": __import__('datetime').datetime.utcnow().isoformat(),
+                "created_at": __import__("datetime").datetime.utcnow().isoformat(),
             }
             t["reviews"].append(review)
             # Update template rating if provided
@@ -4795,6 +6155,7 @@ async def marketplace_add_review(template_id: str, body: Dict[str, Any] = Body(.
 
 
 # ── Fork ───────────────────────────────────────────────────────
+
 
 @router.post("/marketplace/templates/{template_id}/fork")
 async def marketplace_fork_template(template_id: str, body: Dict[str, Any] = Body(...)):
@@ -4812,7 +6173,7 @@ async def marketplace_fork_template(template_id: str, body: Dict[str, Any] = Bod
                 "author": author,
                 "tags": list(t.get("tags", [])),
                 "category": t.get("category", "general"),
-                "published_at": __import__('datetime').datetime.utcnow().isoformat(),
+                "published_at": __import__("datetime").datetime.utcnow().isoformat(),
                 "downloads": 0,
                 "rating": 0.0,
                 "rating_count": 0,
@@ -4826,7 +6187,9 @@ async def marketplace_fork_template(template_id: str, body: Dict[str, Any] = Bod
 
 
 @router.post("/marketplace/templates/{template_id}/clone")
-async def marketplace_clone_template(template_id: str, body: Dict[str, Any] = Body(...)):
+async def marketplace_clone_template(
+    template_id: str, body: Dict[str, Any] = Body(...)
+):
     """Clone a template in-place — creates a copy with reset stats (no fork tracking)."""
     author = body.get("author", "anonymous")
     new_name = body.get("name")
@@ -4835,6 +6198,7 @@ async def marketplace_clone_template(template_id: str, body: Dict[str, Any] = Bo
         if t["id"] == template_id:
             new_id = f"tpl_{int(__import__('time').time() * 1000)}"
             import copy as _copy
+
             cloned = {
                 "id": new_id,
                 "name": new_name or f"{t['name']} (copy)",
@@ -4843,7 +6207,7 @@ async def marketplace_clone_template(template_id: str, body: Dict[str, Any] = Bo
                 "author": author,
                 "tags": list(t.get("tags", [])),
                 "category": t.get("category", "general"),
-                "published_at": __import__('datetime').datetime.utcnow().isoformat(),
+                "published_at": __import__("datetime").datetime.utcnow().isoformat(),
                 "downloads": 0,
                 "rating": 0.0,
                 "rating_count": 0,
@@ -4858,15 +6222,19 @@ async def marketplace_clone_template(template_id: str, body: Dict[str, Any] = Bo
 
 # ── Trending ───────────────────────────────────────────────────
 
+
 @router.get("/marketplace/templates/trending")
 async def marketplace_trending_templates(limit: int = 10):
     """Get trending templates sorted by download velocity (downloads per day)."""
     import datetime as _dt
+
     now = _dt.datetime.utcnow()
     scored = []
     for t in _community_templates:
         try:
-            published = _dt.datetime.fromisoformat(t.get("published_at", now.isoformat()))
+            published = _dt.datetime.fromisoformat(
+                t.get("published_at", now.isoformat())
+            )
             days = max((now - published).total_seconds() / 86400, 0.1)
             velocity = t.get("downloads", 0) / days
         except (ValueError, TypeError):
@@ -4879,6 +6247,7 @@ async def marketplace_trending_templates(limit: int = 10):
 # ═══════════════════════════════════════════════════════════════════════════
 # Template Versioning
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 @router.get("/marketplace/templates/{template_id}/versions")
 async def marketplace_list_versions(template_id: str):
@@ -4894,12 +6263,18 @@ async def marketplace_list_versions(template_id: str):
                 "is_current": True,
             }
             all_versions = [current] + versions
-            return {"status": "success", "versions": all_versions, "current_version": t.get("version", 1)}
+            return {
+                "status": "success",
+                "versions": all_versions,
+                "current_version": t.get("version", 1),
+            }
     raise HTTPException(404, detail=f"Template '{template_id}' not found")
 
 
 @router.post("/marketplace/templates/{template_id}/versions")
-async def marketplace_create_version(template_id: str, body: Dict[str, Any] = Body(...)):
+async def marketplace_create_version(
+    template_id: str, body: Dict[str, Any] = Body(...)
+):
     """Create a new version of a template (author updates)."""
     pipeline = body.get("pipeline")
     changelog = body.get("changelog", "")
@@ -4912,19 +6287,26 @@ async def marketplace_create_version(template_id: str, body: Dict[str, Any] = Bo
             # Archive current version
             if "versions" not in t:
                 t["versions"] = []
-            t["versions"].insert(0, {
-                "version": t.get("version", 1),
-                "pipeline": t.get("pipeline"),
-                "changelog": t.get("changelog", ""),
-                "published_at": t.get("published_at"),
-                "archived_at": __import__('datetime').datetime.utcnow().isoformat(),
-            })
+            t["versions"].insert(
+                0,
+                {
+                    "version": t.get("version", 1),
+                    "pipeline": t.get("pipeline"),
+                    "changelog": t.get("changelog", ""),
+                    "published_at": t.get("published_at"),
+                    "archived_at": __import__("datetime").datetime.utcnow().isoformat(),
+                },
+            )
             # Update to new version
             t["version"] = t.get("version", 1) + 1
             t["pipeline"] = pipeline
             t["changelog"] = changelog
-            t["published_at"] = __import__('datetime').datetime.utcnow().isoformat()
-            return {"status": "success", "version": t["version"], "previous_versions": len(t["versions"])}
+            t["published_at"] = __import__("datetime").datetime.utcnow().isoformat()
+            return {
+                "status": "success",
+                "version": t["version"],
+                "previous_versions": len(t["versions"]),
+            }
     raise HTTPException(404, detail=f"Template '{template_id}' not found")
 
 
@@ -4944,18 +6326,25 @@ async def marketplace_rollback_version(template_id: str, version_num: int):
             # Archive current
             if "versions" not in t:
                 t["versions"] = []
-            t["versions"].insert(0, {
-                "version": t.get("version", 1),
-                "pipeline": t.get("pipeline"),
-                "changelog": f"Rolled back to v{version_num}",
-                "published_at": t.get("published_at"),
-                "archived_at": __import__('datetime').datetime.utcnow().isoformat(),
-            })
+            t["versions"].insert(
+                0,
+                {
+                    "version": t.get("version", 1),
+                    "pipeline": t.get("pipeline"),
+                    "changelog": f"Rolled back to v{version_num}",
+                    "published_at": t.get("published_at"),
+                    "archived_at": __import__("datetime").datetime.utcnow().isoformat(),
+                },
+            )
             # Restore target
             t["version"] = t.get("version", 1) + 1
             t["pipeline"] = target["pipeline"]
-            t["published_at"] = __import__('datetime').datetime.utcnow().isoformat()
-            return {"status": "success", "rolled_back_to": version_num, "new_version": t["version"]}
+            t["published_at"] = __import__("datetime").datetime.utcnow().isoformat()
+            return {
+                "status": "success",
+                "rolled_back_to": version_num,
+                "new_version": t["version"],
+            }
     raise HTTPException(404, detail=f"Template '{template_id}' not found")
 
 
@@ -4966,7 +6355,16 @@ async def marketplace_get_version(template_id: str, version_num: int):
         if t["id"] == template_id:
             # Current version
             if t.get("version", 1) == version_num:
-                return {"status": "success", "version": {"version": version_num, "pipeline": t.get("pipeline"), "changelog": t.get("changelog", ""), "published_at": t.get("published_at"), "is_current": True}}
+                return {
+                    "status": "success",
+                    "version": {
+                        "version": version_num,
+                        "pipeline": t.get("pipeline"),
+                        "changelog": t.get("changelog", ""),
+                        "published_at": t.get("published_at"),
+                        "is_current": True,
+                    },
+                }
             # Archived version
             for v in t.get("versions", []):
                 if v.get("version") == version_num:
@@ -5008,8 +6406,8 @@ async def marketplace_create_collection(body: Dict[str, Any] = Body(...)):
         "author": author,
         "template_ids": template_ids,
         "tags": tags,
-        "created_at": __import__('datetime').datetime.utcnow().isoformat(),
-        "updated_at": __import__('datetime').datetime.utcnow().isoformat(),
+        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+        "updated_at": __import__("datetime").datetime.utcnow().isoformat(),
     }
     _collections.append(collection)
     return {"status": "success", "collection_id": col_id}
@@ -5020,11 +6418,15 @@ async def marketplace_update_collection(col_id: str, body: Dict[str, Any] = Body
     """Update a collection's metadata or template list."""
     for c in _collections:
         if c["id"] == col_id:
-            if "name" in body: c["name"] = body["name"]
-            if "description" in body: c["description"] = body["description"]
-            if "tags" in body: c["tags"] = body["tags"]
-            if "template_ids" in body: c["template_ids"] = body["template_ids"]
-            c["updated_at"] = __import__('datetime').datetime.utcnow().isoformat()
+            if "name" in body:
+                c["name"] = body["name"]
+            if "description" in body:
+                c["description"] = body["description"]
+            if "tags" in body:
+                c["tags"] = body["tags"]
+            if "template_ids" in body:
+                c["template_ids"] = body["template_ids"]
+            c["updated_at"] = __import__("datetime").datetime.utcnow().isoformat()
             return {"status": "success", "collection": c}
     raise HTTPException(404, detail=f"Collection '{col_id}' not found")
 
@@ -5050,19 +6452,21 @@ async def marketplace_add_to_collection(col_id: str, body: Dict[str, Any] = Body
         if c["id"] == col_id:
             if template_id not in c["template_ids"]:
                 c["template_ids"].append(template_id)
-                c["updated_at"] = __import__('datetime').datetime.utcnow().isoformat()
+                c["updated_at"] = __import__("datetime").datetime.utcnow().isoformat()
             return {"status": "success", "count": len(c["template_ids"])}
     raise HTTPException(404, detail=f"Collection '{col_id}' not found")
 
 
 @router.post("/marketplace/collections/{col_id}/remove")
-async def marketplace_remove_from_collection(col_id: str, body: Dict[str, Any] = Body(...)):
+async def marketplace_remove_from_collection(
+    col_id: str, body: Dict[str, Any] = Body(...)
+):
     """Remove a template from a collection."""
     template_id = body.get("template_id")
     for c in _collections:
         if c["id"] == col_id:
             c["template_ids"] = [tid for tid in c["template_ids"] if tid != template_id]
-            c["updated_at"] = __import__('datetime').datetime.utcnow().isoformat()
+            c["updated_at"] = __import__("datetime").datetime.utcnow().isoformat()
             return {"status": "success", "count": len(c["template_ids"])}
     raise HTTPException(404, detail=f"Collection '{col_id}' not found")
 
@@ -5080,14 +6484,20 @@ async def marketplace_track_view(template_id: str):
     if template_id not in _analytics:
         _analytics[template_id] = {"views": 0, "view_dates": [], "install_dates": []}
     _analytics[template_id]["views"] = _analytics[template_id].get("views", 0) + 1
-    _analytics[template_id]["view_dates"].append(__import__('datetime').datetime.utcnow().isoformat())
+    _analytics[template_id]["view_dates"].append(
+        __import__("datetime").datetime.utcnow().isoformat()
+    )
     return {"status": "success", "views": _analytics[template_id]["views"]}
 
 
 @router.get("/marketplace/templates/{template_id}/analytics")
-async def marketplace_get_analytics(template_id: str, days: int = Query(7, ge=1, le=365)):
+async def marketplace_get_analytics(
+    template_id: str, days: int = Query(7, ge=1, le=365)
+):
     """Get analytics for a template with configurable time range."""
-    stats = _analytics.get(template_id, {"views": 0, "view_dates": [], "install_dates": []})
+    stats = _analytics.get(
+        template_id, {"views": 0, "view_dates": [], "install_dates": []}
+    )
     tpl = next((t for t in _community_templates if t["id"] == template_id), None)
     downloads = tpl.get("downloads", 0) if tpl else 0
     rating = tpl.get("rating", 0) if tpl else 0
@@ -5095,6 +6505,7 @@ async def marketplace_get_analytics(template_id: str, days: int = Query(7, ge=1,
     review_count = len(tpl.get("reviews", [])) if tpl else 0
 
     import datetime as _dt
+
     now = _dt.datetime.utcnow()
     daily_views = [0] * days
     daily_installs = [0] * days
@@ -5132,7 +6543,9 @@ async def marketplace_get_analytics(template_id: str, days: int = Query(7, ge=1,
             "period_views": period_views,
             "period_installs": period_installs,
             "total_installs": downloads,
-            "conversion_rate": round(downloads / max(stats.get("views", 0), 1) * 100, 1),
+            "conversion_rate": round(
+                downloads / max(stats.get("views", 0), 1) * 100, 1
+            ),
             "days": days,
         },
     }
@@ -5140,10 +6553,14 @@ async def marketplace_get_analytics(template_id: str, days: int = Query(7, ge=1,
 
 # Also track installs
 _orig_install = None
+
+
 async def _track_install(template_id: str):
     if template_id not in _analytics:
         _analytics[template_id] = {"views": 0, "view_dates": [], "install_dates": []}
-    _analytics[template_id]["install_dates"].append(__import__('datetime').datetime.utcnow().isoformat())
+    _analytics[template_id]["install_dates"].append(
+        __import__("datetime").datetime.utcnow().isoformat()
+    )
 
 
 @router.post("/quality-gate/stream")

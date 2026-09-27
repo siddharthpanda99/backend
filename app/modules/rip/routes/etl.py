@@ -15,7 +15,7 @@ from common_lib.modules.rip.rip_etl.comparison import get_comparison_engine
 from common_lib.modules.rip.rip_etl.presets import list_presets, get_preset
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/v1/etl", tags=["rip-etl"])
+router = APIRouter(prefix="/etl", tags=["rip-etl"])
 
 
 # ── Schemas ───────────────────────────────────────────────────────

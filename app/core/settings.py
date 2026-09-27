@@ -28,7 +28,11 @@ class Settings(BaseSettings):
     # P0-1 FIX: Default is now False. Set DEV_MODE=True explicitly in dev via config.ini or env.
     # DEV_MODE=True is rejected when ENVIRONMENT is "prod" or "staging" (see validator below).
     DEV_MODE: bool = config.get("Backend", "dev_mode", False)
-    DISABLE_AUTH: bool = config.get("Backend", "disable_auth", False)
+    # Single-flag dev auth bypass: defaults to DEV_MODE, so local dev runs
+    # without tokens out of the box. Hard-blocked in prod/staging by validator.
+    DISABLE_AUTH: bool = config.get(
+        "Backend", "disable_auth", config.get("Backend", "dev_mode", False)
+    )
 
     # Goal Mode — flag-gated ferment-driven project execution. When enabled, the
     # ferment router exposes POST /ferment/goal and project status endpoints, and
@@ -80,6 +84,13 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = config.get("Database", "postgres_password", "")
     POSTGRES_DB: str = config.get("Database", "postgres_db", "nexus_db")
     POSTGRES_PORT: int = config.get("Database", "postgres_port", 5432)
+
+    # Database Pool Settings
+    DB_POOL_SIZE: int = config.get("Database", "pool_size", 20)
+    DB_MAX_OVERFLOW: int = config.get("Database", "max_overflow", 30)
+    DB_POOL_RECYCLE: int = config.get("Database", "pool_recycle", 1800)
+    DB_POOL_TIMEOUT: int = config.get("Database", "pool_timeout", 30)
+    DB_POOL_MAX_CONNECTIONS: int = config.get("Database", "pool_max_connections", 100)
 
     # Proxy trust — only accept identity headers from a proxy that presents this secret.
     # Leave blank to disable proxy-header identity (safe default).

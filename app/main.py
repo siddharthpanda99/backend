@@ -1033,17 +1033,10 @@ async def lifespan(app: FastAPI):
         print(f"Warning: SM table creation failed: {e}")
 
     # --- Project Management → Notification Bridge ---
-    try:
-        from common_lib.modules.integration.bridges.project_management_notification_bridge import (
-            setup_project_management_notification_bridge,
-        )
-
-        setup_project_management_notification_bridge()
-        print(
-            "Startup: Project Management notification bridge wired to NotificationService"
-        )
-    except Exception as e:
-        print(f"Warning: Project Management notification bridge setup failed: {e}")
+    # NOTE (2026-09-27): removed dead import of
+    # common_lib.modules.integration.bridges.project_management_notification_bridge,
+    # which never existed (warned on every boot). PM notifications flow through
+    # the notification center event bus instead; see notification/events + bus.
 
     # Start periodic decay loop task (interval live-configurable from config.ini / API)
     decay_task = None

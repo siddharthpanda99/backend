@@ -38,7 +38,7 @@ from common_lib.modules.rip.rip_etl.schemas import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/v1/etl/unified", tags=["rip-etl-unified"])
+router = APIRouter(prefix="/etl/unified", tags=["rip-etl-unified"])
 
 
 # ── Schemas ────────────────────────────────────────────────────────

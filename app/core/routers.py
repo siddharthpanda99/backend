@@ -300,7 +300,6 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.users.routes.users import router as users_router
     from app.modules.projects.routes.projects import router as projects_router
     from app.modules.agents.routes.index import router as agents_router
-    from app.modules.agents.routes.pipeline_routes import router as pipeline_router
     from app.modules.agents.routes.policy_routes import router as policy_router
     from app.modules.agents.routes.task_routes import router as task_router
     from app.modules.agents.routes.profile_routes import router as profile_router
@@ -408,6 +407,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.sync.routes.index import router as sync_router
     from app.modules.integration.routes import router as integration_router
     from app.modules.scheduler.routes import router as scheduler_router
+    from app.modules.jobs.routes import router as jobs_router
     from app.modules.sandbox import router as sandbox_router
     from app.modules.doc_processing import router as doc_processing_router
     from app.modules.scheduler.routes.news_routes import router as sd_news_router
@@ -979,12 +979,9 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["Agents (Management)"],
             "auth": True,
         },
-        {
-            "router": pipeline_router,
-            "prefix": "/agents/pipelines",
-            "tags": ["Pipelines"],
-            "auth": True,
-        },
+        # NOTE: pipeline_router is already included inside agents_router
+        # (see app/modules/agents/routes/index.py) — do NOT mount it again
+        # here (duplicate paths + Duplicate Operation ID warnings).
         {
             "router": policy_router,
             "prefix": "/agents",
@@ -1016,12 +1013,9 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
         },
         # ── Project Management ─────────────────────────────────────
-        {
-            "router": _project_management_router(),
-            "prefix": "/projects",
-            "tags": ["Project Management"],
-            "auth": True,
-        },
+        # NOTE: the PM router is mounted ONCE at /pm (see below). Do NOT add
+        # a second mount here — it duplicates every PM route and shadows the
+        # core projects module.
         # ── Site Builder ────────────────────────────────────────
         {
             "router": site_project_router,
@@ -1382,6 +1376,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         },
         # ── Background & Scheduling ────────────────────────────────
         {"router": scheduler_router, "prefix": "", "tags": ["scheduler"], "auth": True},
+        {
+            "router": jobs_router,
+            "prefix": "/jobs",
+            "tags": ["Background Jobs"],
+            "auth": True,
+        },
         {"router": sd_news_router, "prefix": "", "tags": ["sd-news"], "auth": True},
         # ── Dashboard / Analytics ──────────────────────────────────
         {
@@ -1898,30 +1898,40 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
         },
         # ── Visualization, Dashboards & Reporting ────────────────────────────────────────────────
+        # NOTE: namespaced mount — root-level paths (/dashboards, /usage,
+        # /dashboard/stats) collide with the core dashboard module at "".
+        # Matches DatabaseStudio DashboardsSection (/api/v1/visualization).
         {
             "router": _visualization_router(),
-            "prefix": "",
+            "prefix": "/visualization",
             "tags": ["Visualization, Dashboards & Reporting"],
             "auth": True,
         },
         # ── API Layer, WebSocket & MCP Integration ────────────────────────────────────────────────
+        # NOTE: namespaced mount — root-level paths (/mcp-tools, /mcp-resources,
+        # /usage, /dashboard) collide with core modules at "". Matches
+        # DatabaseStudio APIIntegrationSection (/api/v1/api-integration).
         {
             "router": _api_integration_router(),
-            "prefix": "",
+            "prefix": "/api-integration",
             "tags": ["API Layer, WebSocket & MCP Integration"],
             "auth": True,
         },
         # ── Backend Architecture & Folder Structure ────────────────────────────────────────────
+        # NOTE: namespaced mount (matches ArchitectureSection:
+        # /api/v1/backend-architecture); "" mount shadowed core routes.
         {
             "router": _backend_architecture_router(),
-            "prefix": "",
+            "prefix": "/backend-architecture",
             "tags": ["Backend Architecture & Folder Structure"],
             "auth": True,
         },
         # ── Frontend Architecture & Design System ────────────────────────────────────────────
+        # NOTE: namespaced mount (matches DesignSystemSection:
+        # /api/v1/frontend-design); "" mount shadowed core routes.
         {
             "router": _frontend_design_router(),
-            "prefix": "",
+            "prefix": "/frontend-design",
             "tags": ["Frontend Architecture & Design System"],
             "auth": True,
         },

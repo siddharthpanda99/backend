@@ -8,7 +8,13 @@ from typing import Any, Dict, List, Optional
 
 from app.modules.project_management.deps import get_pm_session
 
-router = APIRouter(prefix="/rules", tags=["Notification — Rules & Segments"])
+# NOTE: scoped prefix — the unified rules engine already serves /rules
+# (app/modules/rules/routes.py). Sharing /rules caused a Duplicate Operation ID
+# warning on DELETE /{rule_id} plus route shadowing. No frontend callers of the
+# old /rules notification paths exist.
+router = APIRouter(
+    prefix="/notification-rules", tags=["Notification — Rules & Segments"]
+)
 
 
 class RuleCreateRequest(BaseModel):
@@ -32,10 +38,10 @@ class SegmentCreateRequest(BaseModel):
 
 
 @router.get("/")
-async def list_rules(event_type: Optional[str] = None,
-                      session=Depends(get_pm_session)):
+async def list_rules(event_type: Optional[str] = None, session=Depends(get_pm_session)):
     try:
         from common_lib.modules.notification.rules.service import RuleService
+
         svc = RuleService(session=session)
         return {"rules": svc.list_rules(event_type=event_type)}
     except Exception as e:
@@ -43,14 +49,16 @@ async def list_rules(event_type: Optional[str] = None,
 
 
 @router.post("/")
-async def create_rule(request: RuleCreateRequest,
-                       session=Depends(get_pm_session)):
+async def create_rule(request: RuleCreateRequest, session=Depends(get_pm_session)):
     try:
         from common_lib.modules.notification.rules.service import RuleService
+
         svc = RuleService(session=session)
         return svc.create_rule(
-            name=request.name, event_type=request.event_type,
-            conditions=request.conditions, actions=request.actions or {},
+            name=request.name,
+            event_type=request.event_type,
+            conditions=request.conditions,
+            actions=request.actions or {},
             match_all=request.match_all,
         )
     except Exception as e:
@@ -58,12 +66,16 @@ async def create_rule(request: RuleCreateRequest,
 
 
 @router.post("/evaluate")
-async def evaluate_rules(request: EvaluateRequest,
-                          session=Depends(get_pm_session)):
+async def evaluate_rules(request: EvaluateRequest, session=Depends(get_pm_session)):
     try:
         from common_lib.modules.notification.rules.service import RuleService
+
         svc = RuleService(session=session)
-        return {"matches": svc.evaluate(event_type=request.event_type, context=request.context)}
+        return {
+            "matches": svc.evaluate(
+                event_type=request.event_type, context=request.context
+            )
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -72,6 +84,7 @@ async def evaluate_rules(request: EvaluateRequest,
 async def delete_rule(rule_id: str, session=Depends(get_pm_session)):
     try:
         from common_lib.modules.notification.rules.service import RuleService
+
         svc = RuleService(session=session)
         result = svc.delete_rule(rule_id=rule_id)
         if not result:
@@ -87,6 +100,7 @@ async def delete_rule(rule_id: str, session=Depends(get_pm_session)):
 async def list_segments(session=Depends(get_pm_session)):
     try:
         from common_lib.modules.notification.rules.service import RuleService
+
         svc = RuleService(session=session)
         return {"segments": svc.list_segments()}
     except Exception as e:
@@ -94,14 +108,18 @@ async def list_segments(session=Depends(get_pm_session)):
 
 
 @router.post("/segments")
-async def create_segment(request: SegmentCreateRequest,
-                          session=Depends(get_pm_session)):
+async def create_segment(
+    request: SegmentCreateRequest, session=Depends(get_pm_session)
+):
     try:
         from common_lib.modules.notification.rules.service import RuleService
+
         svc = RuleService(session=session)
         return svc.create_segment(
-            name=request.name, criteria=request.criteria,
-            recipient_ids=request.recipient_ids, dynamic=request.dynamic,
+            name=request.name,
+            criteria=request.criteria,
+            recipient_ids=request.recipient_ids,
+            dynamic=request.dynamic,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
