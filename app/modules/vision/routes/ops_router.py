@@ -50,15 +50,86 @@ def get_operations() -> List[Dict[str, Any]]:
     return list_operations_flat()
 
 
+def _ensure_vision_jobs():
+    """Register vision executors and return the JobService singleton."""
+    from app.modules.vision.runtime.job_executors import (
+        ensure_vision_executors_registered,
+    )
+    from common_lib.modules.jobs.service import get_job_service
+
+    ensure_vision_executors_registered()
+    return get_job_service()
+
+
+def _job_envelope(record: Any, method: str) -> Dict[str, Any]:
+    refs: List[str] = []
+    try:
+        refs = [str(r) for r in (record.get_result_refs() or [])]
+    except Exception:
+        refs = []
+    return {
+        "job_id": str(record.id),
+        "status": str(record.status),
+        "method": method,
+        "progress": float(record.progress or 0.0),
+        "result_refs": refs,
+        "error": record.error,
+    }
+
+
+@router.get("/jobs/{job_id}")
+async def get_imgops_job(job_id: str) -> Dict[str, Any]:
+    """Poll a jobs-backed slow image-op job (b64-free metadata)."""
+    svc = _ensure_vision_jobs()
+    record = svc.get(job_id)
+    if record is None:
+        raise HTTPException(404, detail=f"Job {job_id} not found")
+    payload = _job_envelope(record, str(record.get_params().get("method", "")))
+    meta: Dict[str, Any] = {}
+    for ref in payload["result_refs"]:
+        if not ref.endswith("result.json"):
+            continue
+        try:
+            with open(ref, "r", encoding="utf-8") as fh:
+                loaded = json.load(fh)
+            if isinstance(loaded, dict):
+                meta = loaded
+                break
+        except (OSError, ValueError):
+            continue
+    payload["meta"] = meta
+    return payload
+
+
 @router.post("/{method}")
 async def run_operation(
     method: str,
     file: UploadFile = File(...),
     params: Optional[str] = Form(None),
+    sync: bool = False,
 ):
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(400, detail="File must be an image")
     raw = await file.read()
+    # Slow ops run as jobs (artifacts on disk, refs only) unless sync=true.
+    if method in SLOW_OPS and not sync:
+        from app.modules.vision.runtime.job_executors import IMGOPS_KIND
+
+        parsed: Dict[str, Any] = {}
+        if params:
+            try:
+                parsed = json.loads(params)
+            except json.JSONDecodeError:
+                raise HTTPException(400, detail="Invalid JSON in params")
+        record = _ensure_vision_jobs().submit(
+            IMGOPS_KIND,
+            params={
+                "method": method,
+                "image_b64": base64.b64encode(raw).decode(),
+                "op_params": parsed,
+            },
+        )
+        return {"status": "queued", **_job_envelope(record, method)}
     parsed_params: Dict[str, Any] = {}
     if params:
         try:
@@ -80,6 +151,7 @@ async def run_operation(
 async def run_operation_json(
     method: str,
     body: Dict[str, Any] = Body(...),
+    sync: bool = False,
 ):
     raw_str = body.get("image")
     if not raw_str:
@@ -89,6 +161,20 @@ async def run_operation_json(
         image_data = base64.b64decode(raw_str)
     except Exception:
         raise HTTPException(400, detail="Invalid base64 image data")
+    # Slow ops run as jobs (artifacts on disk, refs only) unless sync=true.
+    if method in SLOW_OPS and not sync:
+        from app.modules.vision.runtime.job_executors import IMGOPS_KIND
+
+        op_params = {k: v for k, v in body.items() if k != "image"}
+        record = _ensure_vision_jobs().submit(
+            IMGOPS_KIND,
+            params={
+                "method": method,
+                "image_b64": raw_str,
+                "op_params": op_params,
+            },
+        )
+        return {"status": "queued", **_job_envelope(record, method)}
     params = {k: v for k, v in body.items() if k != "image"}
     try:
         out = process_image(method, image_data, params)

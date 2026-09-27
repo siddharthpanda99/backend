@@ -41,6 +41,16 @@ from common_lib.modules.ai_models.llm.vllm_fleet_manager import (
 from app.modules.agents.runtime.tools.registry import BUILTIN_TOOL_REGISTRY
 from app.modules.agents.runtime.utils.logging import get_logger
 
+from common_lib.modules.jobs.artifacts import job_dir
+from common_lib.modules.jobs.models import JobRecord
+from common_lib.modules.jobs.service import get_job_service
+
+from app.modules.agents.runtime.job_executors import (
+    AGENT_TURN_KIND,
+    AGENT_TURN_TIMEOUT,
+    ensure_agent_executors_registered,
+)
+
 from common_lib.modules.agents.runtime.service import (
     build_model_config,
     list_available_tools as _list_tools,
@@ -381,6 +391,131 @@ async def stream(req: StreamRequest):
         ),
         media_type="text/event-stream",
     )
+
+
+# ---------------------------------------------------------------------------
+# Job-backed agent turns (off the event loop)
+# ---------------------------------------------------------------------------
+# NOTE: ``POST /stream`` above stays inline on purpose: token-level SSE cannot
+# be precomputed into a job artifact, and the generator is async I/O (it does
+# not block the loop the way workflow graph execution did). The endpoints
+# below are the off-loop alternative: submit returns 202 {job_id} immediately,
+# execution runs on a jobs worker thread, and progress streams from job state.
+
+AGENT_JOB_TERMINAL = ("completed", "failed", "cancelled")
+
+
+def _merge_stream_settings(req: StreamRequest) -> Dict[str, Any]:
+    """Merge persisted chat settings with explicit request fields (fast, sync)."""
+    from common_lib.modules.agents.chat_settings.service import (
+        apply_settings_to_request,
+        get_chat_settings_service,
+    )
+
+    svc = get_chat_settings_service()
+    persisted = svc.get_settings(req.session_id) if svc else {}
+    merged = apply_settings_to_request(persisted, req.settings or {})
+    if req.reasoning_mode is not None:
+        merged["reasoning_mode"] = bool(req.reasoning_mode)
+    if req.reasoning_plan_id is not None:
+        merged["reasoning_plan_id"] = req.reasoning_plan_id
+    if req.reasoning_level is not None:
+        merged["reasoning_level"] = req.reasoning_level
+    return merged
+
+
+def _read_turn_transcript(job_id: str) -> Optional[Dict[str, Any]]:
+    """Read the persisted transcript.json artifact for an agent-turn job."""
+    candidate = job_dir(job_id) / "transcript.json"
+    try:
+        if candidate.is_file():
+            raw: Any = json.loads(candidate.read_text(encoding="utf-8"))
+            return raw if isinstance(raw, dict) else {"value": raw}
+    except Exception as exc:  # noqa: BLE001
+        logger.error("agent turn: could not read transcript for %s: %s", job_id, exc)
+    return None
+
+
+def _turn_job_payload(record: JobRecord) -> Dict[str, Any]:
+    """Serialize an agent-turn job record plus transcript (when completed)."""
+    payload: Dict[str, Any] = record.to_dict()
+    if record.status == "completed":
+        transcript: Optional[Dict[str, Any]] = _read_turn_transcript(record.id)
+        if transcript is not None:
+            payload["transcript"] = transcript
+    return payload
+
+
+@router.post("/stream/job", status_code=202)
+async def submit_stream_job(req: StreamRequest):
+    """Submit an agent turn as a background job; 202 {job_id} immediately."""
+    merged: Dict[str, Any] = _merge_stream_settings(req)
+    ensure_agent_executors_registered()
+    record: JobRecord = get_job_service().submit(
+        kind=AGENT_TURN_KIND,
+        params={
+            "message": req.message,
+            "session_id": req.session_id,
+            "decision": req.decision,
+            "agent_id": req.agent_id or merged.get("agent_id"),
+            "system_prompt": req.system_prompt or merged.get("system_prompt"),
+            "model_path": req.model_path,
+            "provider": req.provider or merged.get("provider"),
+            "loop_id": req.loop_id,
+            "reasoning_mode": bool(merged.get("reasoning_mode", False)),
+            "reasoning_plan_id": req.reasoning_plan_id,
+            "reasoning_level": str(merged.get("reasoning_level") or "brief"),
+        },
+        timeout=float(AGENT_TURN_TIMEOUT),
+    )
+    return {"job_id": record.id, "status": record.status}
+
+
+@router.get("/stream/job/{job_id}")
+async def stream_job_status(job_id: str):
+    """Return agent-turn job status, progress, and transcript (when done)."""
+    record: JobRecord | None = get_job_service().get(job_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+    return {"data": _turn_job_payload(record)}
+
+
+@router.get("/stream/job/{job_id}/events")
+async def stream_job_events(job_id: str):
+    """Stream SSE progress events backed by agent-turn job progress."""
+
+    async def event_generator():
+        import time as _time
+
+        deadline: float = _time.time() + float(AGENT_TURN_TIMEOUT) + 30.0
+        last_progress: float = -1.0
+        yield f"data: {json.dumps({'event_type': 'turn.started', 'job_id': job_id})}\n\n"
+        while True:
+            record: JobRecord | None = get_job_service().get(job_id)
+            if record is None:
+                yield f"data: {json.dumps({'event_type': 'error', 'job_id': job_id, 'content': 'job not found'})}\n\n"
+                return
+            if record.progress != last_progress:
+                last_progress = record.progress
+                yield f"data: {json.dumps({'event_type': 'progress', 'job_id': job_id, 'percent': record.progress, 'status': record.status})}\n\n"
+            if record.status in AGENT_JOB_TERMINAL:
+                if record.status == "completed":
+                    transcript: Optional[Dict[str, Any]] = _read_turn_transcript(job_id)
+                    final: Dict[str, Any] = {
+                        "event_type": "agent_complete",
+                        "job_id": job_id,
+                        "content": str((transcript or {}).get("final_answer", "")),
+                    }
+                    yield f"data: {json.dumps(final)}\n\n"
+                else:
+                    yield f"data: {json.dumps({'event_type': 'error', 'job_id': job_id, 'content': record.error or record.status})}\n\n"
+                return
+            if _time.time() > deadline:
+                yield f"data: {json.dumps({'event_type': 'error', 'job_id': job_id, 'content': 'progress poll timed out'})}\n\n"
+                return
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 from common_lib.modules.agents.runtime import (

@@ -327,22 +327,87 @@ async def runtime_list_families():
     return RuntimeFamiliesResponse(families=[RuntimeFamilyInfo(**f) for f in families])
 
 
-@router.post("/runtime/load", response_model=RuntimeLoadResponse)
-async def runtime_load_model(request: RuntimeLoadRequest):
-    """Load a diffusion model into GPU memory."""
-    result = load_model(
-        family=request.family,
-        model_id=request.model_id,
-        torch_dtype=request.torch_dtype,
+def _ensure_vision_jobs():
+    """Register vision executors and return the JobService singleton."""
+    from app.modules.vision.runtime.job_executors import (
+        ensure_vision_executors_registered,
     )
-    if result.get("error"):
-        return RuntimeLoadResponse(status="error", error=result["error"])
-    return RuntimeLoadResponse(
-        status="success",
-        family_key=result["family_key"],
-        family=result["family"],
-        model_id=result["model_id"],
+    from common_lib.modules.jobs.service import get_job_service
+
+    ensure_vision_executors_registered()
+    return get_job_service()
+
+
+def _vision_job_payload(record: Any) -> Dict[str, Any]:
+    refs: List[str] = []
+    try:
+        refs = [str(r) for r in (record.get_result_refs() or [])]
+    except Exception:
+        refs = []
+    return {
+        "job_id": str(record.id),
+        "status": str(record.status),
+        "kind": str(record.kind),
+        "progress": float(record.progress or 0.0),
+        "result_refs": refs,
+        "error": record.error,
+    }
+
+
+@router.get("/runtime/jobs/{job_id}")
+async def runtime_job_status(job_id: str) -> Dict[str, Any]:
+    """Poll a jobs-backed diffusion runtime job (load/generate)."""
+    import json as _json
+
+    svc = _ensure_vision_jobs()
+    record = svc.get(job_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    payload = _vision_job_payload(record)
+    meta: Dict[str, Any] = {}
+    for ref in payload["result_refs"]:
+        if not ref.endswith("result.json"):
+            continue
+        try:
+            with open(ref, "r", encoding="utf-8") as fh:
+                loaded = _json.load(fh)
+            if isinstance(loaded, dict):
+                meta = loaded
+                break
+        except (OSError, ValueError):
+            continue
+    payload["meta"] = meta
+    return payload
+
+
+@router.post("/runtime/load")
+async def runtime_load_model(request: RuntimeLoadRequest, sync: bool = False):
+    """Load a diffusion model into GPU memory (jobs-backed by default)."""
+    if sync:
+        result = load_model(
+            family=request.family,
+            model_id=request.model_id,
+            torch_dtype=request.torch_dtype,
+        )
+        if result.get("error"):
+            return RuntimeLoadResponse(status="error", error=result["error"])
+        return RuntimeLoadResponse(
+            status="success",
+            family_key=result["family_key"],
+            family=result["family"],
+            model_id=result["model_id"],
+        )
+    from app.modules.vision.runtime.job_executors import DIFFUSION_LOAD_KIND
+
+    record = _ensure_vision_jobs().submit(
+        DIFFUSION_LOAD_KIND,
+        params={
+            "family": request.family,
+            "model_id": request.model_id,
+            "torch_dtype": request.torch_dtype,
+        },
     )
+    return {"status": "queued", **_vision_job_payload(record)}
 
 
 @router.post("/runtime/unload", response_model=RuntimeUnloadResponse)
@@ -354,30 +419,49 @@ async def runtime_unload_model(request: RuntimeUnloadRequest):
     return RuntimeUnloadResponse(status="success", message=result["message"])
 
 
-@router.post("/runtime/generate", response_model=RuntimeGenerateResponse)
-async def runtime_generate(request: RuntimeGenerateRequest):
-    """Generate images using a loaded or auto-selected model."""
-    result = generate_image(
-        prompt=request.prompt,
-        negative_prompt=request.negative_prompt or "",
-        width=request.width or 512,
-        height=request.height or 512,
-        num_inference_steps=request.num_inference_steps or 30,
-        guidance_scale=request.guidance_scale or 7.5,
-        seed=request.seed,
-        family_key=request.family_key,
-        family=request.family or "auto",
-        num_images=request.num_images or 1,
+@router.post("/runtime/generate")
+async def runtime_generate(request: RuntimeGenerateRequest, sync: bool = False):
+    """Generate images using a loaded or auto-selected model (jobs-backed)."""
+    if sync:
+        result = generate_image(
+            prompt=request.prompt,
+            negative_prompt=request.negative_prompt or "",
+            width=request.width or 512,
+            height=request.height or 512,
+            num_inference_steps=request.num_inference_steps or 30,
+            guidance_scale=request.guidance_scale or 7.5,
+            seed=request.seed,
+            family_key=request.family_key,
+            family=request.family or "auto",
+            num_images=request.num_images or 1,
+        )
+        if result.get("error"):
+            return RuntimeGenerateResponse(status="error", error=result["error"])
+        return RuntimeGenerateResponse(
+            status="success",
+            images=result["images"],
+            seed=result["seed"],
+            elapsed_seconds=result["elapsed_seconds"],
+            model_family=result["model_family"],
+        )
+    from app.modules.vision.runtime.job_executors import DIFFUSION_GENERATE_KIND
+
+    record = _ensure_vision_jobs().submit(
+        DIFFUSION_GENERATE_KIND,
+        params={
+            "prompt": request.prompt,
+            "negative_prompt": request.negative_prompt or "",
+            "width": request.width or 512,
+            "height": request.height or 512,
+            "num_inference_steps": request.num_inference_steps or 30,
+            "guidance_scale": request.guidance_scale or 7.5,
+            "seed": request.seed,
+            "family_key": request.family_key,
+            "family": request.family or "auto",
+            "num_images": request.num_images or 1,
+        },
     )
-    if result.get("error"):
-        return RuntimeGenerateResponse(status="error", error=result["error"])
-    return RuntimeGenerateResponse(
-        status="success",
-        images=result["images"],
-        seed=result["seed"],
-        elapsed_seconds=result["elapsed_seconds"],
-        model_family=result["model_family"],
-    )
+    return {"status": "queued", **_vision_job_payload(record)}
 
 
 __all__ = ["router"]

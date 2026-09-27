@@ -254,7 +254,11 @@ async def smart_chat(
     return StreamingResponse(sse_wrapper(), media_type="text/event-stream")
 
 
-@router.post("/upload", response_model=FileUploadResponse)
+# NOTE: session-scoped upload lives at /{session_id}/upload — NOT /upload —
+# because runtime_routes already serves POST /upload (generic file upload used
+# by the frontend) on the same /agents/runtime prefix. Same path + same
+# function name caused a Duplicate Operation ID warning and route shadowing.
+@router.post("/{session_id}/upload", response_model=FileUploadResponse)
 async def upload_file(
     session_id: str,
     file: UploadFile = File(...),
