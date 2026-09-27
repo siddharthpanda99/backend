@@ -45,6 +45,8 @@ from common_lib.modules.jobs.artifacts import job_dir
 from common_lib.modules.jobs.models import JobRecord
 from common_lib.modules.jobs.service import get_job_service
 
+from app.modules.jobs.actor import capture_job_actor, owned_job_service
+
 from app.modules.agents.runtime.job_executors import (
     AGENT_TURN_KIND,
     AGENT_TURN_TIMEOUT,
@@ -62,7 +64,7 @@ from common_lib.modules.agents.runtime.service import (
 
 logger = get_logger(__name__)
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(capture_job_actor)])
 
 
 class DeployRequest(BaseModel):
@@ -451,7 +453,7 @@ async def submit_stream_job(req: StreamRequest):
     """Submit an agent turn as a background job; 202 {job_id} immediately."""
     merged: Dict[str, Any] = _merge_stream_settings(req)
     ensure_agent_executors_registered()
-    record: JobRecord = get_job_service().submit(
+    record: JobRecord = owned_job_service().submit(
         kind=AGENT_TURN_KIND,
         params={
             "message": req.message,

@@ -21,13 +21,15 @@ import logging
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional, AsyncGenerator
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from common_lib.modules.jobs.artifacts import job_dir
 from common_lib.modules.jobs.models import JobRecord
 from common_lib.modules.jobs.service import get_job_service
+
+from app.modules.jobs.actor import capture_job_actor, owned_job_service
 from common_lib.modules.workflows.job_executors import (
     DYNAMIC_RUN_KIND,
     ensure_workflow_executors_registered,
@@ -86,7 +88,7 @@ def _submit_dynamic_run(
 ) -> JobRecord:
     """Register executors (idempotent) and submit a dynamic-run job."""
     ensure_workflow_executors_registered()
-    return get_job_service().submit(
+    return owned_job_service().submit(
         kind=DYNAMIC_RUN_KIND,
         params={
             "workflow": workflow,
@@ -147,7 +149,12 @@ async def _poll_job_sse(job_id: str, timeout: int) -> AsyncGenerator[str, None]:
         await asyncio.sleep(0.5)
 
 
-@router.post("/run", status_code=202)
+# NOTE: capture_job_actor is attached endpoint-level on the HTTP submit routes
+# only — this router also declares a websocket route, and FastAPI does not
+# inject Request-backed dependencies into WebSocket route deps (it raises at
+# request time). The WS handler below therefore submits un-stamped
+# (user_id="").
+@router.post("/run", status_code=202, dependencies=[Depends(capture_job_actor)])
 def dynamic_run(req: DynamicRunRequest):
     """
     Submit a YAML workflow + data-config run as a background job.
@@ -175,7 +182,7 @@ def dynamic_job_status(job_id: str):
     return {"data": _job_status_payload(record)}
 
 
-@router.post("/run-stream")
+@router.post("/run-stream", dependencies=[Depends(capture_job_actor)])
 async def dynamic_run_stream(req: DynamicRunRequest):
     """
     Submit the run as a background job and stream SSE progress events backed
@@ -364,6 +371,8 @@ async def dynamic_ws_run_stream(websocket: WebSocket):
                 if running_task:
                     running_task.cancel()
 
+                # WS submits are un-stamped: FastAPI can't resolve the HTTP
+                # identity dependency inside a websocket handler.
                 record = _submit_dynamic_run(
                     workflow=workflow,
                     config=config,

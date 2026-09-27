@@ -13,12 +13,14 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from app.modules.jobs.actor import capture_job_actor, owned_job_service
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(capture_job_actor)])
 
 
 # ---------------------------------------------------------------------------
@@ -59,14 +61,13 @@ def _get_image_service():
 
 
 def _ensure_vision_jobs():
-    """Register vision executors and return the JobService singleton."""
+    """Register vision executors and return the actor-aware JobService proxy."""
     from app.modules.vision.runtime.job_executors import (
         ensure_vision_executors_registered,
     )
-    from common_lib.modules.jobs.service import get_job_service
 
     ensure_vision_executors_registered()
-    return get_job_service()
+    return owned_job_service()
 
 
 def _job_envelope(record: Any) -> Dict[str, Any]:

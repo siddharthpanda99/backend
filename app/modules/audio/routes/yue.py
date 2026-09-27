@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from common_lib.modules.audio_processing.composition.abc_tools import (
     report_abc,
@@ -25,14 +25,52 @@ from common_lib.modules.audio_processing.schemas.yue import (
     YuESymbolicPlanResponse,
 )
 
+from app.modules.audio.runtime.actor import capture_job_actor, owned_job_service
+
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/yue", tags=["YuE Music Generation"])
+router = APIRouter(
+    prefix="/yue",
+    tags=["YuE Music Generation"],
+    dependencies=[Depends(capture_job_actor)],
+)
 
 
-@router.post("/generate", response_model=YuESongResponse)
-def generate_song(req: YuESongRequest) -> dict[str, Any]:
-    """Generate a complete song with vocals and accompaniment from lyrics and style prompt."""
+def _ensure_audio_jobs():
+    """Register audio executors and return the actor-aware JobService proxy."""
+    return owned_job_service()
+
+
+def _job_payload(record: Any) -> dict[str, Any]:
+    refs: list[str] = []
+    try:
+        refs = [str(r) for r in (record.get_result_refs() or [])]
+    except Exception:
+        refs = []
+    return {
+        "job_id": str(record.id),
+        "status": str(record.status),
+        "kind": str(record.kind),
+        "progress": float(record.progress or 0.0),
+        "result_refs": refs,
+        "error": record.error,
+    }
+
+
+@router.post("/generate")
+def generate_song(req: YuESongRequest, sync: bool = False) -> dict[str, Any]:
+    """Generate a complete song with vocals and accompaniment from lyrics and style prompt.
+
+    Jobs-backed by default (``audio.yue.generate`` executor, artifacts on
+    disk); pass ``sync=true`` to run inline (legacy synchronous response).
+    """
+    if not sync:
+        from app.modules.audio.runtime.job_executors import YUE_GENERATE_KIND
+
+        record = _ensure_audio_jobs().submit(
+            YUE_GENERATE_KIND, params=req.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         gen = YuEGenerator()
         res = gen.generate(
@@ -49,9 +87,19 @@ def generate_song(req: YuESongRequest) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.post("/plan", response_model=YuESymbolicPlanResponse)
-def plan_song(req: YuESongRequest) -> dict[str, Any]:
-    """Generate or retrieve a symbolic ABC music plan (melody + chords)."""
+@router.post("/plan")
+def plan_song(req: YuESongRequest, sync: bool = False) -> dict[str, Any]:
+    """Generate or retrieve a symbolic ABC music plan (melody + chords).
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if not sync:
+        from app.modules.audio.runtime.job_executors import YUE_PLAN_KIND
+
+        record = _ensure_audio_jobs().submit(
+            YUE_PLAN_KIND, params=req.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         gen = YuEGenerator()
         res = gen.plan(
@@ -67,8 +115,18 @@ def plan_song(req: YuESongRequest) -> dict[str, Any]:
 
 
 @router.post("/cover")
-def cover_song(req: YuECoverRequest) -> dict[str, Any]:
-    """Zero-shot cover of an existing audio recording with a target musical style."""
+def cover_song(req: YuECoverRequest, sync: bool = False) -> dict[str, Any]:
+    """Zero-shot cover of an existing audio recording with a target musical style.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if not sync:
+        from app.modules.audio.runtime.job_executors import YUE_COVER_KIND
+
+        record = _ensure_audio_jobs().submit(
+            YUE_COVER_KIND, params=req.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         gen = YuEGenerator()
         res = gen.cover(
@@ -111,8 +169,18 @@ def validate_abc(payload: dict[str, str]) -> dict[str, Any]:
 
 
 @router.post("/edit")
-def edit_song(req: YuEEditRequest) -> dict[str, Any]:
-    """Conversational music editing on score and parameters."""
+def edit_song(req: YuEEditRequest, sync: bool = False) -> dict[str, Any]:
+    """Conversational music editing on score and parameters.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if not sync:
+        from app.modules.audio.runtime.job_executors import YUE_EDIT_KIND
+
+        record = _ensure_audio_jobs().submit(
+            YUE_EDIT_KIND, params=req.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     from common_lib.modules.audio_processing.agents.music_editor import edit_music
 
     if not req.abc:

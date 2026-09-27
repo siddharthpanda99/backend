@@ -2,26 +2,29 @@
 Face Routes — Dedicated /api/v1/face/ endpoints for all face operations.
 
 Thin router layer delegating to common_lib face services.
+Long-running operations are jobs-backed by default; pass ``sync=true`` to run inline.
 """
 
 from __future__ import annotations
 
 import base64
-import logging
-import io
-import time
 import json
-import asyncio
+import logging
+import time
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Body, Query
-from fastapi.requests import Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Query
 from fastapi.responses import Response, StreamingResponse
 from common_lib.paths import RESOURCES_ROOT
 
+from app.modules.face.runtime.actor import capture_job_actor, owned_job_service
+from common_lib.modules.jobs.artifacts import job_dir
+from common_lib.modules.jobs.models import JobRecord
+from common_lib.modules.jobs.service import get_job_service
+
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["Face Operations"])
+router = APIRouter(dependencies=[Depends(capture_job_actor)], tags=["Face Operations"])
 
 
 def _sse(event: str, data: Dict[str, Any]) -> str:
@@ -55,6 +58,189 @@ def _decode_optional_image(
     if val:
         return _decode_image(val)
     return None
+
+
+# ---------------------------------------------------------------------------
+# Jobs-backed execution helpers
+# ---------------------------------------------------------------------------
+
+
+def _face_job_kind(operation: str) -> str:
+    """Map operation name to job kind."""
+    mapping = {
+        "detect": "face.detect",
+        "landmarks": "face.landmarks",
+        "align": "face.align",
+        "crop": "face.crop",
+        "quality": "face.quality",
+        "restore": "face.restore",
+        "swap": "face.swap",
+        "embed": "face.identity.embed",
+        "compare": "face.identity.compare",
+        "expression": "face.expression",
+        "age": "face.age",
+        "relight": "face.relight",
+        "eyes": "face.eyes",
+        "mouth": "face.mouth",
+        "enhance": "face.enhance",
+        "makeup": "face.makeup",
+        "makeup_preset": "face.makeup.preset",
+        "makeup_text": "face.makeup.text",
+        "tattoo_design": "face.tattoo.design",
+        "tattoo_place": "face.tattoo.place",
+        "tattoo_remove": "face.tattoo.remove",
+        "sticker": "face.sticker.generate",
+        "sticker_photo": "face.sticker.from_photo",
+        "sticker_pack": "face.sticker.character_pack",
+        "logo": "face.logo.generate",
+        "logo_vectorize": "face.logo.vectorize",
+        "logo_variations": "face.logo.variations",
+        "composite_insert": "face.composite.insert_subject",
+        "composite_overlay": "face.composite.overlay",
+    }
+    return mapping.get(operation, f"face.{operation}")
+
+
+def _ensure_face_jobs():
+    """Register face executors and return the actor-aware JobService proxy."""
+    return owned_job_service()
+
+
+def _face_job_payload(record: Any) -> Dict[str, Any]:
+    refs: List[str] = []
+    try:
+        refs = [str(r) for r in (record.get_result_refs() or [])]
+    except Exception:
+        refs = []
+    return {
+        "job_id": str(record.id),
+        "status": str(record.status),
+        "kind": str(record.kind),
+        "progress": float(record.progress or 0.0),
+        "result_refs": refs,
+        "error": record.error,
+    }
+
+
+def _face_job_status(job_id: str) -> Dict[str, Any]:
+    """Jobs-backed status view with b64-free metadata (never inline blobs)."""
+    from fastapi import HTTPException as _HTTPException
+
+    svc = _ensure_face_jobs()
+    record = svc.get(job_id)
+    if record is None:
+        raise _HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    payload: Dict[str, Any] = _face_job_payload(record)
+    meta: Dict[str, Any] = {}
+    try:
+        refs = [str(r) for r in (record.get_result_refs() or [])]
+    except Exception:
+        refs = []
+    for ref in refs:
+        if not ref.endswith("result.json"):
+            continue
+        try:
+            with open(ref, "r", encoding="utf-8") as fh:
+                loaded = json.load(fh)
+            if isinstance(loaded, dict):
+                meta = loaded
+                break
+        except (OSError, ValueError):
+            continue
+    payload["meta"] = meta
+    return payload
+
+
+# ---------------------------------------------------------------------------
+# Jobs endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/jobs")
+async def list_face_jobs(
+    status: Optional[str] = None,
+    kind: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """List background face jobs (newest first), newest-first with filters."""
+    records = _ensure_face_jobs().list(
+        status=status,
+        kind=kind,
+        kind_prefix="face.",
+        limit=min(max(limit, 1), 200),
+        offset=max(offset, 0),
+    )
+    items = [_face_job_payload(record) for record in records]
+    return {"data": items, "total": len(items)}
+
+
+@router.get("/jobs/{job_id}")
+async def get_face_job(job_id: str) -> Dict[str, Any]:
+    """Poll a jobs-backed face job (progress, result_refs, result.json meta)."""
+    return _face_job_status(job_id)
+
+
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_face_job(job_id: str) -> Dict[str, Any]:
+    """Cooperatively cancel a queued/running face job."""
+    record = _ensure_face_jobs().cancel(job_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return {"status": "ok", **_face_job_payload(record)}
+
+
+@router.get("/jobs/{job_id}/events")
+async def face_job_events(job_id: str):
+    """Stream SSE progress events backed by face job progress."""
+    from fastapi.responses import StreamingResponse
+
+    async def event_generator():
+        import time as _time
+
+        deadline: float = _time.time() + 3600.0  # 1 hour max
+        last_progress: float = -1.0
+        yield f"event: started\ndata: {json.dumps({'job_id': job_id, 'status': 'queued'})}\n\n"
+        while True:
+            record: JobRecord | None = get_job_service().get(job_id)
+            if record is None:
+                yield f"event: failed\ndata: {json.dumps({'job_id': job_id, 'error': 'job not found'})}\n\n"
+                return
+            if record.progress != last_progress:
+                last_progress = record.progress
+                yield f"event: progress\ndata: {json.dumps({'job_id': job_id, 'status': record.status, 'progress': record.progress})}\n\n"
+            if record.status in ("completed", "failed", "cancelled"):
+                if record.status == "completed":
+                    meta: Dict[str, Any] = {}
+                    for ref in _face_job_payload(record)["result_refs"]:
+                        if not ref.endswith("result.json"):
+                            continue
+                        try:
+                            with open(ref, "r", encoding="utf-8") as fh:
+                                loaded = json.load(fh)
+                            if isinstance(loaded, dict):
+                                meta = loaded
+                                break
+                        except (OSError, ValueError):
+                            continue
+                    yield f"event: completed\ndata: {json.dumps({'job_id': job_id, 'status': 'completed', 'meta': meta})}\n\n"
+                else:
+                    yield f"event: {record.status}\ndata: {json.dumps({'job_id': job_id, 'status': record.status, 'error': record.error or record.status})}\n\n"
+                return
+            if _time.time() > deadline:
+                yield f"event: timeout\ndata: {json.dumps({'job_id': job_id, 'error': 'progress stream timed out'})}\n\n"
+                return
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ── Detection ────────────────────────────────────────────────────
@@ -160,24 +346,35 @@ async def assess_quality(body: Dict[str, Any] = Body(...)):
 
 
 @router.post("/restore")
-async def restore_face(body: Dict[str, Any] = Body(...)):
-    """Restore a degraded face using CodeFormer or GFPGAN."""
-    from common_lib.modules.image_processing.services.face_operations import (
-        restore_face,
+async def restore_face(body: Dict[str, Any] = Body(...), sync: bool = False):
+    """Restore a degraded face using CodeFormer or GFPGAN.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if sync:
+        from common_lib.modules.image_processing.services.face_operations import (
+            restore_face,
+        )
+
+        image = _decode_image(body.get("image", ""))
+        model = body.get("model", "codeformer")
+        fidelity = body.get("fidelity", 0.5)
+        upscale = body.get("upscale", False)
+
+        result = restore_face(image, model=model, fidelity=fidelity, upscale=upscale)
+        return {"status": "success", "image": _encode_image(result)}
+
+    from app.modules.face.runtime.job_executors import RESTORE_KIND
+
+    record = _ensure_face_jobs().submit(
+        RESTORE_KIND, params=body
     )
-
-    image = _decode_image(body.get("image", ""))
-    model = body.get("model", "codeformer")
-    fidelity = body.get("fidelity", 0.5)
-    upscale = body.get("upscale", False)
-
-    result = restore_face(image, model=model, fidelity=fidelity, upscale=upscale)
-    return {"status": "success", "image": _encode_image(result)}
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 @router.post("/restore/stream")
 async def restore_face_stream(body: Dict[str, Any] = Body(...)):
-    """Restore face with SSE progress streaming."""
+    """Restore face with SSE progress streaming (inline, not jobs-backed)."""
     from common_lib.modules.image_processing.services.face_operations import (
         restore_face,
     )
@@ -251,25 +448,36 @@ async def restore_face_stream(body: Dict[str, Any] = Body(...)):
 
 
 @router.post("/swap")
-async def swap_face(body: Dict[str, Any] = Body(...)):
-    """Swap face from source onto target."""
-    from common_lib.modules.image_processing.services.face_operations import swap_face
+async def swap_face(body: Dict[str, Any] = Body(...), sync: bool = False):
+    """Swap face from source onto target.
 
-    source = _decode_image(body.get("source", ""))
-    target = _decode_image(body.get("target", ""))
-    source_bbox = body.get("source_bbox")
-    target_bbox = body.get("target_bbox")
-    model = body.get("model", "inswapper")
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if sync:
+        from common_lib.modules.image_processing.services.face_operations import swap_face
 
-    result = swap_face(
-        source, target, source_bbox=source_bbox, target_bbox=target_bbox, model=model
+        source = _decode_image(body.get("source", ""))
+        target = _decode_image(body.get("target", ""))
+        source_bbox = body.get("source_bbox")
+        target_bbox = body.get("target_bbox")
+        model = body.get("model", "inswapper")
+
+        result = swap_face(
+            source, target, source_bbox=source_bbox, target_bbox=target_bbox, model=model
+        )
+        return {"status": "success", "image": _encode_image(result)}
+
+    from app.modules.face.runtime.job_executors import SWAP_KIND
+
+    record = _ensure_face_jobs().submit(
+        SWAP_KIND, params=body
     )
-    return {"status": "success", "image": _encode_image(result)}
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 @router.post("/swap/stream")
 async def swap_face_stream(body: Dict[str, Any] = Body(...)):
-    """Swap face with SSE progress streaming."""
+    """Swap face with SSE progress streaming (inline, not jobs-backed)."""
     from common_lib.modules.image_processing.services.face_operations import swap_face
 
     source = _decode_image(body.get("source", ""))
@@ -387,23 +595,34 @@ async def compare_faces(body: Dict[str, Any] = Body(...)):
 
 
 @router.post("/expression")
-async def edit_expression(body: Dict[str, Any] = Body(...)):
-    """Edit facial expression (smile, sad, surprised, angry, serious, neutral)."""
-    from common_lib.modules.image_processing.services.face_operations import (
-        edit_expression,
+async def edit_expression(body: Dict[str, Any] = Body(...), sync: bool = False):
+    """Edit facial expression (smile, sad, surprised, angry, serious, neutral).
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if sync:
+        from common_lib.modules.image_processing.services.face_operations import (
+            edit_expression,
+        )
+
+        image = _decode_image(body.get("image", ""))
+        expression = body.get("expression", "smile")
+        strength = body.get("strength", 0.5)
+
+        result = edit_expression(image, expression=expression, strength=strength)
+        return {"status": "success", "image": _encode_image(result)}
+
+    from app.modules.face.runtime.job_executors import EXPRESSION_KIND
+
+    record = _ensure_face_jobs().submit(
+        EXPRESSION_KIND, params=body
     )
-
-    image = _decode_image(body.get("image", ""))
-    expression = body.get("expression", "smile")
-    strength = body.get("strength", 0.5)
-
-    result = edit_expression(image, expression=expression, strength=strength)
-    return {"status": "success", "image": _encode_image(result)}
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 @router.post("/expression/stream")
 async def edit_expression_stream(body: Dict[str, Any] = Body(...)):
-    """Edit expression with SSE progress streaming."""
+    """Edit expression with SSE progress streaming (inline, not jobs-backed)."""
     from common_lib.modules.image_processing.services.face_operations import (
         edit_expression,
     )
@@ -465,22 +684,33 @@ async def edit_expression_stream(body: Dict[str, Any] = Body(...)):
 
 
 @router.post("/age")
-async def transform_age(body: Dict[str, Any] = Body(...)):
-    """Transform face age (5-80)."""
-    from common_lib.modules.image_processing.services.face_operations import (
-        transform_age,
+async def transform_age(body: Dict[str, Any] = Body(...), sync: bool = False):
+    """Transform face age (5-80).
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if sync:
+        from common_lib.modules.image_processing.services.face_operations import (
+            transform_age,
+        )
+
+        image = _decode_image(body.get("image", ""))
+        target_age = body.get("target_age", 30)
+
+        result = transform_age(image, target_age=target_age)
+        return {"status": "success", "image": _encode_image(result)}
+
+    from app.modules.face.runtime.job_executors import AGE_KIND
+
+    record = _ensure_face_jobs().submit(
+        AGE_KIND, params=body
     )
-
-    image = _decode_image(body.get("image", ""))
-    target_age = body.get("target_age", 30)
-
-    result = transform_age(image, target_age=target_age)
-    return {"status": "success", "image": _encode_image(result)}
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 @router.post("/age/stream")
 async def transform_age_stream(body: Dict[str, Any] = Body(...)):
-    """Transform age with SSE progress streaming."""
+    """Transform age with SSE progress streaming (inline, not jobs-backed)."""
     from common_lib.modules.image_processing.services.face_operations import (
         transform_age,
     )
@@ -540,26 +770,37 @@ async def transform_age_stream(body: Dict[str, Any] = Body(...)):
 
 
 @router.post("/relight")
-async def relight_face(body: Dict[str, Any] = Body(...)):
-    """Relight face with directional lighting."""
-    from common_lib.modules.image_processing.services.face_operations import (
-        relight_face,
-    )
+async def relight_face(body: Dict[str, Any] = Body(...), sync: bool = False):
+    """Relight face with directional lighting.
 
-    image = _decode_image(body.get("image", ""))
-    direction = body.get("direction", "front")
-    color = body.get("color", [255, 255, 255])
-    intensity = body.get("intensity", 0.7)
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if sync:
+        from common_lib.modules.image_processing.services.face_operations import (
+            relight_face,
+        )
 
-    result = relight_face(
-        image, light_direction=direction, light_color=tuple(color), intensity=intensity
+        image = _decode_image(body.get("image", ""))
+        direction = body.get("direction", "front")
+        color = body.get("color", [255, 255, 255])
+        intensity = body.get("intensity", 0.7)
+
+        result = relight_face(
+            image, light_direction=direction, light_color=tuple(color), intensity=intensity
+        )
+        return {"status": "success", "image": _encode_image(result)}
+
+    from app.modules.face.runtime.job_executors import RELIGHT_KIND
+
+    record = _ensure_face_jobs().submit(
+        RELIGHT_KIND, params=body
     )
-    return {"status": "success", "image": _encode_image(result)}
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 @router.post("/relight/stream")
 async def relight_face_stream(body: Dict[str, Any] = Body(...)):
-    """Relight face with SSE progress streaming."""
+    """Relight face with SSE progress streaming (inline, not jobs-backed)."""
     from common_lib.modules.image_processing.services.face_operations import (
         relight_face,
     )
@@ -661,22 +902,33 @@ async def edit_mouth(body: Dict[str, Any] = Body(...)):
 
 
 @router.post("/enhance")
-async def face_enhance(body: Dict[str, Any] = Body(...)):
-    """Full face enhancement pipeline."""
-    from common_lib.modules.image_processing.services.face_operations import (
-        full_beautification,
+async def face_enhance(body: Dict[str, Any] = Body(...), sync: bool = False):
+    """Full face enhancement pipeline.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if sync:
+        from common_lib.modules.image_processing.services.face_operations import (
+            full_beautification,
+        )
+
+        image = _decode_image(body.get("image", ""))
+        params = {k: v for k, v in body.items() if k != "image"}
+
+        result = full_beautification(image, **params)
+        return {"status": "success", "image": _encode_image(result)}
+
+    from app.modules.face.runtime.job_executors import ENHANCE_KIND
+
+    record = _ensure_face_jobs().submit(
+        ENHANCE_KIND, params=body
     )
-
-    image = _decode_image(body.get("image", ""))
-    params = {k: v for k, v in body.items() if k != "image"}
-
-    result = full_beautification(image, **params)
-    return {"status": "success", "image": _encode_image(result)}
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 @router.post("/enhance/stream")
 async def face_enhance_stream(body: Dict[str, Any] = Body(...)):
-    """Full face enhancement with SSE progress streaming."""
+    """Full face enhancement with SSE progress streaming (inline, not jobs-backed)."""
     from common_lib.modules.image_processing.services.face_operations import (
         full_beautification,
     )
@@ -726,83 +978,131 @@ async def face_enhance_stream(body: Dict[str, Any] = Body(...)):
 
 
 @router.post("/makeup")
-async def apply_makeup(body: Dict[str, Any] = Body(...)):
-    """Transfer makeup from reference image onto target face."""
-    from common_lib.modules.image_processing.services.beauty_operations import (
-        makeup_transfer,
+async def apply_makeup(body: Dict[str, Any] = Body(...), sync: bool = False):
+    """Transfer makeup from reference image onto target face.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if sync:
+        from common_lib.modules.image_processing.services.beauty_operations import (
+            makeup_transfer,
+        )
+
+        image = _decode_image(body.get("image", ""))
+        reference = _decode_optional_image(body, "reference")
+        region = body.get("region", "full")
+        intensity = body.get("intensity", 0.7)
+
+        if reference is None:
+            raise HTTPException(400, detail="Missing 'reference' image for makeup transfer")
+
+        result = makeup_transfer(image, reference, region=region, intensity=intensity)
+        return {"status": "success", "image": _encode_image(result)}
+
+    from app.modules.face.runtime.job_executors import MAKEUP_KIND
+
+    record = _ensure_face_jobs().submit(
+        MAKEUP_KIND, params=body
     )
-
-    image = _decode_image(body.get("image", ""))
-    reference = _decode_optional_image(body, "reference")
-    region = body.get("region", "full")
-    intensity = body.get("intensity", 0.7)
-
-    if reference is None:
-        raise HTTPException(400, detail="Missing 'reference' image for makeup transfer")
-
-    result = makeup_transfer(image, reference, region=region, intensity=intensity)
-    return {"status": "success", "image": _encode_image(result)}
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 @router.post("/makeup/preset")
-async def apply_makeup_preset(body: Dict[str, Any] = Body(...)):
-    """Apply a predefined makeup preset (natural, glam, smoky, etc.)."""
-    from common_lib.modules.image_processing.services.beauty_operations import (
-        makeup_preset,
+async def apply_makeup_preset(body: Dict[str, Any] = Body(...), sync: bool = False):
+    """Apply a predefined makeup preset (natural, glam, smoky, etc.).
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if sync:
+        from common_lib.modules.image_processing.services.beauty_operations import (
+            makeup_preset,
+        )
+
+        image = _decode_image(body.get("image", ""))
+        preset_id = body.get("preset", body.get("preset_id", "natural_glam"))
+
+        result = makeup_preset(image, preset_id=preset_id)
+        return {"status": "success", "image": _encode_image(result)}
+
+    from app.modules.face.runtime.job_executors import MAKEUP_PRESET_KIND
+
+    record = _ensure_face_jobs().submit(
+        MAKEUP_PRESET_KIND, params=body
     )
-
-    image = _decode_image(body.get("image", ""))
-    preset_id = body.get("preset", body.get("preset_id", "natural_glam"))
-
-    result = makeup_preset(image, preset_id=preset_id)
-    return {"status": "success", "image": _encode_image(result)}
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 @router.post("/makeup/text")
-async def apply_makeup_text(body: Dict[str, Any] = Body(...)):
-    """Apply text-guided makeup (e.g. 'bold red lipstick, smoky eyes')."""
-    from common_lib.modules.image_processing.services.beauty_operations import (
-        makeup_apply_text,
+async def apply_makeup_text(body: Dict[str, Any] = Body(...), sync: bool = False):
+    """Apply text-guided makeup (e.g. 'bold red lipstick, smoky eyes').
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if sync:
+        from common_lib.modules.image_processing.services.beauty_operations import (
+            makeup_apply_text,
+        )
+
+        image = _decode_image(body.get("image", ""))
+        prompt = body.get("prompt", body.get("makeup_prompt", ""))
+        strength = body.get("strength", 0.6)
+
+        result = makeup_apply_text(image, prompt, strength=strength)
+        return {"status": "success", "image": _encode_image(result)}
+
+    from app.modules.face.runtime.job_executors import MAKEUP_TEXT_KIND
+
+    record = _ensure_face_jobs().submit(
+        MAKEUP_TEXT_KIND, params=body
     )
-
-    image = _decode_image(body.get("image", ""))
-    prompt = body.get("prompt", body.get("makeup_prompt", ""))
-    strength = body.get("strength", 0.6)
-
-    result = makeup_apply_text(image, prompt, strength=strength)
-    return {"status": "success", "image": _encode_image(result)}
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 # ── Tattoo ───────────────────────────────────────────────────
 
 
 @router.post("/tattoo/design")
-async def design_tattoo(body: Dict[str, Any] = Body(...)):
-    """Design a tattoo pattern from text prompt."""
-    from common_lib.modules.image_processing.services.skin_operations import (
-        tattoo_design,
-    )
+async def design_tattoo(body: Dict[str, Any] = Body(...), sync: bool = False):
+    """Design a tattoo pattern from text prompt.
 
-    prompt = body.get("prompt", "")
-    style = body.get("style", "traditional")
-    colors = body.get("colors")
-    body_part = body.get("body_part")
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if sync:
+        from common_lib.modules.image_processing.services.skin_operations import (
+            tattoo_design,
+        )
 
-    result = tattoo_design(
-        prompt=prompt, style=style, colors=colors, body_part=body_part
+        prompt = body.get("prompt", "")
+        style = body.get("style", "traditional")
+        colors = body.get("colors")
+        body_part = body.get("body_part")
+
+        result = tattoo_design(
+            prompt=prompt, style=style, colors=colors, body_part=body_part
+        )
+        return {"status": "success", "image": _encode_image(result)}
+
+    from app.modules.face.runtime.job_executors import TATTOO_DESIGN_KIND
+
+    record = _ensure_face_jobs().submit(
+        TATTOO_DESIGN_KIND, params=body
     )
-    return {"status": "success", "image": _encode_image(result)}
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 @router.post("/tattoo/place")
-async def place_tattoo(body: Dict[str, Any] = Body(...)):
-    """Place a tattoo on a body region with realistic perspective."""
-    from common_lib.modules.image_processing.services.skin_operations import (
-        tattoo_place,
-    )
+async def place_tattoo(body: Dict[str, Any] = Body(...), sync: bool = False):
+    """Place a tattoo on a body region with realistic perspective.
 
-    image = _decode_image(body.get("image", ""))
-    tattoo = _decode_image(body.get("tattoo", ""))
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if sync:
+        from common_lib.modules.image_processing.services.skin_operations import (
+            tattoo_place,
+        )
+
+        image = _decode_image(body.get("image", ""))
+        tattoo = _decode_image(body.get("tattoo", ""))
     body_part = body.get("body_part", body.get("body_region", "arm"))
     x = body.get("x")
     y = body.get("y")
@@ -812,20 +1112,31 @@ async def place_tattoo(body: Dict[str, Any] = Body(...)):
 
 
 @router.post("/tattoo/remove")
-async def remove_tattoo(body: Dict[str, Any] = Body(...)):
-    """Remove a tattoo using inpainting."""
-    from common_lib.modules.image_processing.services.skin_operations import (
-        tattoo_remove,
-    )
+async def remove_tattoo(body: Dict[str, Any] = Body(...), sync: bool = False):
+    """Remove a tattoo using inpainting.
 
-    image = _decode_image(body.get("image", ""))
-    tattoo_region = body.get("tattoo_region")
-    fade_sessions = body.get("fade_sessions", 0)
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if sync:
+        from common_lib.modules.image_processing.services.skin_operations import (
+            tattoo_remove,
+        )
 
-    result = tattoo_remove(
-        image, tattoo_region=tattoo_region, fade_sessions=fade_sessions
+        image = _decode_image(body.get("image", ""))
+        tattoo_region = body.get("tattoo_region")
+        fade_sessions = body.get("fade_sessions", 0)
+
+        result = tattoo_remove(
+            image, tattoo_region=tattoo_region, fade_sessions=fade_sessions
+        )
+        return {"status": "success", "image": _encode_image(result)}
+
+    from app.modules.face.runtime.job_executors import TATTOO_REMOVE_KIND
+
+    record = _ensure_face_jobs().submit(
+        TATTOO_REMOVE_KIND, params=body
     )
-    return {"status": "success", "image": _encode_image(result)}
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 # ── Task Router ─────────────────────────────────────────────────
@@ -1486,8 +1797,10 @@ async def download_identity_model_stream(data: Dict[str, Any] = Body(...)):
 
 
 @router.post("/sticker/generate")
-async def generate_sticker(body: Dict[str, Any] = Body(...)):
+async def generate_sticker(body: Dict[str, Any] = Body(...), sync: bool = False):
     """Generate a sticker from a base image.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
 
     Args:
         image: Base64 source image.
@@ -1496,122 +1809,145 @@ async def generate_sticker(body: Dict[str, Any] = Body(...)):
         border_color: Border color hex.
         border_width: Border width in pixels.
     """
-    from common_lib.modules.image_processing.services.compositing_service import (
-        generate_sticker as _gen_sticker,
-        STICKER_STYLES,
-    )
-
-    image_b64 = body.get("image")
-    if not image_b64:
-        raise HTTPException(400, detail="image (base64) is required")
-
-    style = body.get("style", "flat")
-    if style not in STICKER_STYLES:
-        raise HTTPException(
-            400,
-            detail=f"Unknown style '{style}'. Available: {list(STICKER_STYLES.keys())}",
+    if sync:
+        from common_lib.modules.image_processing.services.compositing_service import (
+            generate_sticker as _gen_sticker,
+            STICKER_STYLES,
         )
 
-    img = _decode_image(image_b64)
-    result = _gen_sticker(
-        base_image=img,
-        style=style,
-        add_border=body.get("add_border", True),
-        border_color=body.get("border_color", "#ffffff"),
-        border_width=body.get("border_width", 4),
-    )
+        image_b64 = body.get("image")
+        if not image_b64:
+            raise HTTPException(400, detail="image (base64) is required")
 
-    return {
-        "status": "success",
-        "image": _encode_image(result["image"]),
-        "style": style,
-        "style_prompt": result["style_prompt"],
-        "border_applied": result["border_applied"],
-        "output_size": result["output_size"],
-    }
+        style = body.get("style", "flat")
+        if style not in STICKER_STYLES:
+            raise HTTPException(
+                400,
+                detail=f"Unknown style '{style}'. Available: {list(STICKER_STYLES.keys())}",
+            )
+
+        img = _decode_image(image_b64)
+        result = _gen_sticker(
+            base_image=img,
+            style=style,
+            add_border=body.get("add_border", True),
+            border_color=body.get("border_color", "#ffffff"),
+            border_width=body.get("border_width", 4),
+        )
+
+        return {
+            "status": "success",
+            "image": _encode_image(result["image"]),
+            "style": style,
+            "style_prompt": result["style_prompt"],
+            "border_applied": result["border_applied"],
+            "output_size": result["output_size"],
+        }
+
+    from app.modules.face.runtime.job_executors import STICKER_KIND
+
+    record = _ensure_face_jobs().submit(
+        STICKER_KIND, params=body
+    )
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 @router.post("/sticker/from-photo")
-async def sticker_from_photo(body: Dict[str, Any] = Body(...)):
+async def sticker_from_photo(body: Dict[str, Any] = Body(...), sync: bool = False):
     """Create a sticker from a photo by extracting the subject.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
 
     Args:
         photo: Base64 photo image.
         style: Sticker style.
         subject_hint: Optional hint for subject detection.
     """
-    from common_lib.modules.image_processing.services.compositing_service import (
-        sticker_from_photo as _sticker_photo,
-    )
+    if sync:
+        from common_lib.modules.image_processing.services.compositing_service import (
+            sticker_from_photo as _sticker_photo,
+        )
 
-    photo_b64 = body.get("photo")
-    if not photo_b64:
-        raise HTTPException(400, detail="photo (base64) is required")
+        photo_b64 = body.get("photo")
+        if not photo_b64:
+            raise HTTPException(400, detail="photo (base64) is required")
 
-    img = _decode_image(photo_b64)
-    result = _sticker_photo(
-        photo=img,
-        style=body.get("style", "flat"),
-        subject_hint=body.get("subject_hint"),
-        add_border=body.get("add_border", True),
-        border_color=body.get("border_color", "#ffffff"),
-        border_width=body.get("border_width", 4),
-    )
+        img = _decode_image(photo_b64)
+        result = _sticker_photo(
+            photo=img,
+            style=body.get("style", "flat"),
+            subject_hint=body.get("subject_hint"),
+            add_border=body.get("add_border", True),
+            border_color=body.get("border_color", "#ffffff"),
+            border_width=body.get("border_width", 4),
+        )
 
-    return {
-        "status": "success",
-        "image": _encode_image(result["image"]),
-        "source": result["source"],
-        "style": result["style_prompt"],
+        return {
+            "status": "success",
+            "image": _encode_image(result["image"]),
+            "source": result["source"],
+            "style": result["style_prompt"],
         "border_applied": result["border_applied"],
     }
 
 
 @router.post("/sticker/character-pack")
-async def generate_character_pack(body: Dict[str, Any] = Body(...)):
+async def generate_character_pack(body: Dict[str, Any] = Body(...), sync: bool = False):
     """Generate a character sticker pack with multiple expressions.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
 
     Args:
         image: Base64 base character image.
         expressions: List of expressions (happy, sad, surprised, angry, love, waving, etc.).
         style: Sticker style.
     """
-    from common_lib.modules.image_processing.services.compositing_service import (
-        generate_character_pack as _char_pack,
+    if sync:
+        from common_lib.modules.image_processing.services.compositing_service import (
+            generate_character_pack as _char_pack,
+        )
+
+        image_b64 = body.get("image")
+        if not image_b64:
+            raise HTTPException(400, detail="image (base64) is required")
+
+        img = _decode_image(image_b64)
+        result = _char_pack(
+            base_image=img,
+            expressions=body.get("expressions"),
+            style=body.get("style", "kawaii"),
+        )
+
+        return {
+            "status": "success",
+            "stickers": [
+                {
+                    "expression": s["expression"],
+                    "image": _encode_image(s["image"]),
+                    "style": s["style"],
+                }
+                for s in result["stickers"]
+            ],
+            "count": result["count"],
+            "style": result["style"],
+        }
+
+    from app.modules.face.runtime.job_executors import STICKER_PACK_KIND
+
+    record = _ensure_face_jobs().submit(
+        STICKER_PACK_KIND, params=body
     )
-
-    image_b64 = body.get("image")
-    if not image_b64:
-        raise HTTPException(400, detail="image (base64) is required")
-
-    img = _decode_image(image_b64)
-    result = _char_pack(
-        base_image=img,
-        expressions=body.get("expressions"),
-        style=body.get("style", "kawaii"),
-    )
-
-    return {
-        "status": "success",
-        "stickers": [
-            {
-                "expression": s["expression"],
-                "image": _encode_image(s["image"]),
-                "style": s["style"],
-            }
-            for s in result["stickers"]
-        ],
-        "count": result["count"],
-        "style": result["style"],
-    }
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 # ── Logo Generation (Doc 11 §2) ────────────────────────────────────
 
 
 @router.post("/logo/generate")
-async def generate_logo(body: Dict[str, Any] = Body(...)):
+async def generate_logo(body: Dict[str, Any] = Body(...), sync: bool = False):
     """Generate a logo from brand name and style.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
 
     Args:
         brand_name: Brand text.
@@ -1619,62 +1955,73 @@ async def generate_logo(body: Dict[str, Any] = Body(...)):
         colors: List of hex colors.
         tagline: Optional tagline.
     """
-    from common_lib.modules.image_processing.services.compositing_service import (
-        generate_logo as _gen_logo,
-        LOGO_STYLES,
-    )
-
-    brand_name = body.get("brand_name")
-    if not brand_name:
-        raise HTTPException(400, detail="brand_name is required")
-
-    style = body.get("style", "minimal")
-    if style not in LOGO_STYLES:
-        raise HTTPException(
-            400,
-            detail=f"Unknown style '{style}'. Available: {list(LOGO_STYLES.keys())}",
+    if sync:
+        from common_lib.modules.image_processing.services.compositing_service import (
+            generate_logo as _gen_logo,
+            LOGO_STYLES,
         )
 
-    result = _gen_logo(
-        brand_name=brand_name,
-        style=style,
-        colors=body.get("colors"),
-        tagline=body.get("tagline"),
-    )
+        brand_name = body.get("brand_name")
+        if not brand_name:
+            raise HTTPException(400, detail="brand_name is required")
 
-    return {
-        "status": "success",
-        "image": _encode_image(result["image"]),
-        "brand_name": result["brand_name"],
-        "style": style,
-        "style_prompt": result["style_prompt"],
-        "colors": result["colors"],
-    }
+        style = body.get("style", "minimal")
+        if style not in LOGO_STYLES:
+            raise HTTPException(
+                400,
+                detail=f"Unknown style '{style}'. Available: {list(LOGO_STYLES.keys())}",
+            )
+
+        result = _gen_logo(
+            brand_name=brand_name,
+            style=style,
+            colors=body.get("colors"),
+            tagline=body.get("tagline"),
+        )
+
+        return {
+            "status": "success",
+            "image": _encode_image(result["image"]),
+            "brand_name": result["brand_name"],
+            "style": style,
+            "style_prompt": result["style_prompt"],
+            "colors": result["colors"],
+        }
+
+    from app.modules.face.runtime.job_executors import LOGO_KIND
+
+    record = _ensure_face_jobs().submit(
+        LOGO_KIND, params=body
+    )
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 @router.post("/logo/vectorize")
-async def vectorize_logo(body: Dict[str, Any] = Body(...)):
+async def vectorize_logo(body: Dict[str, Any] = Body(...), sync: bool = False):
     """Convert a raster logo to SVG vector format.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
 
     Args:
         image: Base64 raster logo image.
         format: Output format ('svg' or 'eps').
     """
-    from common_lib.modules.image_processing.services.compositing_service import (
-        vectorize_logo as _vec_logo,
-    )
+    if sync:
+        from common_lib.modules.image_processing.services.compositing_service import (
+            vectorize_logo as _vec_logo,
+        )
 
-    image_b64 = body.get("image")
-    if not image_b64:
-        raise HTTPException(400, detail="image (base64) is required")
+        image_b64 = body.get("image")
+        if not image_b64:
+            raise HTTPException(400, detail="image (base64) is required")
 
-    img = _decode_image(image_b64)
-    result = _vec_logo(img=img, output_format=body.get("format", "svg"))
+        img = _decode_image(image_b64)
+        result = _vec_logo(img=img, output_format=body.get("format", "svg"))
 
-    return {
-        "status": "success",
-        "svg_data": result["svg_data"],
-        "format": result["format"],
+        return {
+            "status": "success",
+            "svg_data": result["svg_data"],
+            "format": result["format"],
         "contour_count": result["contour_count"],
         "width": result["width"],
         "height": result["height"],
@@ -1682,40 +2029,52 @@ async def vectorize_logo(body: Dict[str, Any] = Body(...)):
 
 
 @router.post("/logo/variations")
-async def logo_variations(body: Dict[str, Any] = Body(...)):
+async def logo_variations(body: Dict[str, Any] = Body(...), sync: bool = False):
     """Generate color variations of a logo (dark, monochrome, light).
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
 
     Args:
         image: Base64 logo image.
         variations: List of variation types (dark_mode, monochrome, light_mode).
     """
-    from common_lib.modules.image_processing.services.compositing_service import (
-        generate_logo_variations as _logo_vars,
+    if sync:
+        from common_lib.modules.image_processing.services.compositing_service import (
+            generate_logo_variations as _logo_vars,
+        )
+
+        image_b64 = body.get("image")
+        if not image_b64:
+            raise HTTPException(400, detail="image (base64) is required")
+
+        img = _decode_image(image_b64)
+        result = _logo_vars(logo=img, variations=body.get("variations"))
+
+        return {
+            "status": "success",
+            "variations": [
+                {"name": v["name"], "image": _encode_image(v["image"])}
+                for v in result["variations"]
+            ],
+            "count": result["count"],
+        }
+
+    from app.modules.face.runtime.job_executors import LOGO_VARIATIONS_KIND
+
+    record = _ensure_face_jobs().submit(
+        LOGO_VARIATIONS_KIND, params=body
     )
-
-    image_b64 = body.get("image")
-    if not image_b64:
-        raise HTTPException(400, detail="image (base64) is required")
-
-    img = _decode_image(image_b64)
-    result = _logo_vars(logo=img, variations=body.get("variations"))
-
-    return {
-        "status": "success",
-        "variations": [
-            {"name": v["name"], "image": _encode_image(v["image"])}
-            for v in result["variations"]
-        ],
-        "count": result["count"],
-    }
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 # ── Image Compositing (Doc 11 §3) ──────────────────────────────────
 
 
 @router.post("/composite/insert-subject")
-async def composite_insert_subject(body: Dict[str, Any] = Body(...)):
+async def composite_insert_subject(body: Dict[str, Any] = Body(...), sync: bool = False):
     """Insert a subject into a background scene.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
 
     Per Doc 11 §3.2 — Subject Insertion Pipeline.
 
@@ -1725,39 +2084,49 @@ async def composite_insert_subject(body: Dict[str, Any] = Body(...)):
         position: [x, y] placement coordinates.
         scale: Scale factor for subject (default 1.0).
     """
-    from common_lib.modules.image_processing.services.compositing_service import (
-        insert_subject as _insert,
-    )
-
-    bg_b64 = body.get("background")
-    sub_b64 = body.get("subject_image")
-    if not bg_b64 or not sub_b64:
-        raise HTTPException(
-            400, detail="background and subject_image (base64) are required"
+    if sync:
+        from common_lib.modules.image_processing.services.compositing_service import (
+            insert_subject as _insert,
         )
 
-    bg = _decode_image(bg_b64)
-    subject = _decode_image(sub_b64)
+        bg_b64 = body.get("background")
+        sub_b64 = body.get("subject_image")
+        if not bg_b64 or not sub_b64:
+            raise HTTPException(
+                400, detail="background and subject_image (base64) are required"
+            )
 
-    result = _insert(
-        background=bg,
-        subject=subject,
-        position=tuple(body.get("position", [0, 0])),
-        scale=body.get("scale", 1.0),
+        bg = _decode_image(bg_b64)
+        subject = _decode_image(sub_b64)
+
+        result = _insert(
+            background=bg,
+            subject=subject,
+            position=tuple(body.get("position", [0, 0])),
+            scale=body.get("scale", 1.0),
+        )
+
+        return {
+            "status": "success",
+            "image": _encode_image(result["image"]),
+            "position": list(result["position"]),
+            "scale": result["scale"],
+            "subject_size": list(result["subject_size"]),
+        }
+
+    from app.modules.face.runtime.job_executors import COMPOSITE_INSERT_KIND
+
+    record = _ensure_face_jobs().submit(
+        COMPOSITE_INSERT_KIND, params=body
     )
-
-    return {
-        "status": "success",
-        "image": _encode_image(result["image"]),
-        "position": list(result["position"]),
-        "scale": result["scale"],
-        "subject_size": list(result["subject_size"]),
-    }
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 @router.post("/composite/overlay")
-async def composite_overlay(body: Dict[str, Any] = Body(...)):
+async def composite_overlay(body: Dict[str, Any] = Body(...), sync: bool = False):
     """Overlay an image on a base with blend mode and opacity.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
 
     Args:
         base_image: Base64 background image.
@@ -1767,36 +2136,44 @@ async def composite_overlay(body: Dict[str, Any] = Body(...)):
         blend_mode: normal, multiply, screen, overlay, soft_light, etc.
         opacity: Overlay opacity 0.0-1.0.
     """
-    from common_lib.modules.image_processing.services.compositing_service import (
-        overlay_image as _overlay,
-    )
-
-    base_b64 = body.get("base_image")
-    overlay_b64 = body.get("overlay_image")
-    if not base_b64 or not overlay_b64:
-        raise HTTPException(
-            400, detail="base_image and overlay_image (base64) are required"
+    if sync:
+        from common_lib.modules.image_processing.services.compositing_service import (
+            overlay_image as _overlay,
         )
 
-    base = _decode_image(base_b64)
-    overlay = _decode_image(overlay_b64)
+        base_b64 = body.get("base_image")
+        overlay_b64 = body.get("overlay_image")
+        if not base_b64 or not overlay_b64:
+            raise HTTPException(
+                400, detail="base_image and overlay_image (base64) are required"
+            )
 
-    result = _overlay(
-        base=base,
-        overlay=overlay,
-        position=tuple(body.get("position", [0, 0])),
-        scale=body.get("scale", 1.0),
-        blend_mode=body.get("blend_mode", "normal"),
-        opacity=body.get("opacity", 1.0),
+        base = _decode_image(base_b64)
+        overlay = _decode_image(overlay_b64)
+
+        result = _overlay(
+            base=base,
+            overlay=overlay,
+            position=tuple(body.get("position", [0, 0])),
+            scale=body.get("scale", 1.0),
+            blend_mode=body.get("blend_mode", "normal"),
+            opacity=body.get("opacity", 1.0),
+        )
+
+        return {
+            "status": "success",
+            "image": _encode_image(result["image"]),
+            "blend_mode": result["blend_mode"],
+            "opacity": result["opacity"],
+            "position": result["position"],
+        }
+
+    from app.modules.face.runtime.job_executors import COMPOSITE_OVERLAY_KIND
+
+    record = _ensure_face_jobs().submit(
+        COMPOSITE_OVERLAY_KIND, params=body
     )
-
-    return {
-        "status": "success",
-        "image": _encode_image(result["image"]),
-        "blend_mode": result["blend_mode"],
-        "opacity": result["opacity"],
-        "position": result["position"],
-    }
+    return {"status": "queued", **_face_job_payload(record)}
 
 
 @router.post("/composite/harmonize")

@@ -12,8 +12,10 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
+
+from app.modules.jobs.actor import capture_job_actor, owned_job_service
 
 from common_lib.modules.vision.sota_generation_service import (
     MODE_CAPABILITIES,
@@ -23,7 +25,11 @@ from common_lib.modules.vision.sota_generation_service import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/sota", tags=["SOTA Image Generation"])
+router = APIRouter(
+    prefix="/sota",
+    tags=["SOTA Image Generation"],
+    dependencies=[Depends(capture_job_actor)],
+)
 
 
 # ---------------------------------------------------------------------------
@@ -115,14 +121,13 @@ def _validate_model(model: str) -> None:
 
 
 def _ensure_jobs() -> Any:
-    """Register vision executors and return the JobService singleton."""
+    """Register vision executors and return the actor-aware JobService proxy."""
     from app.modules.vision.runtime.job_executors import (
         ensure_vision_executors_registered,
     )
-    from common_lib.modules.jobs.service import get_job_service
 
     ensure_vision_executors_registered()
-    return get_job_service()
+    return owned_job_service()
 
 
 # ---------------------------------------------------------------------------

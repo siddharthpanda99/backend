@@ -31,15 +31,38 @@ import os
 import tempfile
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.modules.audio.runtime.actor import capture_job_actor, owned_job_service
+
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(capture_job_actor)])
 
 _FLAG = "DUBBING_ENABLED"
+
+
+def _ensure_audio_jobs():
+    """Register audio executors and return the actor-aware JobService proxy."""
+    return owned_job_service()
+
+
+def _job_payload(record: Any) -> dict[str, Any]:
+    refs: list[str] = []
+    try:
+        refs = [str(r) for r in (record.get_result_refs() or [])]
+    except Exception:  # noqa: BLE001 — refs are cosmetic, never fail the payload
+        refs = []
+    return {
+        "job_id": str(record.id),
+        "status": str(record.status),
+        "kind": str(record.kind),
+        "progress": float(record.progress or 0.0),
+        "result_refs": refs,
+        "error": record.error,
+    }
 
 
 def _flag_on() -> bool:
@@ -297,9 +320,25 @@ async def dub_timing_route(req: DubTimingRequest):
 
 
 @router.post("/dub/clone")
-async def dub_clone(req: DubCloneRequest):
-    """Extract per-speaker clone references (via the stem-separator port)."""
+async def dub_clone(req: DubCloneRequest, sync: bool = False):
+    """Extract per-speaker clone references (via the stem-separator port).
+
+    Jobs-backed by default (``audio.dub.clone`` executor — stem separation is
+    GPU-class work); pass ``sync=true`` to run inline (legacy response).
+    """
     _require_flag()
+    if not sync:
+        from app.modules.audio.runtime.job_executors import DUB_CLONE_KIND
+
+        if not req.audio_path or not req.out_dir:
+            raise HTTPException(
+                status_code=400,
+                detail="audio_path and out_dir are required",
+            )
+        record = _ensure_audio_jobs().submit(
+            DUB_CLONE_KIND, params=req.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     from common_lib.modules.audio_processing.dubbing import speaker_clone as sc
 
     vocals = sc.ensure_vocals_track(
@@ -318,9 +357,20 @@ async def dub_clone(req: DubCloneRequest):
 
 
 @router.post("/dub/ingest-url")
-async def dub_ingest_url(req: DubIngestUrlRequest):
-    """SSRF-guarded URL ingest (yt-dlp media + subtitles)."""
+async def dub_ingest_url(req: DubIngestUrlRequest, sync: bool = False):
+    """SSRF-guarded URL ingest (yt-dlp media + subtitles).
+
+    Jobs-backed by default (``audio.dub.ingest_url`` executor — network +
+    download bound); pass ``sync=true`` to run inline (legacy response).
+    """
     _require_flag()
+    if not sync:
+        from app.modules.audio.runtime.job_executors import DUB_INGEST_KIND
+
+        record = _ensure_audio_jobs().submit(
+            DUB_INGEST_KIND, params=req.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     from common_lib.modules.audio_processing.dubbing import ingest as dub_ingest
 
     out_dir = req.out_dir

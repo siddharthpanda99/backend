@@ -13,8 +13,10 @@ import asyncio
 import base64
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+
+from app.modules.jobs.actor import capture_job_actor, owned_job_service
 
 from common_lib.modules.image_processing.ops_service import (
     list_operations_flat,
@@ -22,7 +24,11 @@ from common_lib.modules.image_processing.ops_service import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/ops", tags=["Image Ops"])
+router = APIRouter(
+    prefix="/ops",
+    tags=["Image Ops"],
+    dependencies=[Depends(capture_job_actor)],
+)
 
 
 def _sse(event: str, data: Dict[str, Any]) -> str:
@@ -51,14 +57,13 @@ def get_operations() -> List[Dict[str, Any]]:
 
 
 def _ensure_vision_jobs():
-    """Register vision executors and return the JobService singleton."""
+    """Register vision executors and return the actor-aware JobService proxy."""
     from app.modules.vision.runtime.job_executors import (
         ensure_vision_executors_registered,
     )
-    from common_lib.modules.jobs.service import get_job_service
 
     ensure_vision_executors_registered()
-    return get_job_service()
+    return owned_job_service()
 
 
 def _job_envelope(record: Any, method: str) -> Dict[str, Any]:

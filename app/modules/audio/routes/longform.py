@@ -24,9 +24,11 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
+from app.modules.audio.runtime.actor import capture_job_actor, owned_job_service
 
 from common_lib.modules.audio_processing.memory.feature_flags import (
     LONGFORM_ENABLED,
@@ -70,7 +72,7 @@ from common_lib.modules.audio_processing.editing.ffmpeg_utils import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(capture_job_actor)])
 
 # Cover size cap mirrors longform_render's guard (8 MB — a book cover, not a payload).
 _COVER_MAX_BYTES = 8 * 1024 * 1024
@@ -930,8 +932,37 @@ class LongformPreviewRequest(ExpressiveMixin):
 
 
 @router.post("/longform/preview")
-async def longform_preview(req: LongformPreviewRequest) -> Dict[str, Any]:
-    """Render a single chapter for audition. Warms the shared cache."""
+async def longform_preview(
+    req: LongformPreviewRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Render a single chapter for audition. Warms the shared cache.
+
+    Jobs-backed by default (``audio.longform.preview`` executor, capped to one
+    chapter like render); pass ``sync=true`` to run inline (legacy response).
+    Poll ``GET /api/v1/audio/jobs/{job_id}`` for progress + ``result.json``.
+    """
+    if not sync:
+        if not is_enabled(LONGFORM_ENABLED):
+            raise HTTPException(status_code=404, detail="Longform features disabled")
+        from app.modules.audio.runtime.job_executors import LONGFORM_PREVIEW_KIND
+
+        record = owned_job_service().submit(
+            LONGFORM_PREVIEW_KIND, params=req.model_dump(mode="json")
+        )
+        refs: List[str] = []
+        try:
+            refs = [str(r) for r in (record.get_result_refs() or [])]
+        except Exception:
+            refs = []
+        return {
+            "status": "queued",
+            "job_id": str(record.id),
+            "job_status": str(record.status),
+            "kind": str(record.kind),
+            "progress": float(record.progress or 0.0),
+            "result_refs": refs,
+            "error": record.error,
+        }
     if not is_enabled(LONGFORM_ENABLED):
         raise HTTPException(status_code=404, detail="Longform features disabled")
     from common_lib.modules.audio_processing.projects.config import OUTPUTS_DIR

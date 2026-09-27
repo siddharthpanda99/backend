@@ -1,16 +1,52 @@
+import logging
+
 from fastapi import (
     APIRouter,
+    Depends,
     HTTPException,
     UploadFile,
     File,
     WebSocket,
     WebSocketDisconnect,
 )
-from typing import List, Optional
-import uuid
+from typing import Any, Dict, List, Optional
+import json
 import os
 import shutil
+import tempfile
+import uuid
+
 import numpy as np
+
+from app.modules.audio.runtime.actor import capture_job_actor, owned_job_service
+
+logger = logging.getLogger(__name__)
+from app.modules.audio.runtime.job_executors import (
+    ADVANCED_TTS_KIND,
+    ANALYZE_KIND,
+    ARRANGEMENT_KIND,
+    AUDIO_KIND_PREFIX,
+    EDIT_KIND,
+    EFFECTS_CHAIN_KIND,
+    EXPORT_BATCH_KIND,
+    FULL_SONG_KIND,
+    IMPORT_BATCH_KIND,
+    MASTERING_KIND,
+    MUSIC_KIND,
+    ORCHESTRA_KIND,
+    RESTORATION_KIND,
+    SFX_KIND,
+    SINGING_KIND,
+    SPEAK_KIND,
+    STEMS_KIND,
+    STS_ACCENT_KIND,
+    STS_CONVERT_KIND,
+    STS_EMOTION_KIND,
+    TIME_PITCH_KIND,
+    TRANSCRIBE_KIND,
+    TTS_KIND,
+    VOICE_CLONE_KIND,
+)
 from common_lib.modules.audio_processing.schemas import (
     TTSRequest,
     TTSResponse,
@@ -123,42 +159,155 @@ from pydantic import BaseModel
 from .voicelive import router as voicelive_router
 
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(capture_job_actor)])
 router.include_router(voicelive_router, prefix="/voicelive", tags=["VoiceLive"])
+
+
+def _ensure_audio_jobs():
+    """Register audio executors and return the actor-aware JobService proxy."""
+    return owned_job_service()
+
+
+def _job_payload(record: Any) -> Dict[str, Any]:
+    refs: List[str] = []
+    try:
+        refs = [str(r) for r in (record.get_result_refs() or [])]
+    except Exception:
+        refs = []
+    return {
+        "job_id": str(record.id),
+        "status": str(record.status),
+        "kind": str(record.kind),
+        "progress": float(record.progress or 0.0),
+        "result_refs": refs,
+        "error": record.error,
+    }
+
+
+def _job_status(job_id: str) -> Dict[str, Any]:
+    """Jobs-backed status view with b64-free metadata (never inline blobs)."""
+    from fastapi import HTTPException as _HTTPException
+
+    svc = _ensure_audio_jobs()
+    record = svc.get(job_id)
+    if record is None:
+        raise _HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    payload: Dict[str, Any] = _job_payload(record)
+    meta: Dict[str, Any] = {}
+    try:
+        refs = [str(r) for r in (record.get_result_refs() or [])]
+    except Exception:
+        refs = []
+    for ref in refs:
+        if not ref.endswith("result.json"):
+            continue
+        try:
+            with open(ref, "r", encoding="utf-8") as fh:
+                loaded = json.load(fh)
+            if isinstance(loaded, dict):
+                meta = loaded
+                break
+        except (OSError, ValueError):
+            continue
+    payload["meta"] = meta
+    return payload
+
+
+@router.get("/jobs")
+async def list_audio_jobs(
+    status: Optional[str] = None,
+    kind: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """List background audio jobs (newest first), newest-first with filters."""
+    records = _ensure_audio_jobs().list(
+        status=status,
+        kind=kind,
+        kind_prefix=AUDIO_KIND_PREFIX,
+        limit=min(max(limit, 1), 200),
+        offset=max(offset, 0),
+    )
+    items = [_job_payload(record) for record in records]
+    return {"data": items, "total": len(items)}
+
+
+@router.get("/jobs/{job_id}")
+async def get_audio_job(job_id: str) -> Dict[str, Any]:
+    """Poll a jobs-backed audio job (progress, result_refs, result.json meta)."""
+    return _job_status(job_id)
+
+
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_audio_job(job_id: str) -> Dict[str, Any]:
+    """Cooperatively cancel a queued/running audio job."""
+    record = _ensure_audio_jobs().cancel(job_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return {"status": "ok", **_job_payload(record)}
 
 
 class AudioAnalysisRequest(BaseModel):
     audio_path: str
 
 
-@router.post("/tts", response_model=TTSResponse)
-async def generate_tts(request: TTSRequest):
-    try:
-        return await _get_audio_service().generate_tts(request)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/tts")
+async def generate_tts(request: TTSRequest, sync: bool = False) -> Dict[str, Any]:
+    """Jobs-backed TTS; pass ``sync=true`` to run inline (legacy response)."""
+    if sync:
+        try:
+            result = await _get_audio_service().generate_tts(request)
+            return result.model_dump(mode="json")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    record = _ensure_audio_jobs().submit(
+        TTS_KIND, params=request.model_dump(mode="json")
+    )
+    return {"status": "queued", **_job_payload(record)}
 
 
-@router.post("/speak", response_model=SpeakResponse)
-async def generate_speak(request: SpeakRequest):
-    try:
-        return await _get_audio_service().generate_speak(request)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/speak")
+async def generate_speak(request: SpeakRequest, sync: bool = False) -> Dict[str, Any]:
+    """Jobs-backed Scenema speak; pass ``sync=true`` to run inline."""
+    if sync:
+        try:
+            result = await _get_audio_service().generate_speak(request)
+            return result.model_dump(mode="json")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    record = _ensure_audio_jobs().submit(
+        SPEAK_KIND, params=request.model_dump(mode="json")
+    )
+    return {"status": "queued", **_job_payload(record)}
 
 
-@router.post("/transcribe", response_model=TranscriptionResponse)
-async def transcribe_audio(request: TranscriptionRequest):
-    try:
-        return await _get_audio_service().transcribe(request)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/transcribe")
+async def transcribe_audio(
+    request: TranscriptionRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Jobs-backed transcription; pass ``sync=true`` to run inline."""
+    if sync:
+        try:
+            result = await _get_audio_service().transcribe(request)
+            return result.model_dump(mode="json")
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    record = _ensure_audio_jobs().submit(
+        TRANSCRIBE_KIND, params=request.model_dump(mode="json")
+    )
+    return {"status": "queued", **_job_payload(record)}
 
 
-@router.post("/edit", response_model=AudioEditResponse)
-async def edit_audio(request: AudioEditRequest):
+@router.post("/edit")
+async def edit_audio(request: AudioEditRequest, sync: bool = False) -> Dict[str, Any]:
+    """Jobs-backed audio editing (model inference); ``sync=true`` runs inline."""
+    if not sync:
+        record = _ensure_audio_jobs().submit(
+            EDIT_KIND, params=request.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         return await _get_audio_service().edit_audio(request)
     except Exception as e:
@@ -193,44 +342,87 @@ async def upload_audio_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/voice-cloning", response_model=VoiceCloningResponse)
-async def clone_voice(request: VoiceCloningRequest):
-    try:
-        return await _get_audio_service().clone_voice(request)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/voice-cloning")
+async def clone_voice(
+    request: VoiceCloningRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Jobs-backed voice cloning; pass ``sync=true`` to run inline."""
+    if sync:
+        try:
+            result = await _get_audio_service().clone_voice(request)
+            return result.model_dump(mode="json")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    record = _ensure_audio_jobs().submit(
+        VOICE_CLONE_KIND, params=request.model_dump(mode="json")
+    )
+    return {"status": "queued", **_job_payload(record)}
 
 
-@router.post("/singing-synthesis", response_model=SingingResponse)
-async def synthesize_singing(request: SingingRequest):
-    try:
-        return await _get_audio_service().synthesize_singing(request)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/singing-synthesis")
+async def synthesize_singing(
+    request: SingingRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Jobs-backed singing synthesis; pass ``sync=true`` to run inline."""
+    if sync:
+        try:
+            result = await _get_audio_service().synthesize_singing(request)
+            return result.model_dump(mode="json")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    record = _ensure_audio_jobs().submit(
+        SINGING_KIND, params=request.model_dump(mode="json")
+    )
+    return {"status": "queued", **_job_payload(record)}
 
 
-@router.post("/music-generation", response_model=MusicGenResponse)
-async def generate_music(request: MusicGenRequest):
-    try:
-        return await _get_audio_service().generate_music(request)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/music-generation")
+async def generate_music(
+    request: MusicGenRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Jobs-backed music generation; pass ``sync=true`` to run inline."""
+    if sync:
+        try:
+            result = await _get_audio_service().generate_music(request)
+            return result.model_dump(mode="json")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    record = _ensure_audio_jobs().submit(
+        MUSIC_KIND, params=request.model_dump(mode="json")
+    )
+    return {"status": "queued", **_job_payload(record)}
 
 
-@router.post("/sfx-generation", response_model=SFXResponse)
-async def generate_sfx(request: SFXRequest):
-    try:
-        return await _get_audio_service().generate_sfx(request)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/sfx-generation")
+async def generate_sfx(request: SFXRequest, sync: bool = False) -> Dict[str, Any]:
+    """Jobs-backed SFX generation; pass ``sync=true`` to run inline."""
+    if sync:
+        try:
+            result = await _get_audio_service().generate_sfx(request)
+            return result.model_dump(mode="json")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    record = _ensure_audio_jobs().submit(
+        SFX_KIND, params=request.model_dump(mode="json")
+    )
+    return {"status": "queued", **_job_payload(record)}
 
 
-@router.post("/stem-separation", response_model=StemSeparationResponse)
-async def separate_stems(request: StemSeparationRequest):
-    try:
-        return await _get_audio_service().separate_stems(request)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/stem-separation")
+async def separate_stems(
+    request: StemSeparationRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Jobs-backed stem separation; pass ``sync=true`` to run inline."""
+    if sync:
+        try:
+            result = await _get_audio_service().separate_stems(request)
+            return result.model_dump(mode="json")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    record = _ensure_audio_jobs().submit(
+        STEMS_KIND, params=request.model_dump(mode="json")
+    )
+    return {"status": "queued", **_job_payload(record)}
 
 
 @router.post("/chords", response_model=ChordProgressionResponse)
@@ -257,8 +449,16 @@ async def generate_melody(request: MelodyRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/analyze", response_model=AudioAnalysisResult)
-async def analyze_audio(request: AudioAnalysisRequest):
+@router.post("/analyze")
+async def analyze_audio(
+    request: AudioAnalysisRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Jobs-backed audio analysis (whisper-scale decode); ``sync=true`` inline."""
+    if not sync:
+        record = _ensure_audio_jobs().submit(
+            ANALYZE_KIND, params=request.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         return await _get_audio_service().analyze_audio(request.audio_path)
     except FileNotFoundError as e:
@@ -269,32 +469,64 @@ async def analyze_audio(request: AudioAnalysisRequest):
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 
-@router.post("/mastering", response_model=MasteringResponse)
-async def master_audio(request: MasteringRequest):
+@router.post("/mastering")
+async def master_audio(
+    request: MasteringRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Jobs-backed mastering chain; ``sync=true`` runs inline."""
+    if not sync:
+        record = _ensure_audio_jobs().submit(
+            MASTERING_KIND, params=request.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         return await _get_audio_service().master_audio(request)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/restoration", response_model=RestorationResponse)
-async def restore_audio(request: RestorationRequest):
+@router.post("/restoration")
+async def restore_audio(
+    request: RestorationRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Jobs-backed restoration (neural de-noise/de-click); ``sync=true`` inline."""
+    if not sync:
+        record = _ensure_audio_jobs().submit(
+            RESTORATION_KIND, params=request.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         return await _get_audio_service().restore_audio(request)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/time-pitch", response_model=TimePitchResponse)
-async def time_pitch_audio(request: TimePitchRequest):
+@router.post("/time-pitch")
+async def time_pitch_audio(
+    request: TimePitchRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Jobs-backed time/pitch processing; ``sync=true`` runs inline."""
+    if not sync:
+        record = _ensure_audio_jobs().submit(
+            TIME_PITCH_KIND, params=request.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         return await _get_audio_service().time_pitch_audio(request)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/arrangement", response_model=ArrangementResponse)
-async def plan_arrangement(request: ArrangementRequest):
+@router.post("/arrangement")
+async def plan_arrangement(
+    request: ArrangementRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Jobs-backed arrangement planning; ``sync=true`` runs inline."""
+    if not sync:
+        record = _ensure_audio_jobs().submit(
+            ARRANGEMENT_KIND, params=request.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         return await _get_audio_service().plan_arrangement(request)
     except Exception as e:
@@ -341,25 +573,53 @@ async def recover_project(request: ProjectRecoverRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/full-song-generation", response_model=FullSongGenResponse)
-async def generate_full_song(request: FullSongGenRequest):
-    try:
-        return await _get_audio_service().generate_full_song(request)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/full-song-generation")
+async def generate_full_song(
+    request: FullSongGenRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Jobs-backed full-song generation; pass ``sync=true`` to run inline."""
+    if sync:
+        try:
+            result = await _get_audio_service().generate_full_song(request)
+            return result.model_dump(mode="json")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    record = _ensure_audio_jobs().submit(
+        FULL_SONG_KIND, params=request.model_dump(mode="json")
+    )
+    return {"status": "queued", **_job_payload(record)}
 
 
-@router.post("/orchestra/compose", response_model=OrchestraResponse)
-async def compose_orchestra(request: OrchestraRequest):
-    try:
-        return await _get_audio_service().compose_orchestra(request)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/orchestra/compose")
+async def compose_orchestra(
+    request: OrchestraRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Jobs-backed orchestra composition; pass ``sync=true`` to run inline."""
+    if sync:
+        try:
+            result = await _get_audio_service().compose_orchestra(request)
+            return result.model_dump(mode="json")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    record = _ensure_audio_jobs().submit(
+        ORCHESTRA_KIND, params=request.model_dump(mode="json")
+    )
+    return {"status": "queued", **_job_payload(record)}
 
 
-@router.post("/advanced-tts", response_model=AdvancedTTSResponse)
-async def advanced_tts(request: AdvancedTTSRequest):
-    """Advanced TTS with emotion, SSML, multi-speaker, pronunciation, effects."""
+@router.post("/advanced-tts")
+async def advanced_tts(
+    request: AdvancedTTSRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Advanced TTS with emotion, SSML, multi-speaker, pronunciation, effects.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline (legacy shape).
+    """
+    if not sync:
+        record = _ensure_audio_jobs().submit(
+            ADVANCED_TTS_KIND, params=request.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         from common_lib.modules.audio_processing.generation.tts.advanced import (
             AdvancedTTSEngine,
@@ -460,9 +720,19 @@ async def validate_ssml(request: SSMLValidateRequest):
 # ── Speech-to-Speech Endpoints ─────────────────────────────────────────
 
 
-@router.post("/speech-to-speech", response_model=SpeechToSpeechResponse)
-async def speech_to_speech(request: SpeechToSpeechRequest):
-    """Voice conversion, accent transfer, or emotion transfer."""
+@router.post("/speech-to-speech")
+async def speech_to_speech(
+    request: SpeechToSpeechRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Voice conversion, accent transfer, or emotion transfer.
+
+    Jobs-backed by default; pass ``sync=true`` to run inline.
+    """
+    if not sync:
+        record = _ensure_audio_jobs().submit(
+            STS_CONVERT_KIND, params=request.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         from common_lib.modules.audio_processing.generation.speech_to_speech.converter import (
             SpeechToSpeechEngine,
@@ -511,9 +781,16 @@ async def speech_to_speech(request: SpeechToSpeechRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/accent-transfer", response_model=SpeechToSpeechResponse)
-async def accent_transfer(request: AccentTransferRequest):
-    """Quick accent transfer endpoint."""
+@router.post("/accent-transfer")
+async def accent_transfer(
+    request: AccentTransferRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Quick accent transfer endpoint. Jobs-backed; ``sync=true`` for inline."""
+    if not sync:
+        record = _ensure_audio_jobs().submit(
+            STS_ACCENT_KIND, params=request.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         from common_lib.modules.audio_processing.generation.speech_to_speech.converter import (
             SpeechToSpeechEngine,
@@ -544,9 +821,16 @@ async def accent_transfer(request: AccentTransferRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/emotion-transfer", response_model=SpeechToSpeechResponse)
-async def emotion_transfer(request: EmotionTransferRequest):
-    """Quick emotion transfer endpoint."""
+@router.post("/emotion-transfer")
+async def emotion_transfer(
+    request: EmotionTransferRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Quick emotion transfer endpoint. Jobs-backed; ``sync=true`` for inline."""
+    if not sync:
+        record = _ensure_audio_jobs().submit(
+            STS_EMOTION_KIND, params=request.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         from common_lib.modules.audio_processing.generation.speech_to_speech.converter import (
             SpeechToSpeechEngine,
@@ -1253,9 +1537,16 @@ async def export_audio(request: ExportRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/export/batch", response_model=BatchExportResponse)
-async def batch_export_audio(request: BatchExportRequest):
-    """Batch export multiple files."""
+@router.post("/export/batch")
+async def batch_export_audio(
+    request: BatchExportRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Batch export multiple files. Jobs-backed; ``sync=true`` for inline."""
+    if not sync:
+        record = _ensure_audio_jobs().submit(
+            EXPORT_BATCH_KIND, params=request.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         from pathlib import Path
         from common_lib.modules.audio_processing.editing.exporter import (
@@ -1342,9 +1633,16 @@ async def import_audio(request: ImportRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/import/batch", response_model=BatchImportResponse)
-async def batch_import_audio(request: BatchImportRequest):
-    """Batch import multiple files."""
+@router.post("/import/batch")
+async def batch_import_audio(
+    request: BatchImportRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Batch import multiple files. Jobs-backed; ``sync=true`` for inline."""
+    if not sync:
+        record = _ensure_audio_jobs().submit(
+            IMPORT_BATCH_KIND, params=request.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         from common_lib.modules.audio_processing.editing.importer import AudioImporter
 
@@ -1380,9 +1678,16 @@ async def batch_import_audio(request: BatchImportRequest):
 # ═══════════════════════════════════════════════════════════════════════
 
 
-@router.post("/effects/chain", response_model=EffectsChainResponse)
-async def apply_effects_chain(request: EffectsChainRequest):
-    """Apply a chain of effects to audio."""
+@router.post("/effects/chain")
+async def apply_effects_chain(
+    request: EffectsChainRequest, sync: bool = False
+) -> Dict[str, Any]:
+    """Apply a chain of effects to audio. Jobs-backed; ``sync=true`` inline."""
+    if not sync:
+        record = _ensure_audio_jobs().submit(
+            EFFECTS_CHAIN_KIND, params=request.model_dump(mode="json")
+        )
+        return {"status": "queued", **_job_payload(record)}
     try:
         import soundfile as sf
         from common_lib.modules.audio_processing.editing.effects import (

@@ -14,11 +14,17 @@ import json
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from app.modules.jobs.actor import capture_job_actor, owned_job_service
+
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/qwen21", tags=["Qwen-Image 2.1"])
+router = APIRouter(
+    prefix="/qwen21",
+    tags=["Qwen-Image 2.1"],
+    dependencies=[Depends(capture_job_actor)],
+)
 
 
 class Qwen21Txt2ImgRequest(BaseModel):
@@ -43,10 +49,9 @@ def _ensure_jobs():
     from app.modules.vision.runtime.job_executors import (
         ensure_vision_executors_registered,
     )
-    from common_lib.modules.jobs.service import get_job_service
 
     ensure_vision_executors_registered()
-    return get_job_service()
+    return owned_job_service()
 
 
 def _ok(meta: dict[str, Any]) -> dict[str, Any]:

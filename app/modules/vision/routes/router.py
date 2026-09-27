@@ -6,7 +6,7 @@ import os
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 import io
 import shutil
 import pytesseract
@@ -67,12 +67,13 @@ from common_lib.modules.vision.enhanced_service import (
 from common_lib.modules.data_storage.database.connection import get_session
 from common_lib.paths import GENERATED_CONTENT
 
+from app.modules.jobs.actor import capture_job_actor, owned_job_service
 from app.modules.vision.routes.ops_router import router as ops_router
 from app.modules.vision.routes.qwen21_router import router as qwen21_router
 from app.modules.vision.routes.sota_generation import router as sota_generation_router
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(capture_job_actor)])
 router.include_router(ops_router)
 router.include_router(qwen21_router)
 router.include_router(sota_generation_router)
@@ -328,14 +329,13 @@ async def runtime_list_families():
 
 
 def _ensure_vision_jobs():
-    """Register vision executors and return the JobService singleton."""
+    """Register vision executors and return the actor-aware JobService proxy."""
     from app.modules.vision.runtime.job_executors import (
         ensure_vision_executors_registered,
     )
-    from common_lib.modules.jobs.service import get_job_service
 
     ensure_vision_executors_registered()
-    return get_job_service()
+    return owned_job_service()
 
 
 def _vision_job_payload(record: Any) -> Dict[str, Any]:

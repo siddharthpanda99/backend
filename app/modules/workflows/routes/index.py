@@ -6,13 +6,15 @@ import logging
 import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional, AsyncGenerator
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from common_lib.modules.jobs.artifacts import job_dir
 from common_lib.modules.jobs.models import JobRecord
 from common_lib.modules.jobs.service import get_job_service
+
+from app.modules.jobs.actor import capture_job_actor, owned_job_service
 from common_lib.modules.workflows.job_executors import (
     GRAPH_RUN_KIND,
     ensure_workflow_executors_registered,
@@ -21,7 +23,7 @@ from common_lib.modules.workflows.service import workflow_service
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(capture_job_actor)])
 
 TERMINAL_STATUSES = ("completed", "failed", "cancelled")
 GRAPH_RUN_TIMEOUT = 600
@@ -173,7 +175,7 @@ def _submit_graph_run(
 ) -> JobRecord:
     """Register executors (idempotent) and submit a graph-run job."""
     ensure_workflow_executors_registered()
-    return get_job_service().submit(
+    return owned_job_service().submit(
         kind=GRAPH_RUN_KIND,
         params={
             "nodes": nodes,
