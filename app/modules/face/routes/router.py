@@ -14,7 +14,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Query, Request
 from fastapi.responses import Response, StreamingResponse
 from common_lib.paths import RESOURCES_ROOT
 
