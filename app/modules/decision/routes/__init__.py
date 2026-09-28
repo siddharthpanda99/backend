@@ -59,7 +59,9 @@ async def create_plan(payload: Dict[str, Any]) -> Dict[str, Any]:
     from common_lib.modules.decision_engine.contracts import DecisionPlan
 
     plan = DecisionPlan(plan_id=plan_id, goal=goal, status=status)
-    approval.create_plan_version(plan.to_dict(), author=str(payload.get("requester", "api")))
+    approval.create_plan_version(
+        plan.to_dict(), author=str(payload.get("requester", "api"))
+    )
     return {"plan_id": plan_id, "status": status}
 
 
@@ -89,7 +91,9 @@ async def validate_plan(plan_id: str) -> Dict[str, Any]:
 
 
 @router.post("/plans/{plan_id}/approve")
-async def approve_plan(plan_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def approve_plan(
+    plan_id: str, payload: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """POST /plans/{plan_id}/approve — §18 approval transition."""
     from common_lib.modules.decision_engine.approval.service import review_plan
 
@@ -102,12 +106,16 @@ async def approve_plan(plan_id: str, payload: Optional[Dict[str, Any]] = None) -
         comments=str(body.get("comments", "")),
     )
     if not result.get("ok"):
-        raise HTTPException(status_code=409, detail=result.get("error", "approve failed"))
+        raise HTTPException(
+            status_code=409, detail=result.get("error", "approve failed")
+        )
     return result
 
 
 @router.post("/plans/{plan_id}/reject")
-async def reject_plan(plan_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def reject_plan(
+    plan_id: str, payload: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """POST /plans/{plan_id}/reject — §18 rejection transition."""
     from common_lib.modules.decision_engine.approval.service import review_plan
 
@@ -120,7 +128,9 @@ async def reject_plan(plan_id: str, payload: Optional[Dict[str, Any]] = None) ->
         comments=str(body.get("comments", "")),
     )
     if not result.get("ok"):
-        raise HTTPException(status_code=409, detail=result.get("error", "reject failed"))
+        raise HTTPException(
+            status_code=409, detail=result.get("error", "reject failed")
+        )
     return result
 
 
@@ -147,7 +157,9 @@ async def edit_plan(plan_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
 async def compile_plan(plan_id: str) -> Dict[str, Any]:
     """POST /plans/{plan_id}/compile — approved plan → ExecutionGraph (§35)."""
     from common_lib.modules.decision_engine.approval import service as approval
-    from common_lib.modules.decision_engine.execution.compiler import compile_plan as _compile
+    from common_lib.modules.decision_engine.execution.compiler import (
+        compile_plan as _compile,
+    )
 
     _require_fabric()
     plan = approval.GLOBAL_REGISTRY.get(plan_id)
@@ -155,16 +167,24 @@ async def compile_plan(plan_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"plan {plan_id!r} not found")
     result = _compile(plan.to_dict())
     if not result.get("valid"):
-        raise HTTPException(status_code=422, detail={"errors": result.get("errors", [])})
+        raise HTTPException(
+            status_code=422, detail={"errors": result.get("errors", [])}
+        )
     return result
 
 
 @router.post("/plans/{plan_id}/execute")
-async def execute_plan(plan_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def execute_plan(
+    plan_id: str, payload: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """POST /plans/{plan_id}/execute — compile + run the ExecutionGraph."""
     from common_lib.modules.decision_engine.approval import service as approval
-    from common_lib.modules.decision_engine.execution.compiler import compile_plan as _compile
-    from common_lib.modules.decision_engine.execution.runtime import execute_graph as _run
+    from common_lib.modules.decision_engine.execution.compiler import (
+        compile_plan as _compile,
+    )
+    from common_lib.modules.decision_engine.execution.runtime import (
+        execute_graph as _run,
+    )
 
     _require_fabric()
     plan = approval.GLOBAL_REGISTRY.get(plan_id)
@@ -172,7 +192,9 @@ async def execute_plan(plan_id: str, payload: Optional[Dict[str, Any]] = None) -
         raise HTTPException(status_code=404, detail=f"plan {plan_id!r} not found")
     compiled = _compile(plan.to_dict())
     if not compiled.get("valid"):
-        raise HTTPException(status_code=422, detail={"errors": compiled.get("errors", [])})
+        raise HTTPException(
+            status_code=422, detail={"errors": compiled.get("errors", [])}
+        )
     body = payload or {}
     handlers = body.get("tool_handlers") or {}
     run = _run(
@@ -183,7 +205,9 @@ async def execute_plan(plan_id: str, payload: Optional[Dict[str, Any]] = None) -
     # Record the run for the execution-history surface (§57) — best-effort,
     # never fails the run itself.
     try:
-        from common_lib.modules.decision_engine.telemetry.history import record_execution
+        from common_lib.modules.decision_engine.telemetry.history import (
+            record_execution,
+        )
 
         record = record_execution(
             plan_id=plan_id,
@@ -198,7 +222,9 @@ async def execute_plan(plan_id: str, payload: Optional[Dict[str, Any]] = None) -
 
 
 @router.post("/plans/{plan_id}/replan")
-async def replan_plan(plan_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def replan_plan(
+    plan_id: str, payload: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """POST /plans/{plan_id}/replan — §91: pause → new version → re-review."""
     from common_lib.modules.decision_engine.approval.service import review_plan
 
@@ -212,8 +238,38 @@ async def replan_plan(plan_id: str, payload: Optional[Dict[str, Any]] = None) ->
         changes=[{"op": "replan", **(body.get("changes") or {})}],
     )
     if not result.get("ok"):
-        raise HTTPException(status_code=409, detail=result.get("error", "replan failed"))
+        raise HTTPException(
+            status_code=409, detail=result.get("error", "replan failed")
+        )
     return result
+
+
+@router.get("/plans")
+async def list_plans(
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 100,
+) -> Dict[str, Any]:
+    """GET /plans — list all plans with optional status filter and search."""
+    from common_lib.modules.decision_engine.approval import service as approval
+
+    _require_fabric()
+    plans = approval.GLOBAL_REGISTRY.list_plans(
+        status=status, search=search, limit=limit
+    )
+    return {"plans": plans, "total": len(plans)}
+
+
+@router.delete("/plans/{plan_id}")
+async def delete_plan(plan_id: str) -> Dict[str, Any]:
+    """DELETE /plans/{plan_id} — delete a plan and all its versions."""
+    from common_lib.modules.decision_engine.approval import service as approval
+
+    _require_fabric()
+    deleted = approval.GLOBAL_REGISTRY.delete_plan(plan_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"plan {plan_id!r} not found")
+    return {"ok": True, "plan_id": plan_id}
 
 
 # ── DF-056 coordination endpoints (thin) ─────────────────────────────────
@@ -229,7 +285,9 @@ async def list_executions(
     limit: Optional[int] = None,
 ) -> Dict[str, Any]:
     """GET /executions — recorded plan runs, newest first (§57)."""
-    from common_lib.modules.decision_engine.telemetry.history import list_executions as _list
+    from common_lib.modules.decision_engine.telemetry.history import (
+        list_executions as _list,
+    )
 
     _require_fabric()
     return _list(plan_id=plan_id, status=status, limit=limit)
@@ -238,12 +296,16 @@ async def list_executions(
 @router.get("/executions/{execution_id}")
 async def get_execution(execution_id: str) -> Dict[str, Any]:
     """GET /executions/{execution_id} — one run incl. per-node results."""
-    from common_lib.modules.decision_engine.telemetry.history import get_execution as _get
+    from common_lib.modules.decision_engine.telemetry.history import (
+        get_execution as _get,
+    )
 
     _require_fabric()
     record = _get(execution_id)
     if record is None:
-        raise HTTPException(status_code=404, detail=f"execution {execution_id!r} not found")
+        raise HTTPException(
+            status_code=404, detail=f"execution {execution_id!r} not found"
+        )
     return record
 
 
@@ -251,7 +313,10 @@ async def get_execution(execution_id: str) -> Dict[str, Any]:
 async def coordination_intake(payload: Dict[str, Any]) -> Dict[str, Any]:
     """POST /coordination/intake — record a requirement (flag-guarded)."""
     _require_coordination()
-    from common_lib.modules.decision_engine.coordination.requirement import record_requirement
+    from common_lib.modules.decision_engine.coordination.requirement import (
+        record_requirement,
+    )
+
     result = record_requirement(
         raw_text=str(payload.get("raw_text", "")),
         goal=str(payload.get("goal", "")),
@@ -261,7 +326,9 @@ async def coordination_intake(payload: Dict[str, Any]) -> Dict[str, Any]:
         priority=str(payload.get("priority", "normal")),
     )
     if not result.get("ok"):
-        raise HTTPException(status_code=422, detail={"errors": result.get("errors", [])})
+        raise HTTPException(
+            status_code=422, detail={"errors": result.get("errors", [])}
+        )
     return result
 
 
@@ -269,7 +336,9 @@ async def coordination_intake(payload: Dict[str, Any]) -> Dict[str, Any]:
 async def coordination_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     """POST /coordination/run — full pipeline: gate → decompose → DAG → assign."""
     _require_coordination()
-    from common_lib.modules.decision_engine.coordination.coordinator import run_coordination
+    from common_lib.modules.decision_engine.coordination.coordinator import (
+        run_coordination,
+    )
 
     result = run_coordination(
         dict(payload.get("requirement") or {}),
@@ -286,6 +355,7 @@ async def coordination_assign(payload: Dict[str, Any]) -> Dict[str, Any]:
     """POST /coordination/assign — assign tasks to skills/capabilities."""
     _require_coordination()
     from common_lib.modules.decision_engine.coordination.assigner import assign_tasks
+
     return assign_tasks(
         tasks=list(payload.get("tasks") or []),
         skills=list(payload.get("skills") or []) or None,
@@ -297,13 +367,17 @@ async def coordination_assign(payload: Dict[str, Any]) -> Dict[str, Any]:
 async def coordination_schedule(payload: Dict[str, Any]) -> Dict[str, Any]:
     """POST /coordination/schedule — 3-mode schedule over the task DAG."""
     _require_coordination()
-    from common_lib.modules.decision_engine.coordination.estimators import estimate_tasks
+    from common_lib.modules.decision_engine.coordination.estimators import (
+        estimate_tasks,
+    )
     from common_lib.modules.decision_engine.coordination.schedules import (
         schedule_cheapest,
         schedule_custom,
         schedule_fastest,
     )
-    from common_lib.modules.decision_engine.coordination.task_graph import build_task_dag
+    from common_lib.modules.decision_engine.coordination.task_graph import (
+        build_task_dag,
+    )
 
     mode = str(payload.get("mode", "fastest")).lower()
     tasks = list(payload.get("tasks") or [])
@@ -315,7 +389,9 @@ async def coordination_schedule(payload: Dict[str, Any]) -> Dict[str, Any]:
         dag = build_task_dag(tasks, edges)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    estimates = estimate_tasks(tasks, capabilities=list(payload.get("capabilities") or []) or None)
+    estimates = estimate_tasks(
+        tasks, capabilities=list(payload.get("capabilities") or []) or None
+    )
     if mode == "cheapest":
         return schedule_cheapest(dag, estimates)
     if mode == "custom":
@@ -335,7 +411,10 @@ async def coordination_schedule(payload: Dict[str, Any]) -> Dict[str, Any]:
 async def coordination_artefacts(payload: Dict[str, Any]) -> Dict[str, Any]:
     """POST /coordination/artefacts — emit the versioned artefact bundle."""
     _require_coordination()
-    from common_lib.modules.decision_engine.coordination.artefacts import emit_artefact_bundle
+    from common_lib.modules.decision_engine.coordination.artefacts import (
+        emit_artefact_bundle,
+    )
+
     try:
         return emit_artefact_bundle(
             dict(payload.get("run_report") or {}),
@@ -350,7 +429,10 @@ async def coordination_artefacts(payload: Dict[str, Any]) -> Dict[str, Any]:
 async def coordination_checkpoints(payload: Dict[str, Any]) -> Dict[str, Any]:
     """POST /coordination/checkpoints — aggregate task results (merge)."""
     _require_coordination()
-    from common_lib.modules.decision_engine.coordination.aggregator import aggregate_results
+    from common_lib.modules.decision_engine.coordination.aggregator import (
+        aggregate_results,
+    )
+
     return aggregate_results(
         bundle=dict(payload.get("bundle") or {}),
         results=list(payload.get("results") or []),
