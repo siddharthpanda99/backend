@@ -15,7 +15,7 @@ import os
 import base64
 import json
 import asyncio
-from typing import List, Optional, Any
+from typing import Dict, List, Optional, Any
 from common_lib.modules.dip.ingestion.controller import (
     process_documents,
     get_processing_status,
