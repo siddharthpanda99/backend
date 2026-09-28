@@ -12,6 +12,7 @@ from app.modules.audio.routes.openai_compat import router as openai_compat_route
 from app.modules.audio.routes.tts_stream import router as tts_stream_router
 from app.modules.audio.routes.system import router as system_router
 from app.modules.audio.routes.voice_gallery import router as voice_gallery_router
+from app.modules.audio.routes.capabilities import router as capabilities_router
 
 # Merge takes routes into the main audio router under the same prefix
 # The takes_router has sub-path /generate, /takes/*, etc.
@@ -146,6 +147,11 @@ except ImportError as _wf_import_error:  # pragma: no cover
         "audio.workflows routes not mounted (import failed: %s)",
         _wf_import_error,
     )
+
+# Merge capability-lab routes at root (capability-driven API):
+# GET /capabilities, POST /generate
+for route in capabilities_router.routes:
+    main_router.routes.append(route)
 
 __all__ = ["router"]
 
