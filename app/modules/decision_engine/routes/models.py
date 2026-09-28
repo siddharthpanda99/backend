@@ -16,13 +16,25 @@ router = APIRouter(prefix="/models", tags=["Models"])
 _service = DecisionRegistryService()
 
 
+def _to_read(spec: object) -> DecisionModelSpecRead:
+    """Shape a DecisionModelSpec dataclass for the response schema.
+
+    DecisionModelSpec.calibration is a CalibrationSpec dataclass, which the
+    CalibrationSpecBase model cannot validate directly from attributes — go
+    through the spec's own to_dict() which already serializes nested records.
+    """
+    data = spec.to_dict() if hasattr(spec, "to_dict") else spec
+    return DecisionModelSpecRead.model_validate(data)
+
+
 @router.get("", response_model=DecisionModelSpecList)
 async def list_models():
     """List all registered decision models."""
     try:
         models = _service.list_models()
         return DecisionModelSpecList(
-            items=[DecisionModelSpecRead.model_validate(m) for m in models]
+            items=[_to_read(m) for m in models],
+            total=len(models),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"List models failed: {e}")
@@ -35,7 +47,7 @@ async def get_model(model_id: str):
         model = _service.get_model(model_id)
         if not model:
             raise HTTPException(status_code=404, detail="Model not found")
-        return DecisionModelSpecRead.model_validate(model)
+        return _to_read(model)
     except HTTPException:
         raise
     except Exception as e:
@@ -47,7 +59,7 @@ async def register_model(request: DecisionModelSpecCreate):
     """Register a new decision model."""
     try:
         model = _service.register_model(request)
-        return DecisionModelSpecRead.model_validate(model)
+        return _to_read(model)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

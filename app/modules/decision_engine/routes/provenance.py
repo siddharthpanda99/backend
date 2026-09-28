@@ -47,6 +47,9 @@ async def list_plan_decisions(plan_id: str):
     """List all decision provenances for a plan."""
     try:
         provs = _service.list_plan_decisions(plan_id)
-        return ProvenanceList(items=[ProvenanceRead.model_validate(p) for p in provs])
+        return ProvenanceList(
+            items=[ProvenanceRead.model_validate(p) for p in provs],
+            total=len(provs),
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"List decisions failed: {e}")

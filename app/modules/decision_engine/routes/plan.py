@@ -52,7 +52,7 @@ async def get_plan(plan_id: str):
 async def approve_plan(plan_id: str, request: PlanApproveRequest):
     """Approve, reject, or modify a plan."""
     try:
-        plan = _approval_service.approve(plan_id, request)
+        plan = _approval_service.approve_request(plan_id, request)
         if not plan:
             raise HTTPException(status_code=404, detail="Plan not found")
         return PlanRead.model_validate(plan)
@@ -66,7 +66,7 @@ async def approve_plan(plan_id: str, request: PlanApproveRequest):
 async def compile_plan(plan_id: str, request: CompilePlanRequest):
     """Compile approved plan into execution contract."""
     try:
-        contract = _decision_service.compile_plan(plan_id, request)
+        contract = _decision_service.compile_plan(plan_id=plan_id, request=request)
         return ContractRead.model_validate(contract)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

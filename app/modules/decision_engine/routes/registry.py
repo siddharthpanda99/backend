@@ -216,7 +216,11 @@ async def get_model_for_decision(
 
     service = DecisionRegistryService()
     try:
-        return service.get_model_for_decision(decision_type, tier)
+        spec = service.get_model_for_decision(decision_type, tier)
+        # The response is declared as a plain dict but the service returns a
+        # DecisionModelSpec dataclass, which FastAPI cannot serialise — the
+        # endpoint 500'd on every call until this conversion.
+        return spec.to_dict() if spec is not None else None
     except NotImplementedError:
         raise HTTPException(
             status_code=501, detail="Model selection not yet implemented"

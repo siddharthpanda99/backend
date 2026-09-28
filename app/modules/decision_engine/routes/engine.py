@@ -121,10 +121,10 @@ async def route_decision(payload: RouteDecisionRequest) -> dict[str, Any]:
     service = DecisionEngineService()
     try:
         result = service.route_decision(
-            payload.decision_context,
-            payload.decision_type,
-            payload.question,
-            payload.options,
+            decision_context=payload.decision_context,
+            decision_type=payload.decision_type,
+            question=payload.question,
+            options=payload.options,
         )
         return result
     except NotImplementedError:
@@ -157,7 +157,10 @@ async def build_plan(payload: BuildPlanRequest) -> dict[str, Any]:
 
     service = DecisionEngineService()
     try:
-        result = service.build_plan(payload.decision_context, payload.decisions)
+        result = service.build_plan(
+            decision_context=payload.decision_context,
+            decisions=payload.decisions,
+        )
         return result
     except NotImplementedError:
         raise HTTPException(status_code=501, detail="Plan building not yet implemented")

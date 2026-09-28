@@ -21,7 +21,12 @@ from common_lib.modules.decision_engine.schemas import (
     DecisionEngineHealth,
 )
 
-router = APIRouter()
+# Prefix matches the paths documented at the top of this file and the ones the
+# Decision Fabric UI calls (`/intent/classify` etc). Without it the four intent
+# endpoints were mounted as bare `/classify`, `/entities`, `/constraints` and
+# `/parse` on a 40-endpoint surface, which both collided conceptually and 404'd
+# every UI request.
+router = APIRouter(prefix="/intent")
 
 
 def _require_fabric() -> None:

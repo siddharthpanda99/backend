@@ -56,9 +56,36 @@ async def create_plan(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=422, detail="goal is required")
     plan_id = str(payload.get("plan_id") or f"plan_{abs(hash(goal)) % 10**10}")
     status = str(payload.get("status", "REVIEW_REQUIRED"))
-    from common_lib.modules.decision_engine.contracts import DecisionPlan
+    from common_lib.modules.decision_engine.contracts import (
+        DecisionEdge,
+        DecisionNode,
+        DecisionPlan,
+        RiskModel,
+    )
 
-    plan = DecisionPlan(plan_id=plan_id, goal=goal, status=status)
+    # Carry the full graph through: the builder canvas sends nodes/edges and
+    # the execution policy, and the validator (§81) needs the policy to pass
+    # rule 13. Dropping them here made every builder plan invalid.
+    try:
+        nodes = [DecisionNode.from_dict(n) for n in payload.get("nodes") or []]
+        edges = [DecisionEdge.from_dict(e) for e in payload.get("edges") or []]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"invalid nodes/edges: {exc}")
+
+    plan = DecisionPlan(
+        plan_id=plan_id,
+        goal=goal,
+        status=status,
+        assumptions=list(payload.get("assumptions") or []),
+        unknowns=list(payload.get("unknowns") or []),
+        constraints=list(payload.get("constraints") or []),
+        evidence_requirements=list(payload.get("evidence_requirements") or []),
+        decisions=list(payload.get("decisions") or []),
+        nodes=nodes,
+        edges=edges,
+        execution_policy=dict(payload.get("execution_policy") or {}),
+        risk=RiskModel(**(payload.get("risk") or {})),
+    )
     approval.create_plan_version(
         plan.to_dict(), author=str(payload.get("requester", "api"))
     )
@@ -151,6 +178,120 @@ async def edit_plan(plan_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     if not result.get("ok"):
         raise HTTPException(status_code=409, detail=result.get("error", "edit failed"))
     return result
+
+
+@router.get("/executions/{execution_id}/stream")
+async def stream_execution(execution_id: str) -> Any:
+    """GET /executions/{id}/stream — SSE lifecycle for one execution.
+
+    The execution runtime is synchronous, so by the time a client subscribes
+    the run has already been recorded. Rather than leave the UI's EventSource
+    permanently offline, this replays the stored record as the same event
+    sequence the runtime emits, ending with a terminal event. Callers get the
+    real outcome of the run they just triggered.
+    """
+    import json as _json
+    import asyncio as _asyncio
+    from datetime import datetime, timezone
+
+    from fastapi.responses import StreamingResponse
+
+    from common_lib.modules.decision_engine.telemetry import history as _history
+
+    _require_fabric()
+    record = _history.GLOBAL_EXECUTION_HISTORY.get(execution_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    plan_id = str(record.get("planId", ""))
+    plan_version = int(record.get("planVersion") or 0)
+    executed = [str(s) for s in (record.get("executed") or [])]
+    results = dict(record.get("results") or {})
+
+    def frame(event_type: str, data: Dict[str, Any]) -> str:
+        payload = {
+            "event_type": event_type,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "execution_id": execution_id,
+            "data": data,
+        }
+        return f"data: {_json.dumps(payload)}\n\n"
+
+    async def event_source():
+        yield frame(
+            "execution_started",
+            {
+                "plan_id": plan_id,
+                "plan_version": plan_version,
+                "execution_graph": {
+                    "nodes": [{"id": s, "type": "TASK", "config": {}} for s in executed],
+                    "edges": [],
+                    "checkpoints": [],
+                },
+                "initial_context": {},
+            },
+        )
+        for step in executed:
+            yield frame("node_started", {"node_id": step, "node_type": "TASK", "attempt": 1})
+            await _asyncio.sleep(0)
+            yield frame(
+                "node_completed",
+                {
+                    "node_id": step,
+                    "node_type": "TASK",
+                    "result": results.get(step) or {},
+                    "duration_ms": 0,
+                },
+            )
+        terminal = str(record.get("status", "COMPLETED"))
+        if terminal not in ("COMPLETED", "FAILED", "INTERRUPTED"):
+            terminal = "COMPLETED"
+        yield frame(
+            "execution_completed",
+            {
+                "status": terminal,
+                "results": results,
+                "checkpoints": {},
+                "duration_ms": int(record.get("durationMs") or 0),
+                **({"error": record.get("error")} if record.get("error") else {}),
+            },
+        )
+
+    return StreamingResponse(
+        event_source(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/plans/{plan_id}/diff")
+async def diff_plan_versions(
+    plan_id: str, payload: Dict[str, Any]
+) -> Dict[str, Any]:
+    """POST /plans/{plan_id}/diff — field-level diff between two versions (§19).
+
+    Backs the Plan Contracts diff view. ApprovalService.get_version_diff
+    already computed this; it simply had no route, so the UI's request 404'd.
+    """
+    from common_lib.modules.decision_engine.services import ApprovalService
+
+    _require_fabric()
+    try:
+        from_version = int(payload.get("from_version", 1))
+        to_version = int(payload.get("to_version", 1))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=422, detail="from_version and to_version must be integers"
+        )
+
+    diff = ApprovalService().get_version_diff(plan_id, from_version, to_version)
+    return {
+        "plan_id": plan_id,
+        "from_version": from_version,
+        "to_version": to_version,
+        "changes": diff,
+        "total": len(diff),
+    }
 
 
 @router.post("/plans/{plan_id}/compile")

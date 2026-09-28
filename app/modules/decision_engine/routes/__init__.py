@@ -17,7 +17,13 @@ from app.modules.decision_engine.routes import (
     health,
 )
 
-router = APIRouter(prefix="/decision-engine", tags=["Decision Engine"])
+# No prefix here on purpose: ROUTER_DEFINITIONS in app/core/routers.py mounts
+# this router with prefix="/decision-engine" (under /api/v1). Declaring the
+# prefix on the router as well produced a doubled path
+# (/api/v1/decision-engine/decision-engine/...) so every decision-engine
+# endpoint 404'd in the running app. Sibling routers follow the same rule:
+# the mount point owns the prefix.
+router = APIRouter(tags=["Decision Engine"])
 
 # Include all sub-routers
 router.include_router(ingest.router)
