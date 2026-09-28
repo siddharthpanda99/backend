@@ -647,6 +647,165 @@ async def list_memory_capabilities():
 
 
 # ────────────────────────────────────────────────
+# Feature Flags (delegates to claude_mem_features)
+# ────────────────────────────────────────────────
+
+
+@router.get("/features")
+async def list_feature_flags():
+    """List all feature flags and their states (delegates to claude_mem_features)."""
+    try:
+        from common_lib.modules.memory.claude_mem_features.feature_flags import FeatureFlags
+
+        flags = FeatureFlags.get_all()
+        descriptions = {key: FeatureFlags.get_description(key) for key in flags}
+        hierarchy = FeatureFlags.get_hierarchy()
+        return {
+            "status": "ok",
+            "features": flags,
+            "descriptions": descriptions,
+            "hierarchy": FeatureFlags.get_hierarchy(),
+            "count": len(flags),
+            "modules_count": len(FeatureFlags.get_modules()),
+            "featuresets_count": len(FeatureFlags.get_featuresets()),
+            "individual_features_count": len(FeatureFlags.get_features()),
+        }
+    except Exception as e:
+        logger.error(f"Failed to list feature flags: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/features/hierarchy")
+async def get_feature_hierarchy():
+    """Get the complete 3-level hierarchy tree (delegates to claude_mem_features)."""
+    try:
+        from common_lib.modules.memory.claude_mem_features.feature_flags import FeatureFlags
+
+        hierarchy = FeatureFlags.get_hierarchy()
+        modules = FeatureFlags.get_modules()
+        featuresets = FeatureFlags.get_featuresets()
+        features = FeatureFlags.get_features()
+
+        return {
+            "status": "ok",
+            "hierarchy": FeatureFlags.get_hierarchy(),
+            "summary": {
+                "total": len(FeatureFlags.FEATURES),
+                "modules": len(FeatureFlags.get_modules()),
+                "modules_enabled": sum(1 for v in FeatureFlags.get_modules().values() if v),
+                "featuresets": len(FeatureFlags.get_featuresets()),
+                "featuresets_enabled": sum(1 for v in FeatureFlags.get_featuresets().values() if v),
+                "features": len(FeatureFlags.get_features()),
+                "features_enabled": sum(1 for v in FeatureFlags.get_features().values() if v),
+            },
+        }
+    except Exception as e:
+        logger.error(f"Failed to get feature hierarchy: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/features/{key}/enable")
+async def enable_feature(key: str) -> dict[str, Any]:
+    """Enable a feature flag (delegates to claude_mem_features)."""
+    try:
+        from common_lib.modules.memory.claude_mem_features.feature_flags import FeatureFlags
+
+        FeatureFlags.enable(key)
+        return {"key": key, "enabled": True}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/features/{key}/disable")
+async def disable_feature(key: str) -> dict[str, Any]:
+    """Disable a feature flag."""
+    from common_lib.modules.memory.claude_mem_features.feature_flags import FeatureFlags
+
+    try:
+        FeatureFlags.disable(key)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"key": key, "enabled": False}
+
+
+@router.post("/features")
+async def bulk_toggle_features(req: dict[str, bool]) -> dict[str, Any]:
+    """Bulk enable/disable multiple features at once."""
+    from common_lib.modules.memory.claude_mem_features.feature_flags import FeatureFlags
+
+    results = {}
+    for key, enabled in req.items():
+        try:
+            if enabled:
+                FeatureFlags.enable(key)
+            else:
+                FeatureFlags.disable(key)
+            results[key] = {"success": True, "enabled": FeatureFlags.is_enabled(key)}
+        except ValueError as e:
+            results[key] = {"success": False, "error": str(e)}
+
+    return {
+        "results": results,
+        "total": len(req),
+        "success_count": sum(1 for r in results.values() if r.get("success")),
+    }
+
+
+@router.get("/features/hierarchy")
+async def get_feature_hierarchy():
+    """Get the complete 3-level hierarchy tree (delegates to claude_mem_features)."""
+    from common_lib.modules.memory.claude_mem_features.feature_flags import FeatureFlags
+
+    hierarchy = FeatureFlags.get_hierarchy()
+    modules = FeatureFlags.get_modules()
+    featuresets = FeatureFlags.get_featuresets()
+    features = FeatureFlags.get_features()
+
+    return {
+        "status": "ok",
+        "hierarchy": hierarchy,
+        "summary": {
+            "total": len(FeatureFlags.FEATURES),
+            "modules": len(FeatureFlags.get_modules()),
+            "modules_enabled": sum(1 for v in FeatureFlags.get_modules().values() if v),
+            "featuresets": len(FeatureFlags.get_featuresets()),
+            "featuresets_enabled": sum(1 for v in FeatureFlags.get_featuresets().values() if v),
+            "features": len(FeatureFlags.get_features()),
+            "features_enabled": sum(1 for v in FeatureFlags.get_features().values() if v),
+        },
+    }
+
+
+@router.post("/features/save")
+async def save_features_to_settings() -> dict[str, Any]:
+    """Persist current feature states to ~/.nexus/settings.json."""
+    from common_lib.modules.memory.claude_mem_features.feature_flags import FeatureFlags
+
+    try:
+        FeatureFlags.save_to_settings()
+        return {
+            "success": True,
+            "total_features": len(FeatureFlags.get_all()),
+            "config_path": str(FeatureFlags._get_config_path()),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/features/reset")
+async def reset_features() -> dict[str, Any]:
+    """Reset all feature flags to their defaults."""
+    from common_lib.modules.memory.claude_mem_features.feature_flags import FeatureFlags
+
+    FeatureFlags.reset()
+    return {
+        "success": True,
+        "total_features": len(FeatureFlags.get_all()),
+        "enabled_count": sum(1 for v in FeatureFlags.get_all().values() if v),
+    }
+
+
+# ────────────────────────────────────────────────
 # Config
 # ────────────────────────────────────────────────
 
