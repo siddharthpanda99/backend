@@ -9,6 +9,7 @@ from app.modules.agents.routes.runtime_routes import router as runtime_router
 from app.modules.agents.routes.session_routes import router as session_router
 from app.modules.agents.routes.pipeline_routes import router as pipeline_router
 from app.modules.agents.routes.tracing_routes import router as tracing_router
+from app.modules.agents.routes.policy_routes import router as policy_router
 from app.modules.agents.routes.task_routes import router as task_router
 from app.modules.agents.routes.profile_routes import router as profile_router
 from app.modules.agents.routes.skill_routes import router as skill_router
@@ -19,9 +20,15 @@ from app.modules.agents.routes.tool_artifact_routes import (
 )
 from app.modules.agents.routes.checkpoint_routes import router as checkpoint_router
 from app.modules.agents.routes.playbook_routes import router as playbook_router
+from app.modules.agents.routes.snapshots_routes import router as snapshots_router
 
 router = APIRouter()
 router.include_router(registry_router, prefix="/registry", tags=["Registry"])
+# Policy routes were previously mounted bare at `/agents` in ROUTER_DEFINITIONS,
+# which collided with this router's own collection root and with `@router.get(
+# "/{id}")` — so /agents/policies and /agents/multi-agent 404'd as "Agent not
+# found". Mounted here instead, alongside every sibling.
+router.include_router(policy_router, prefix="", tags=["Policy & Multi-Agent"])
 router.include_router(runtime_router, prefix="/runtime", tags=["Agent Runtime"])
 router.include_router(session_router, prefix="/runtime", tags=["Sessions"])
 router.include_router(pipeline_router, prefix="/pipelines", tags=["Pipelines"])
@@ -40,6 +47,11 @@ router.include_router(
     checkpoint_router, prefix="/checkpoints", tags=["Context Checkpoints"]
 )
 router.include_router(playbook_router, prefix="/playbooks", tags=["Playbooks"])
+# Snapshot routes were written but never mounted anywhere in the app — the
+# module had zero importers of `snapshots_routes`, so every snapshot endpoint
+# was unreachable. Mounted here under a `/snapshots` prefix so the paths do not
+# collide with the `/{id}` CRUD routes declared below.
+router.include_router(snapshots_router, prefix="/snapshots", tags=["Snapshots"])
 
 
 @router.get("/", response_model=APIResponse[List[AgentRead]])

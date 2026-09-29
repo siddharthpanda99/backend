@@ -999,39 +999,20 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["Agents (Management)"],
             "auth": True,
         },
-        # NOTE: pipeline_router is already included inside agents_router
-        # (see app/modules/agents/routes/index.py) — do NOT mount it again
-        # here (duplicate paths + Duplicate Operation ID warnings).
-        {
-            "router": policy_router,
-            "prefix": "/agents",
-            "tags": ["Policy & Multi-Agent"],
-            "auth": True,
-        },
-        {
-            "router": task_router,
-            "prefix": "/agents",
-            "tags": ["Task Queue"],
-            "auth": True,
-        },
-        {
-            "router": profile_router,
-            "prefix": "/agents",
-            "tags": ["Agent Profiles"],
-            "auth": True,
-        },
-        {
-            "router": skill_router,
-            "prefix": "/agents",
-            "tags": ["Skill Bridge"],
-            "auth": True,
-        },
-        {
-            "router": daemon_router,
-            "prefix": "/agents",
-            "tags": ["Agent Daemons"],
-            "auth": True,
-        },
+        # NOTE: pipeline_router, policy_router, task_router, profile_router,
+        # skill_router and daemon_router are ALL already included inside
+        # agents_router (see app/modules/agents/routes/index.py) under their own
+        # sub-prefixes — /pipelines, /tasks, /profiles, /skills, /daemons. The
+        # bare `/agents` mounts that used to sit here were duplicate paths.
+        #
+        # They were not merely redundant: each declared a collection root at
+        # "/", so all five landed on `GET /api/v1/agents/` and first-match-wins
+        # left exactly one reachable. Worse, index.py's own `@router.get("/{id}")`
+        # then swallowed the sub-paths, so `GET /api/v1/agents/policies` and
+        # `GET /api/v1/agents/available` returned 404 "Agent not found" because
+        # Starlette captured them as an agent id. Only the sub-prefixed twins
+        # worked. The pipeline_router case was already fixed and documented
+        # here; the other four were simply missed.
         # ── Project Management ─────────────────────────────────────
         # NOTE: the PM router is mounted ONCE at /pm (see below). Do NOT add
         # a second mount here — it duplicates every PM route and shadows the

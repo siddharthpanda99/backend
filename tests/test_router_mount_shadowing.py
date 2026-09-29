@@ -102,16 +102,54 @@ class TestCollectionRootsAreReachable:
         )
 
 
+class TestAgentsSubRoutersAreNotShadowed:
+    """`/api/v1/agents/` was contended five ways, and swallowed its own sub-paths.
+
+    ROUTER_DEFINITIONS mounted policy/task/profile/skill/daemon routers bare at
+    `/agents` even though `agents.routes.index` already includes all five under
+    their own sub-prefixes. Each declared a collection root at "/", so all five
+    landed on `GET /api/v1/agents/` and first-match-wins left one reachable.
+    Worse, index.py's `@router.get("/{id}")` then captured the sub-paths, so
+    `GET /api/v1/agents/policies` returned 404 "Agent not found".
+    """
+
+    def test_agents_root_has_exactly_one_handler(self, route_table):
+        table, duplicates = route_table
+        colliders = duplicates.get(("GET", "/api/v1/agents/"), [])
+        assert len(colliders) == 1, (
+            f"GET /api/v1/agents/ has {len(colliders)} handlers: {colliders}"
+        )
+
+    @pytest.mark.parametrize(
+        ("method", "path", "expected"),
+        [
+            ("GET", "/api/v1/agents/policies", "list_policies"),
+            ("GET", "/api/v1/agents/tasks/", "list_tasks"),
+            (
+                "GET",
+                "/api/v1/agents/multi-agent/executions",
+                "list_multi_agent_executions",
+            ),
+        ],
+    )
+    def test_agents_subpath_resolves(self, route_table, method, path, expected):
+        """These 404'd as "Agent not found" while the bare mounts existed."""
+        table, _ = route_table
+        assert table.get((method, path)) == expected, (
+            f"{method} {path} -> {table.get((method, path))}, expected {expected}"
+        )
+
+
 class TestNoUnreachableHandlers:
     def test_shadowed_handler_count_did_not_regress(self, route_table):
-        """Baseline after this fix: 17 shadowed keys / 21 unreachable handlers.
+        """Baseline after the agents fix: 14 shadowed keys / 14 unreachable.
 
-        Was 20 / 24. This is a ratchet, not a claim of zero: the remaining
-        collisions are other modules' bare mounts and are tracked separately in
-        docs/duplication-audit/TRACK-C-ROUTES-NODES.md.
+        Was 20/24, then 17/21 after the /api/v1/ root fix. This is a ratchet,
+        not a claim of zero: the remaining collisions are other modules' bare
+        mounts, tracked in docs/duplication-audit/TRACK-C-ROUTES-NODES.md.
         """
         table, duplicates = route_table
         shadowed = {k: v for k, v in duplicates.items() if len(v) > 1}
         unreachable = sum(len(v) - 1 for v in shadowed.values())
-        assert len(shadowed) <= 17, f"shadowed keys regressed to {len(shadowed)}"
-        assert unreachable <= 21, f"unreachable handlers regressed to {unreachable}"
+        assert len(shadowed) <= 14, f"shadowed keys regressed to {len(shadowed)}"
+        assert unreachable <= 14, f"unreachable handlers regressed to {unreachable}"
