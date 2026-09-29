@@ -203,7 +203,7 @@ async def update_compaction_interval(payload: Dict[str, int] = Body(...)):
 @router.post("/decay/trigger")
 async def trigger_decay():
     try:
-        from app.modules.memories.dependencies import get_memory_service
+        from app.core.memory_service import get_memory_service
 
         svc = get_memory_service()
         return await svc.run_decay_cycle()
@@ -215,7 +215,7 @@ async def trigger_decay():
 @router.get("/decay/queue")
 async def get_decay_queue():
     try:
-        from app.modules.memories.dependencies import get_memory_service
+        from app.core.memory_service import get_memory_service
 
         svc = get_memory_service()
         return await svc.get_decay_queue()
@@ -234,7 +234,7 @@ async def review_decay(memory_id: str, payload: Dict[str, Any] = Body(...)):
                 status_code=400,
                 detail="Invalid action. Must be 'retain', 'disable', or 'comment'",
             )
-        from app.modules.memories.dependencies import get_memory_service
+        from app.core.memory_service import get_memory_service
 
         svc = get_memory_service()
         success = await svc.review_decay_item(
@@ -261,7 +261,7 @@ async def trigger_compaction(
     max_tokens: int = Query(150, ge=1),
 ):
     try:
-        from app.modules.memories.dependencies import get_memory_service
+        from app.core.memory_service import get_memory_service
 
         svc = get_memory_service()
         return await svc.run_compaction_cycle(method=method, max_tokens=max_tokens)
@@ -273,7 +273,7 @@ async def trigger_compaction(
 @router.get("/compaction/queue")
 async def get_compaction_queue():
     try:
-        from app.modules.memories.dependencies import get_memory_service
+        from app.core.memory_service import get_memory_service
 
         svc = get_memory_service()
         return await svc.get_compaction_queue()
@@ -295,7 +295,7 @@ async def review_compaction(proposal_id: str, payload: Dict[str, Any] = Body(...
                 detail="Invalid action. Must be 'approve', 'reject', 'update', or 'comment'",
             )
 
-        from app.modules.memories.dependencies import get_memory_service
+        from app.core.memory_service import get_memory_service
 
         svc = get_memory_service()
         success = await svc.review_compaction_item(
@@ -319,7 +319,7 @@ async def review_compaction(proposal_id: str, payload: Dict[str, Any] = Body(...
 @router.get("/compaction/stats")
 async def get_compaction_stats():
     try:
-        from app.modules.memories.dependencies import get_memory_service
+        from app.core.memory_service import get_memory_service
 
         svc = get_memory_service()
         return await svc.get_compaction_stats()
@@ -331,7 +331,7 @@ async def get_compaction_stats():
 @router.post("/compaction/autocompact")
 async def run_autocompaction(threshold: int = Query(15, ge=1)):
     try:
-        from app.modules.memories.dependencies import get_memory_service
+        from app.core.memory_service import get_memory_service
 
         svc = get_memory_service()
         return await svc.check_and_run_autocompaction(threshold=threshold)

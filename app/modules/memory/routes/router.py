@@ -655,7 +655,9 @@ async def list_memory_capabilities():
 async def list_feature_flags():
     """List all feature flags and their states (delegates to claude_mem_features)."""
     try:
-        from common_lib.modules.memory.claude_mem_features.feature_flags import FeatureFlags
+        from common_lib.modules.memory.claude_mem_features.feature_flags import (
+            FeatureFlags,
+        )
 
         flags = FeatureFlags.get_all()
         descriptions = {key: FeatureFlags.get_description(key) for key in flags}
@@ -679,12 +681,9 @@ async def list_feature_flags():
 async def get_feature_hierarchy():
     """Get the complete 3-level hierarchy tree (delegates to claude_mem_features)."""
     try:
-        from common_lib.modules.memory.claude_mem_features.feature_flags import FeatureFlags
-
-        hierarchy = FeatureFlags.get_hierarchy()
-        modules = FeatureFlags.get_modules()
-        featuresets = FeatureFlags.get_featuresets()
-        features = FeatureFlags.get_features()
+        from common_lib.modules.memory.claude_mem_features.feature_flags import (
+            FeatureFlags,
+        )
 
         return {
             "status": "ok",
@@ -692,11 +691,17 @@ async def get_feature_hierarchy():
             "summary": {
                 "total": len(FeatureFlags.FEATURES),
                 "modules": len(FeatureFlags.get_modules()),
-                "modules_enabled": sum(1 for v in FeatureFlags.get_modules().values() if v),
+                "modules_enabled": sum(
+                    1 for v in FeatureFlags.get_modules().values() if v
+                ),
                 "featuresets": len(FeatureFlags.get_featuresets()),
-                "featuresets_enabled": sum(1 for v in FeatureFlags.get_featuresets().values() if v),
+                "featuresets_enabled": sum(
+                    1 for v in FeatureFlags.get_featuresets().values() if v
+                ),
                 "features": len(FeatureFlags.get_features()),
-                "features_enabled": sum(1 for v in FeatureFlags.get_features().values() if v),
+                "features_enabled": sum(
+                    1 for v in FeatureFlags.get_features().values() if v
+                ),
             },
         }
     except Exception as e:
@@ -708,7 +713,9 @@ async def get_feature_hierarchy():
 async def enable_feature(key: str) -> dict[str, Any]:
     """Enable a feature flag (delegates to claude_mem_features)."""
     try:
-        from common_lib.modules.memory.claude_mem_features.feature_flags import FeatureFlags
+        from common_lib.modules.memory.claude_mem_features.feature_flags import (
+            FeatureFlags,
+        )
 
         FeatureFlags.enable(key)
         return {"key": key, "enabled": True}
@@ -748,31 +755,6 @@ async def bulk_toggle_features(req: dict[str, bool]) -> dict[str, Any]:
         "results": results,
         "total": len(req),
         "success_count": sum(1 for r in results.values() if r.get("success")),
-    }
-
-
-@router.get("/features/hierarchy")
-async def get_feature_hierarchy():
-    """Get the complete 3-level hierarchy tree (delegates to claude_mem_features)."""
-    from common_lib.modules.memory.claude_mem_features.feature_flags import FeatureFlags
-
-    hierarchy = FeatureFlags.get_hierarchy()
-    modules = FeatureFlags.get_modules()
-    featuresets = FeatureFlags.get_featuresets()
-    features = FeatureFlags.get_features()
-
-    return {
-        "status": "ok",
-        "hierarchy": hierarchy,
-        "summary": {
-            "total": len(FeatureFlags.FEATURES),
-            "modules": len(FeatureFlags.get_modules()),
-            "modules_enabled": sum(1 for v in FeatureFlags.get_modules().values() if v),
-            "featuresets": len(FeatureFlags.get_featuresets()),
-            "featuresets_enabled": sum(1 for v in FeatureFlags.get_featuresets().values() if v),
-            "features": len(FeatureFlags.get_features()),
-            "features_enabled": sum(1 for v in FeatureFlags.get_features().values() if v),
-        },
     }
 
 

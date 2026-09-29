@@ -253,7 +253,7 @@ async def clear_embedding_status():
 @router.post("/seed")
 async def seed_data():
     try:
-        from app.modules.memories.dependencies import get_memory_service as ensure_ms
+        from app.core.memory_service import get_memory_service as ensure_ms
 
         ensure_ms()
         return await _get_svc().seed_data()
@@ -265,7 +265,7 @@ async def seed_data():
 @router.delete("/seed")
 async def clear_seed():
     try:
-        from app.modules.memories.dependencies import get_memory_service as ensure_ms
+        from app.core.memory_service import get_memory_service as ensure_ms
 
         ensure_ms()
         return await _get_svc().clear_seed_data()

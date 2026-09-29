@@ -28,7 +28,11 @@ from pydantic import BaseModel, Field
 
 from common_lib.modules.memory.flags import NEXUS_MEMORY_ENGINE_ENABLED
 
-router = APIRouter(prefix="/memory/cognitive", tags=["Memory — Cognitive Engine"])
+# The "/memory" prefix is supplied by ROUTER_DEFINITIONS; this router only
+# needs its own "/cognitive" segment. The full "/memory/cognitive" self-prefix
+# combined with the mount to produce /api/v1/memory/memory/cognitive/... and
+# left the real /api/v1/memory/cognitive/... paths unserved.
+router = APIRouter(prefix="/cognitive", tags=["Memory — Cognitive Engine"])
 
 
 def _require_engine() -> None:

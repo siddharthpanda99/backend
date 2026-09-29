@@ -86,7 +86,7 @@ async def seed_default_rules(session: Session = Depends(get_session)):
 @router.post("/autocompact")
 async def run_autocompaction_with_rules(session: Session = Depends(get_session)):
     try:
-        from app.modules.memories.dependencies import get_memory_service
+        from app.core.memory_service import get_memory_service
 
         svc = get_memory_service()
         rules_data = compaction_service.list_rules(session)
