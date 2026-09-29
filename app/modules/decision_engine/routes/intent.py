@@ -10,15 +10,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from common_lib.modules.decision_engine.flags import (
-    NEXUS_DECISION_FABRIC_ENABLED,
-    is_decision_flag_enabled,
-)
-from common_lib.modules.decision_engine.schemas import (
-    DecisionEngineHealth,
+from common_lib.modules.decision_engine.errors import MissingInputError
+
+from app.modules.decision_engine.routes._errors import http_error
+
+from app.modules.decision_engine.routes._flags import (
+    require_fabric as _require_fabric,
 )
 
 # Prefix matches the paths documented at the top of this file and the ones the
@@ -27,15 +27,6 @@ from common_lib.modules.decision_engine.schemas import (
 # `/parse` on a 40-endpoint surface, which both collided conceptually and 404'd
 # every UI request.
 router = APIRouter(prefix="/intent")
-
-
-def _require_fabric() -> None:
-    """Fail-closed flag guard: 503 until NEXUS_DECISION_FABRIC_ENABLED is on."""
-    if not is_decision_flag_enabled(NEXUS_DECISION_FABRIC_ENABLED):
-        raise HTTPException(
-            status_code=503,
-            detail="Decision Fabric is disabled (NEXUS_DECISION_FABRIC_ENABLED=off)",
-        )
 
 
 # Request/Response models for this route group
@@ -99,12 +90,16 @@ async def ingest_intent(payload: IngestIntentRequest) -> dict[str, Any]:
         request_dict = payload.model_dump()
         result = service.ingest_intent(request_dict)
         return result
+    except MissingInputError as exc:
+        # A body with neither `text` nor `structured` is a 400, not the 422
+        # this route pins for a malformed *value*. Caught ahead of the
+        # ValueError branch (MissingInputError is a ValueError subclass, for
+        # backward compatibility) so the two cases stay distinguishable.
+        raise http_error(exc, value_error_status=400)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Intent ingestion not yet implemented"
-        )
+        raise http_error(exc, value_error_status=422)
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Intent ingestion not yet implemented")
 
 
 @router.post("/parse")
@@ -118,10 +113,8 @@ async def parse_structured(payload: ParseStructuredRequest) -> dict[str, Any]:
     try:
         result = service.parse_structured_input(payload.structured)
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Structured parsing not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Structured parsing not yet implemented")
 
 
 @router.post("/entities")
@@ -135,10 +128,8 @@ async def extract_entities(payload: ExtractEntitiesRequest) -> list[dict[str, An
     try:
         result = service.extract_entities(payload.text, payload.context)
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Entity extraction not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Entity extraction not yet implemented")
 
 
 @router.post("/classify")
@@ -152,10 +143,8 @@ async def classify_intent(payload: ClassifyIntentRequest) -> dict[str, Any]:
     try:
         result = service.classify_intent(payload.text, payload.entities)
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Intent classification not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Intent classification not yet implemented")
 
 
 @router.post("/constraints")
@@ -171,7 +160,5 @@ async def resolve_constraints(
     try:
         result = service.resolve_constraints(payload.request, payload.intent)
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Constraint resolution not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Constraint resolution not yet implemented")

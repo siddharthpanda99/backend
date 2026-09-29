@@ -13,24 +13,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from common_lib.modules.decision_engine.flags import (
-    NEXUS_DECISION_FABRIC_ENABLED,
-    is_decision_flag_enabled,
+from app.modules.decision_engine.routes._errors import http_error
+
+from app.modules.decision_engine.routes._flags import (
+    require_fabric as _require_fabric,
 )
 
 router = APIRouter()
-
-
-def _require_fabric() -> None:
-    """Fail-closed flag guard: 503 until NEXUS_DECISION_FABRIC_ENABLED is on."""
-    if not is_decision_flag_enabled(NEXUS_DECISION_FABRIC_ENABLED):
-        raise HTTPException(
-            status_code=503,
-            detail="Decision Fabric is disabled (NEXUS_DECISION_FABRIC_ENABLED=off)",
-        )
 
 
 # Request/Response models for this route group
@@ -109,11 +101,11 @@ async def build_decision_state(payload: BuildDecisionStateRequest) -> dict[str, 
         result = service.build_decision_state(payload.goal_spec, payload.tenant_id)
         return result
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Decision state building not yet implemented"
-        )
+        # 422 is what this route has always returned for a bad request; the
+        # shared mapper's default is 400, so it is pinned here explicitly.
+        raise http_error(exc, value_error_status=422)
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Decision state building not yet implemented")
 
 
 @router.post("/memories")
@@ -129,10 +121,8 @@ async def fetch_relevant_memories(
     try:
         result = service.fetch_relevant_memories(payload.goal_spec, payload.tenant_id)
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Memory fetching not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Memory fetching not yet implemented")
 
 
 @router.post("/policies")
@@ -148,10 +138,8 @@ async def fetch_applicable_policies(
     try:
         result = service.fetch_applicable_policies(payload.goal_spec, payload.tenant_id)
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Policy fetching not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Policy fetching not yet implemented")
 
 
 @router.post("/tools")
@@ -165,8 +153,8 @@ async def fetch_available_tools(payload: FetchToolsRequest) -> list[dict[str, An
     try:
         result = service.fetch_available_tools(payload.goal_spec, payload.tenant_id)
         return result
-    except NotImplementedError:
-        raise HTTPException(status_code=501, detail="Tool fetching not yet implemented")
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Tool fetching not yet implemented")
 
 
 @router.post("/agents")
@@ -180,10 +168,8 @@ async def fetch_candidate_agents(payload: FetchAgentsRequest) -> list[dict[str, 
     try:
         result = service.fetch_candidate_agents(payload.goal_spec, payload.tenant_id)
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Agent fetching not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Agent fetching not yet implemented")
 
 
 @router.post("/evidence")
@@ -199,10 +185,8 @@ async def build_evidence_summary(payload: BuildEvidenceRequest) -> list[dict[str
             payload.memories, payload.policies, payload.goal_spec
         )
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Evidence summary building not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Evidence summary building not yet implemented")
 
 
 @router.post("/risk")
@@ -218,7 +202,5 @@ async def compute_risk_dimensions(payload: ComputeRiskRequest) -> dict[str, Any]
             payload.goal_spec, payload.policies, payload.memories
         )
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Risk computation not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Risk computation not yet implemented")

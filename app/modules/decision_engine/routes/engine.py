@@ -1,38 +1,60 @@
 """Decision Engine Core routes — cascaded decisions, plan building, compilation.
 
-POST /api/v1/decision-engine/engine/route            — cascaded decision pipeline (Tier 1-5)
-POST /api/v1/decision-engine/engine/ground            — grounding pipeline for claims
-POST /api/v1/decision-engine/engine/plan              — build decision graph and plan
-POST /api/v1/decision-engine/engine/compile           — compile approved plan to ExecutionContract
-POST /api/v1/decision-engine/engine/validate          — validate a DecisionPlan
-POST /api/v1/decision-engine/engine/preview           — generate human-readable plan preview
-POST /api/v1/decision-engine/engine/claims/extract    — extract claims for grounding
-POST /api/v1/decision-engine/engine/claims/verify     — verify claims against evidence
-POST /api/v1/decision-engine/engine/claims/coverage   — compute grounding coverage
+This router deliberately declares **no** ``prefix=``. The re-basing of
+``/engine/*``, ``/context/*`` and ``/registry/*`` onto the router root is the
+served contract and is pinned by ``tests/test_decision_fabric_e2e.py``
+(``test_unprefixed_context_engine_intent_routes_exist``). Re-adding a prefix
+here would 404 every one of those endpoints.
+
+Mounted paths (relative to the ``/decision-engine`` mount):
+
+POST /route              — cascaded decision pipeline (Tier 1-5)
+POST /compile            — compile approved plan to ExecutionContract
+POST /validate           — validate a DecisionPlan
+POST /preview            — generate human-readable plan preview
+POST /claims/extract     — extract claims for grounding
+POST /claims/verify      — verify claims against evidence
+POST /claims/coverage    — compute grounding coverage
+
+Removed as unreachable dead code (P0, shadowed routes)
+------------------------------------------------------
+``POST /ground`` and ``POST /plan`` used to be declared here *as well as* on
+``ground.py`` and ``plan.py``. Both files mount the same paths, FastAPI
+resolves to the first registration, and the handlers below were therefore
+never reachable. The survivors are the correct single home for both
+capabilities, because the Pydantic schema is the contract (G10):
+
+* ``POST /ground`` -> ``ground.py``. Takes a ``GroundRequest`` and returns a
+  ``GroundResponse``. The handler that used to live here took a bare
+  ``{"decision_context": ...}`` body and returned an untyped dict, and it
+  passed that body to ``DecisionEngineService.ground_claims``, whose real
+  signature expects a ``GroundRequest``-shaped dict
+  (``{plan_id, node_id, claims, evidence}``). It was doubly dead.
+* ``POST /plan`` -> ``plan.py``. Takes a ``PlanCreateRequest`` and returns a
+  ``PlanRead``. The handler that used to live here reached the *same*
+  ``DecisionEngineService.build_plan`` through its alternate
+  ``decision_context=``/``decisions=`` keyword form. The service documents
+  that as a second face of one implementation, not a separate capability.
+
+Nothing was lost: the grounding pipeline and plan building remain reachable
+at ``POST /ground`` and ``POST /plan``, and both are covered by
+``app/modules/decision_engine/tests/test_routes.py``.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from common_lib.modules.decision_engine.flags import (
-    NEXUS_DECISION_FABRIC_ENABLED,
-    is_decision_flag_enabled,
+from app.modules.decision_engine.routes._errors import http_error
+
+from app.modules.decision_engine.routes._flags import (
+    require_fabric as _require_fabric,
 )
 
 router = APIRouter()
-
-
-def _require_fabric() -> None:
-    """Fail-closed flag guard: 503 until NEXUS_DECISION_FABRIC_ENABLED is on."""
-    if not is_decision_flag_enabled(NEXUS_DECISION_FABRIC_ENABLED):
-        raise HTTPException(
-            status_code=503,
-            detail="Decision Fabric is disabled (NEXUS_DECISION_FABRIC_ENABLED=off)",
-        )
 
 
 # Request/Response models
@@ -44,21 +66,6 @@ class RouteDecisionRequest(BaseModel):
     question: str = Field(..., description="Human-readable decision question")
     options: list[dict[str, Any]] = Field(
         ..., description="List of option dicts with id, label, metadata"
-    )
-
-
-class GroundClaimsRequest(BaseModel):
-    """Request for grounding pipeline."""
-
-    decision_context: dict[str, Any] = Field(..., description="DecisionContext dict")
-
-
-class BuildPlanRequest(BaseModel):
-    """Request to build decision graph and plan."""
-
-    decision_context: dict[str, Any] = Field(..., description="DecisionContext dict")
-    decisions: list[dict[str, Any]] = Field(
-        ..., description="List of Decision dicts from route_decision"
     )
 
 
@@ -127,43 +134,8 @@ async def route_decision(payload: RouteDecisionRequest) -> dict[str, Any]:
             options=payload.options,
         )
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Decision routing not yet implemented"
-        )
-
-
-@router.post("/ground")
-async def ground_claims(payload: GroundClaimsRequest) -> dict[str, Any]:
-    """POST /engine/ground — grounding pipeline: claim extraction → verification → coverage."""
-    _require_fabric()
-
-    from common_lib.modules.decision_engine.services import DecisionEngineService
-
-    service = DecisionEngineService()
-    try:
-        result = service.ground_claims(payload.decision_context)
-        return result
-    except NotImplementedError:
-        raise HTTPException(status_code=501, detail="Grounding not yet implemented")
-
-
-@router.post("/plan")
-async def build_plan(payload: BuildPlanRequest) -> dict[str, Any]:
-    """POST /engine/plan — build decision graph, validate, generate preview."""
-    _require_fabric()
-
-    from common_lib.modules.decision_engine.services import DecisionEngineService
-
-    service = DecisionEngineService()
-    try:
-        result = service.build_plan(
-            decision_context=payload.decision_context,
-            decisions=payload.decisions,
-        )
-        return result
-    except NotImplementedError:
-        raise HTTPException(status_code=501, detail="Plan building not yet implemented")
+    except NotImplementedError as e:
+        raise http_error(e, prefix="Decision routing not yet implemented")
 
 
 @router.post("/compile")
@@ -177,10 +149,8 @@ async def compile_plan(payload: CompilePlanRequest) -> dict[str, Any]:
     try:
         result = service.compile_plan(payload.plan)
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Plan compilation not yet implemented"
-        )
+    except NotImplementedError as e:
+        raise http_error(e, prefix="Plan compilation not yet implemented")
 
 
 @router.post("/validate")
@@ -194,10 +164,8 @@ async def validate_plan(payload: ValidatePlanRequest) -> dict[str, Any]:
     try:
         result = service.validate_plan(payload.plan)
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Plan validation not yet implemented"
-        )
+    except NotImplementedError as e:
+        raise http_error(e, prefix="Plan validation not yet implemented")
 
 
 @router.post("/preview")
@@ -211,10 +179,8 @@ async def generate_plan_preview(payload: GeneratePreviewRequest) -> dict[str, An
     try:
         result = service.generate_plan_preview(payload.plan)
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Plan preview generation not yet implemented"
-        )
+    except NotImplementedError as e:
+        raise http_error(e, prefix="Plan preview generation not yet implemented")
 
 
 @router.post("/claims/extract")
@@ -228,10 +194,8 @@ async def extract_claims(payload: ExtractClaimsRequest) -> list[dict[str, Any]]:
     try:
         result = service.extract_claims(payload.decision_context)
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Claim extraction not yet implemented"
-        )
+    except NotImplementedError as e:
+        raise http_error(e, prefix="Claim extraction not yet implemented")
 
 
 @router.post("/claims/verify")
@@ -245,10 +209,8 @@ async def verify_claims(payload: VerifyClaimsRequest) -> dict[str, Any]:
     try:
         result = service.verify_claims(payload.claims, payload.decision_context)
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Claim verification not yet implemented"
-        )
+    except NotImplementedError as e:
+        raise http_error(e, prefix="Claim verification not yet implemented")
 
 
 @router.post("/claims/coverage")
@@ -262,7 +224,5 @@ async def compute_coverage(payload: ComputeCoverageRequest) -> dict[str, Any]:
     try:
         result = service.compute_coverage(payload.verification_results)
         return result
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Coverage computation not yet implemented"
-        )
+    except NotImplementedError as e:
+        raise http_error(e, prefix="Coverage computation not yet implemented")

@@ -1,6 +1,6 @@
 """Intent Ingestion Routes."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from common_lib.modules.decision_engine.schemas import (
     IngestRequest,
@@ -9,6 +9,11 @@ from common_lib.modules.decision_engine.schemas import (
 
 from common_lib.modules.decision_engine.services import IntentIngestionService
 
+from app.modules.decision_engine.routes._errors import http_error
+from app.modules.decision_engine.routes._flags import (
+    require_fabric as _require_fabric,
+)
+
 router = APIRouter(prefix="/ingest", tags=["Ingest"])
 _service = IntentIngestionService()
 
@@ -16,6 +21,8 @@ _service = IntentIngestionService()
 @router.post("", response_model=IngestResponse)
 async def ingest_intent(request: IngestRequest):
     """Parse user request into structured goal specification."""
+    _require_fabric()
+
     try:
         result = _service.ingest_intent(request)
         return IngestResponse(
@@ -23,6 +30,6 @@ async def ingest_intent(request: IngestRequest):
             status="success",
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise http_error(e)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ingestion failed: {e}")
+        raise http_error(e, prefix="Ingestion failed")

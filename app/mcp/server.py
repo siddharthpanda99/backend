@@ -251,15 +251,55 @@ register_cognitive_resources(mcp_server)
 register_pm_resources(mcp_server)
 
 # 4. Register ALL @node wrappers as individual MCP tools (dynamic registration)
-try:
-    from app.mcp.node_bridge import register_dynamic_node_tools
-
-    count = register_dynamic_node_tools(mcp_server)
-    logger.info("Dynamic @node → MCP: %s tools registered", count)
-except Exception as e:
-    logger.warning("Dynamic @node registration skipped: %s", e)
-
+#
+# This is deliberately NOT done at import time. It costs roughly 100s, and it is
+# almost entirely node discovery: an AST scan plus `import_module` of ~3.7k
+# modules under common_lib/modules. (Registering the tools themselves is cheap in
+# comparison - on this server 19040 of the 19980 unique node names already have a
+# statically registered tool of the same name, so only ~940 are actually added.)
+# Paying that during `import app.main` taxed every consumer of the app - tests,
+# scripts, CLI tooling - for a tool registry that is only ever read over HTTP.
+#
+# It is instead done once from the FastAPI lifespan hook (see
+# `register_dynamic_node_tools_once`, called from `app.main.lifespan`). Every
+# consumer reads the tool list lazily, so served behaviour is unchanged:
+#   - `app/mcp/routes.py` calls `mcp_server.list_tools()` / `call_tool()` per request.
+#   - `app.main` mounts `mcp_server.sse_app()`, which only wires closures; the
+#     underlying server enumerates tools per connection, at request time.
+#   - `app/mcp/standalone_node_server.py` is the stdio entry point and calls
+#     `register_dynamic_node_tools` itself, so it never depended on this module.
+# Lifespan runs to completion before the app serves its first request, so no
+# client can observe a partially-registered tool list.
 logger.info("Cognitive MCP Server fully industrialized with total platform parity.")
 
 # Export for external access
 mcp = mcp_server
+
+_dynamic_nodes_registered = False
+
+
+def register_dynamic_node_tools_once() -> int:
+    """Register every @node wrapper as an MCP tool. Idempotent.
+
+    Deferred out of import time; see the comment above. Safe to call more than
+    once (the lifespan hook can run repeatedly, e.g. under `TestClient`): only
+    the first call registers, so tools are never duplicated.
+
+    Returns:
+        Number of tools registered by this call (0 if already done, or on error).
+    """
+    global _dynamic_nodes_registered
+    if _dynamic_nodes_registered:
+        return 0
+    # Set before registering: a partial failure must not leave us retrying into
+    # a half-populated server on every subsequent startup.
+    _dynamic_nodes_registered = True
+    try:
+        from app.mcp.node_bridge import register_dynamic_node_tools
+
+        count = register_dynamic_node_tools(mcp_server)
+        logger.info("Dynamic @node -> MCP: %s tools registered", count)
+        return count
+    except Exception as e:
+        logger.warning("Dynamic @node registration skipped: %s", e)
+        return 0

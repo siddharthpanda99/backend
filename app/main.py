@@ -44,6 +44,22 @@ from common_lib.modules.data_storage.database.connection import engine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup: register every @node wrapper as an MCP tool.
+    #
+    # Deferred here from `app.mcp.server` import time on purpose - it costs roughly
+    # 100s, almost all of it the node discovery scan that imports ~3.7k modules,
+    # and it used to be paid by anything that merely imported `app.main`. Lifespan
+    # completes before the first request is served, and every MCP consumer reads
+    # the tool list lazily, so the served tool list is identical either way. Runs
+    # first so the tools are present even if a later startup step fails.
+    try:
+        from app.mcp.server import register_dynamic_node_tools_once
+
+        registered = register_dynamic_node_tools_once()
+        print(f"Startup: registered {registered} @node wrappers as MCP tools.")
+    except Exception as e:
+        print(f"Startup: dynamic @node MCP registration skipped: {e}")
+
     # Startup: Verify Database Connection
     max_retries = 4
     retry_interval = 2

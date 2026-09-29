@@ -14,11 +14,37 @@ import asyncio
 import importlib
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Union, get_args, get_origin
 
 from app.mcp.fastmcp_compat import FastMCP
 
 logger = logging.getLogger("node_bridge")
+
+
+def _existing_tool_names(mcp: FastMCP) -> set:
+    """Snapshot the tool names already registered on `mcp`.
+
+    Must work both from plain sync code and from inside a running event loop
+    (the FastAPI lifespan calls the registration during startup). A bare
+    `asyncio.run()` raises RuntimeError in the latter case, and the previous
+    `except Exception: existing = set()` fallback then silently treated the
+    server as empty - letting ~19k @node tools overwrite the statically
+    registered tools that already owned those names.
+    """
+
+    async def _list() -> set:
+        return {t.name for t in await mcp.list_tools()}
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_list())
+    # A loop is already running in this thread; hand the coroutine to a worker
+    # thread that can own a fresh loop.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, _list()).result()
+
 
 # ---------------------------------------------------------------------------
 # Type-string → Python-type → exec-annotation conversion
@@ -255,12 +281,36 @@ def register_dynamic_node_tools(mcp: FastMCP, limit: Optional[int] = None) -> in
     raw_nodes = _discover()
     logger.info("Discovered %s @node wrappers", len(raw_nodes))
 
+    # Flatten to one node per display name, first-wins.
+    #
+    # The canonical registry keys nodes by (name, module, qualname) so wrappers
+    # that share a name across different modules are all retained (that richer
+    # list is what the PM-scoped contract depends on). MCP, however, has one flat
+    # tool namespace, so it has always been fed a name-unique list: the previous
+    # per-module registry copy de-duplicated on `name` at discovery time. This
+    # reproduces that flattening here so the registered tool set is unchanged.
+    # Iteration order is identical to the old discovery order, so "first" is the
+    # same wrapper it used to be.
+    unique_nodes: list = []
+    seen_names: set = set()
+    for node_info in raw_nodes:
+        if node_info.name in seen_names:
+            continue
+        seen_names.add(node_info.name)
+        unique_nodes.append(node_info)
+    if len(unique_nodes) != len(raw_nodes):
+        logger.info(
+            "Flattened %s duplicate @node names to %s unique MCP tools",
+            len(raw_nodes) - len(unique_nodes),
+            len(unique_nodes),
+        )
+    raw_nodes = unique_nodes
+
     # Collect existing tool names to avoid duplicates
     try:
-        import asyncio
-
-        existing = {t.name for t in asyncio.run(mcp.list_tools())}
-    except Exception:
+        existing = _existing_tool_names(mcp)
+    except Exception as e:
+        logger.warning("Could not list existing MCP tools (%s); assuming none", e)
         existing = set()
 
     count = 0

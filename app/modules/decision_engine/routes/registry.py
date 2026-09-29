@@ -1,51 +1,68 @@
 """Decision Registry routes — model registry and threshold management.
 
-GET  /api/v1/decision-engine/registry/models          — list registered decision models
-GET  /api/v1/decision-engine/registry/models/{id}     — get a specific model
-POST /api/v1/decision-engine/registry/models          — register a new model
-PATCH /api/v1/decision-engine/registry/models/{id}    — update an existing model
-DELETE /api/v1/decision-engine/registry/models/{id}   — delete (archive) a model
+This router deliberately declares **no** ``prefix=``. The re-basing of
+``/registry/*`` onto the router root is the served contract: the Decision
+Fabric UI client (``DecisionFabricPage/services/decisionApi.ts``) calls
+``PATCH /decision-engine/models/{id}`` with the ``updates`` envelope declared
+below, ``GET /decision-engine/calibration/{id}`` and
+``GET /decision-engine/thresholds/{decision_type}``, all at the root, and the
+regression is pinned by ``tests/test_decision_fabric_e2e.py``.
 
-GET  /api/v1/decision-engine/registry/thresholds      — load threshold policies
-POST /api/v1/decision-engine/registry/thresholds      — update threshold policies
-GET  /api/v1/decision-engine/registry/thresholds/{decision_type} — get thresholds for decision
-GET  /api/v1/decision-engine/registry/model/{decision_type}/{tier} — get best model for decision/tier
+Mounted paths (relative to the ``/decision-engine`` mount):
 
-POST /api/v1/decision-engine/registry/calibration     — record calibration results
-GET  /api/v1/decision-engine/registry/calibration/{model_id} — get calibration history
+PATCH  /models/{model_id}                     — update an existing model
+DELETE /models/{model_id}                    — delete (archive) a model
+POST   /thresholds                           — update threshold policies
+GET    /thresholds/{decision_type}           — effective thresholds for a decision
+GET    /model/{decision_type}/{tier}         — best model for decision/tier
+POST   /calibration                          — record calibration results
+GET    /calibration/{model_id}               — calibration history for a model
+
+Removed as unreachable dead code (P0, shadowed routes)
+------------------------------------------------------
+Four handlers used to be declared here at the same paths as ``models.py`` and
+``thresholds.py``. FastAPI resolves to the first registration, so these four
+were never reachable — and each would additionally have 500'd had it been
+called, because they declared ``dict``/``list[dict]`` responses while returning
+``DecisionModelSpec`` dataclass instances. The survivors are the correct single
+home, per G10 (the Pydantic schema is the contract):
+
+* ``GET /models``          -> ``models.py`` (``DecisionModelSpecList``).
+* ``GET /models/{id}``     -> ``models.py`` (``DecisionModelSpecRead`` + 404 on
+  a miss, where the dead handler returned ``null``).
+* ``POST /models``         -> ``models.py`` (``DecisionModelSpecCreate`` ->
+  ``DecisionModelSpecRead``). The dead handler wanted a ``{"model_spec": ...}``
+  envelope; the UI posts the fields flat.
+* ``GET /thresholds``      -> ``thresholds.py`` (``ThresholdPolicyRead`` from
+  ``get_thresholds()``). The dead handler called ``load_thresholds()``, which is
+  not a separate capability: ``DecisionRegistryService.__init__`` already reads
+  that same ``config/thresholds.yaml``, and re-reading it only differs by
+  raising ``FileNotFoundError`` -> 500 when the file is absent, where
+  ``get_thresholds()`` returns the working default. Reading the current policy
+  therefore remains reachable, and in strictly better shape.
+
+No capability was dropped: every one of the four is still served by the
+surviving route, which ``app/modules/decision_engine/tests/test_routes.py``
+covers (``test_list_models``, ``test_get_model``, ``test_get_thresholds``).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from common_lib.modules.decision_engine.flags import (
-    NEXUS_DECISION_FABRIC_ENABLED,
-    is_decision_flag_enabled,
+from app.modules.decision_engine.routes._errors import http_error
+
+from app.modules.decision_engine.routes._flags import (
+    require_fabric as _require_fabric,
 )
 
 router = APIRouter()
 
 
-def _require_fabric() -> None:
-    """Fail-closed flag guard: 503 until NEXUS_DECISION_FABRIC_ENABLED is on."""
-    if not is_decision_flag_enabled(NEXUS_DECISION_FABRIC_ENABLED):
-        raise HTTPException(
-            status_code=503,
-            detail="Decision Fabric is disabled (NEXUS_DECISION_FABRIC_ENABLED=off)",
-        )
-
-
 # Request/Response models
-class RegisterModelRequest(BaseModel):
-    """Request to register a new decision model."""
-
-    model_spec: dict[str, Any] = Field(..., description="DecisionModelSpec dict")
-
-
 class UpdateModelRequest(BaseModel):
     """Request to update an existing decision model."""
 
@@ -76,52 +93,6 @@ class GetModelForDecisionRequest(BaseModel):
     )
 
 
-@router.get("/models")
-async def list_models() -> list[dict[str, Any]]:
-    """GET /registry/models — list registered decision models."""
-    _require_fabric()
-
-    from common_lib.modules.decision_engine.services import DecisionRegistryService
-
-    service = DecisionRegistryService()
-    try:
-        return service.list_models()
-    except NotImplementedError:
-        raise HTTPException(status_code=501, detail="Model listing not yet implemented")
-
-
-@router.get("/models/{model_id}")
-async def get_model(model_id: str) -> dict[str, Any] | None:
-    """GET /registry/models/{model_id} — get a specific decision model by ID."""
-    _require_fabric()
-
-    from common_lib.modules.decision_engine.services import DecisionRegistryService
-
-    service = DecisionRegistryService()
-    try:
-        return service.get_model(model_id)
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Model retrieval not yet implemented"
-        )
-
-
-@router.post("/models")
-async def register_model(payload: RegisterModelRequest) -> dict[str, Any]:
-    """POST /registry/models — register a new decision model."""
-    _require_fabric()
-
-    from common_lib.modules.decision_engine.services import DecisionRegistryService
-
-    service = DecisionRegistryService()
-    try:
-        return service.register_model(payload.model_spec)
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Model registration not yet implemented"
-        )
-
-
 @router.patch("/models/{model_id}")
 async def update_model(model_id: str, payload: UpdateModelRequest) -> dict[str, Any]:
     """PATCH /registry/models/{model_id} — update an existing decision model."""
@@ -132,8 +103,8 @@ async def update_model(model_id: str, payload: UpdateModelRequest) -> dict[str, 
     service = DecisionRegistryService()
     try:
         return service.update_model(model_id, payload.updates)
-    except NotImplementedError:
-        raise HTTPException(status_code=501, detail="Model update not yet implemented")
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Model update not yet implemented")
 
 
 @router.delete("/models/{model_id}")
@@ -146,26 +117,8 @@ async def delete_model(model_id: str) -> dict[str, Any]:
     service = DecisionRegistryService()
     try:
         return service.delete_model(model_id)
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Model deletion not yet implemented"
-        )
-
-
-@router.get("/thresholds")
-async def load_thresholds() -> dict[str, Any]:
-    """GET /registry/thresholds — load threshold policies from config."""
-    _require_fabric()
-
-    from common_lib.modules.decision_engine.services import DecisionRegistryService
-
-    service = DecisionRegistryService()
-    try:
-        return service.load_thresholds()
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Threshold loading not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Model deletion not yet implemented")
 
 
 @router.post("/thresholds")
@@ -178,10 +131,8 @@ async def update_thresholds(payload: UpdateThresholdsRequest) -> dict[str, Any]:
     service = DecisionRegistryService()
     try:
         return service.update_thresholds(payload.thresholds)
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Threshold update not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Threshold update not yet implemented")
 
 
 @router.get("/thresholds/{decision_type}")
@@ -199,10 +150,8 @@ async def get_thresholds_for_decision(
     service = DecisionRegistryService()
     try:
         return service.get_thresholds_for_decision(decision_type, model_id)
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Threshold resolution not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Threshold resolution not yet implemented")
 
 
 @router.get("/model/{decision_type}/{tier}")
@@ -221,10 +170,8 @@ async def get_model_for_decision(
         # DecisionModelSpec dataclass, which FastAPI cannot serialise — the
         # endpoint 500'd on every call until this conversion.
         return spec.to_dict() if spec is not None else None
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Model selection not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Model selection not yet implemented")
 
 
 @router.post("/calibration")
@@ -237,10 +184,8 @@ async def record_calibration(payload: RecordCalibrationRequest) -> dict[str, Any
     service = DecisionRegistryService()
     try:
         return service.record_calibration(payload.model_id, payload.calibration_data)
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Calibration recording not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Calibration recording not yet implemented")
 
 
 @router.get("/calibration/{model_id}")
@@ -253,7 +198,5 @@ async def get_calibration_history(model_id: str) -> list[dict[str, Any]]:
     service = DecisionRegistryService()
     try:
         return service.get_calibration_history(model_id)
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501, detail="Calibration history not yet implemented"
-        )
+    except NotImplementedError as exc:
+        raise http_error(exc, prefix="Calibration history not yet implemented")
