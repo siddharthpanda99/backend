@@ -6,6 +6,11 @@ All endpoints are guarded by the NEXUS_DECISION_FABRIC_ENABLED flag
 (coordination endpoints additionally by NEXUS_FF_DECISION_COORDINATION_ENABLED);
 the flag resolves OFF when the registry is unreachable (fail-closed), so the
 whole surface stays inert until the fabric is explicitly enabled.
+
+The ``/flags`` pair is the one declared exception (DF-002 control plane): it is
+ungated because it is how a client *learns* the flag state, and how an
+operator writes it back — gating the write would make the fabric impossible to
+re-enable over HTTP. See ``common_lib...decision_engine.flags.ALWAYS_AVAILABLE``.
 """
 
 from __future__ import annotations
@@ -14,32 +19,26 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 
-from common_lib.modules.decision_engine.flags import (
-    NEXUS_DECISION_FABRIC_ENABLED,
-    is_decision_flag_enabled,
+from app.modules.auth.dependencies import require_permission
+from pydantic import BaseModel, Field
+
+from app.modules.decision_engine.routes._errors import http_error
+from app.modules.decision_engine.routes._flags import (
+    require_coordination as _require_coordination,
+    require_fabric as _require_fabric,
 )
+from app.modules.decision_engine.routes.health import (
+    FlagSnapshotResponse,
+    SingleFlagResponse,
+)
+from common_lib.modules.decision_engine.flags import (
+    decision_flags_snapshot,
+    is_route_gated,
+    set_decision_flag,
+)
+from common_lib.modules.decision_engine.tracing import traced
 
 router = APIRouter()
-
-COORDINATION_FLAG = "NEXUS_FF_DECISION_COORDINATION_ENABLED"
-
-
-def _require_fabric() -> None:
-    """Fail-closed flag guard: 503 until NEXUS_DECISION_FABRIC_ENABLED is on."""
-    if not is_decision_flag_enabled(NEXUS_DECISION_FABRIC_ENABLED):
-        raise HTTPException(
-            status_code=503,
-            detail="Decision Fabric is disabled (NEXUS_DECISION_FABRIC_ENABLED=off)",
-        )
-
-
-def _require_coordination() -> None:
-    _require_fabric()
-    if not is_decision_flag_enabled(COORDINATION_FLAG):
-        raise HTTPException(
-            status_code=503,
-            detail="Decision coordination is disabled (NEXUS_FF_DECISION_COORDINATION_ENABLED=off)",
-        )
 
 
 # ── §56 Plan endpoints (9) ────────────────────────────────────────────────
@@ -224,7 +223,9 @@ async def stream_execution(execution_id: str) -> Any:
                 "plan_id": plan_id,
                 "plan_version": plan_version,
                 "execution_graph": {
-                    "nodes": [{"id": s, "type": "TASK", "config": {}} for s in executed],
+                    "nodes": [
+                        {"id": s, "type": "TASK", "config": {}} for s in executed
+                    ],
                     "edges": [],
                     "checkpoints": [],
                 },
@@ -232,7 +233,9 @@ async def stream_execution(execution_id: str) -> Any:
             },
         )
         for step in executed:
-            yield frame("node_started", {"node_id": step, "node_type": "TASK", "attempt": 1})
+            yield frame(
+                "node_started", {"node_id": step, "node_type": "TASK", "attempt": 1}
+            )
             await _asyncio.sleep(0)
             yield frame(
                 "node_completed",
@@ -265,9 +268,7 @@ async def stream_execution(execution_id: str) -> Any:
 
 
 @router.post("/plans/{plan_id}/diff")
-async def diff_plan_versions(
-    plan_id: str, payload: Dict[str, Any]
-) -> Dict[str, Any]:
+async def diff_plan_versions(plan_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     """POST /plans/{plan_id}/diff — field-level diff between two versions (§19).
 
     Backs the Plan Contracts diff view. ApprovalService.get_version_diff
@@ -578,3 +579,104 @@ async def coordination_checkpoints(payload: Dict[str, Any]) -> Dict[str, Any]:
         bundle=dict(payload.get("bundle") or {}),
         results=list(payload.get("results") or []),
     )
+
+
+# ── DF-002 feature-flag control plane (ungated by declaration) ───────────
+#
+# These two back the UI's `toggleFeatureFlag`. They reuse the schemas and
+# helpers that already serve the same surface on the sibling router
+# (`decision_engine/routes/health.py` -> `FlagSnapshotResponse` /
+# `SingleFlagResponse`) and the authoritative resolution helpers in
+# `common_lib...decision_engine.flags`, rather than inventing parallel ones
+# (G10: the schema is the contract).
+#
+# There is no `_require_fabric()` here, and that is deliberate rather than an
+# oversight. `/flags` is the declared discovery exemption in
+# `ALWAYS_AVAILABLE` — a client must be able to read the master flag to learn
+# the fabric is off. The write lives at the same path, and it must stay
+# ungated for one more reason: it is the only supported way to turn the master
+# flag back ON. Gating the write on the master flag would mean that once the
+# fabric was off, it could never be re-enabled over HTTP — a bricked API.
+# `set_decision_flag` therefore refuses the one dangerous transition (disabling
+# the master flag) with a typed error instead of using a gate.
+
+
+class FlagWriteRequest(BaseModel):
+    """Body for `POST /flags/{flag_name}` — the toggle the UI sends."""
+
+    enabled: bool = Field(..., description="Desired state for this flag")
+    tenant_id: Optional[str] = Field(
+        default=None,
+        description="Optional tenant scope; omitted writes the global override",
+    )
+
+
+@router.get("/flags", response_model=FlagSnapshotResponse)
+@traced
+async def get_decision_flags(tenant_id: Optional[str] = None) -> FlagSnapshotResponse:
+    """GET /flags — resolved snapshot of every decision-fabric flag."""
+    return FlagSnapshotResponse(flags=decision_flags_snapshot(tenant_id))
+
+
+@router.post(
+    "/flags/{flag_name}",
+    response_model=SingleFlagResponse,
+    # Authorization, NOT feature gating. The routes above are ungated by the
+    # fabric flag on purpose (see the comment above) — that is a different
+    # concern. This write changes platform-wide behaviour, so it requires the
+    # caller's identity to hold the `decision.flag.set` permission, checked and
+    # audit-logged by the shared RBAC checker.
+    #
+    # In dev this is a no-op: `require_permission` short-circuits when
+    # DISABLE_AUTH is set, and DISABLE_AUTH defaults to dev_mode (true in
+    # resources/config.ini), so local work needs no token. The settings
+    # validator refuses DISABLE_AUTH in prod/staging, so the bypass cannot
+    # reach a production-like environment.
+    dependencies=[require_permission("decision.flag.set", "*", "decision")],
+)
+@traced
+async def set_decision_flag_route(
+    flag_name: str, payload: FlagWriteRequest
+) -> SingleFlagResponse:
+    """POST /flags/{flag_name} — enable or disable one decision-fabric flag.
+
+    Delegated wholesale to `set_decision_flag`, which owns the validation, the
+    anti-brick rule and the registry write (G1: no logic in the router).
+
+    Requires the `decision.flag.set` permission (see the Depends above).
+    Disabling the master fabric flag is refused by `set_decision_flag` itself.
+    """
+    try:
+        result = set_decision_flag(
+            flag_name, payload.enabled, tenant_id=payload.tenant_id
+        )
+    except Exception as exc:  # typed decision-engine errors -> HTTP status
+        raise http_error(exc, value_error_status=400)
+
+    return SingleFlagResponse(flag_name=result["flag_name"], enabled=result["enabled"])
+
+
+def _assert_flag_surface_is_declared() -> None:
+    """Fail loudly if this file and `ALWAYS_AVAILABLE` have drifted apart.
+
+    Every `/flags*` route in this module is intentionally ungated, for the
+    reasons in the comment above. That intent is declared once, in
+    `common_lib...decision_engine.flags.ALWAYS_AVAILABLE`. This check is what
+    stops the two from drifting into a silent inconsistency — someone adds a
+    route here that is not exempt, or removes the exemption, and the mismatch
+    surfaces at import time rather than in production.
+    """
+    for route in router.routes:
+        path = getattr(route, "path", None)
+        if path is None or not path.startswith("/flags"):
+            continue
+        if is_route_gated(path):
+            raise RuntimeError(
+                f"{path} is served ungated from this module but "
+                "common_lib ...decision_engine.flags.ALWAYS_AVAILABLE does not "
+                "exempt it. Either add the guard or add the path to the "
+                "allowlist — do not leave the two disagreeing."
+            )
+
+
+_assert_flag_surface_is_declared()
