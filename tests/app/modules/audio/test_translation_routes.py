@@ -26,7 +26,7 @@ class TestTranslationRoutes(unittest.TestCase):
             {"OPENAI_API_KEY": "k"},
         ):
             with mock.patch(
-                "common_lib.modules.integration.ports.ai_gateway_port."
+                "common_lib.modules.integration.ports.inference.ai_gateway_port."
                 "get_ai_gateway_chat",
                 side_effect=lambda: (lambda m: "hola"),
             ):
@@ -65,7 +65,7 @@ class TestTranslationRoutes(unittest.TestCase):
             {"OPENAI_API_KEY": "k"},
         ):
             with mock.patch(
-                "common_lib.modules.integration.ports.ai_gateway_port."
+                "common_lib.modules.integration.ports.inference.ai_gateway_port."
                 "get_ai_gateway_chat",
                 side_effect=lambda: (lambda m: "bonjour"),
             ):
@@ -83,7 +83,7 @@ class TestTranslationRoutes(unittest.TestCase):
     def test_quality_returns_context_or_none(self):
         body = "THEME: test show\nTERM: alpha || beta"
         with mock.patch(
-            "common_lib.modules.integration.ports.ai_gateway_port."
+            "common_lib.modules.integration.ports.inference.ai_gateway_port."
             "get_ai_gateway_chat",
             side_effect=lambda: (lambda m: body),
         ):
@@ -99,7 +99,7 @@ class TestTranslationRoutes(unittest.TestCase):
 
     def test_quality_never_500s_on_llm_failure(self):
         with mock.patch(
-            "common_lib.modules.integration.ports.ai_gateway_port."
+            "common_lib.modules.integration.ports.inference.ai_gateway_port."
             "get_ai_gateway_chat",
             return_value=None,
         ):

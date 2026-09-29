@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from common_lib.modules.integration.ports.rip_port import get_rip_feature_flag_api
+from common_lib.modules.integration.ports.rip.rip_port import get_rip_feature_flag_api
 from common_lib.modules.knowledge_engine.communities.report_store import (
     reset_report_store,
 )

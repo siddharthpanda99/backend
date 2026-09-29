@@ -6,7 +6,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from common_lib.modules.integration.ports.rip_port import get_rip_feature_flag_api
+from common_lib.modules.integration.ports.rip.rip_port import get_rip_feature_flag_api
 from common_lib.modules.memory.letta.blocks import get_core_block_store
 from common_lib.modules.memory.stores.semantic_store import get_semantic_store
 

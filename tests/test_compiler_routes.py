@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.modules.knowledge_engine.compiler.routes.router import router
-from common_lib.modules.integration.ports.rip_port import (
+from common_lib.modules.integration.ports.rip.rip_port import (
     get_rip_feature_flag_api,
 )
 from common_lib.modules.knowledge_engine.compiler import worker as worker_mod

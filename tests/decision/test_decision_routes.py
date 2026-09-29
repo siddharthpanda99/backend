@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from common_lib.modules.decision_engine.flags import (
     NEXUS_DECISION_FABRIC_ENABLED,
 )
-from common_lib.modules.integration.ports.rip_port import get_rip_feature_flag_api
+from common_lib.modules.integration.ports.rip.rip_port import get_rip_feature_flag_api
 from app.modules.decision.routes import router
 
 

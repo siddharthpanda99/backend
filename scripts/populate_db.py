@@ -23,8 +23,8 @@ from sqlmodel import Session, select, SQLModel
 from common_lib.modules.data_storage.database.connection import engine, init_db
 from common_lib.modules.project_management.init_db import get_pm_metadata
 from common_lib.modules.secrets_manager.init_db import get_sm_metadata
-from common_lib.modules.integration.ports.database import PureBase
-from common_lib.modules.integration.ports.orchestration_models import get_sd_models
+from common_lib.modules.integration.ports.data_storage.database import PureBase
+from common_lib.modules.integration.ports.agents.orchestration_models import get_sd_models
 import common_lib.modules.memory.blueprint_models
 import common_lib.modules.auth.users.models
 from common_lib.modules.auth.users.models import User
