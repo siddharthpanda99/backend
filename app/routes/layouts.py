@@ -99,7 +99,7 @@ def _db_session():
     is unavailable.
     """
     try:
-        from common_lib.modules.integration.ports.data_storage_port import (
+        from common_lib.modules.integration.ports.data_storage.data_storage_port import (
             get_data_storage_session,
         )
         from contextlib import contextmanager

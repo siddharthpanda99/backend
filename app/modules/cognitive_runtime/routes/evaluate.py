@@ -44,7 +44,7 @@ class EvaluateRequest(BaseModel):
 async def list_capabilities():
     """Capability inventory with eval-dataset sizes."""
     try:
-        from common_lib.modules.integration.ports.evaluation_port import (
+        from common_lib.modules.integration.ports.evaluation.evaluation_port import (
             get_cognitive_datasets,
         )
 
@@ -117,7 +117,7 @@ async def certify_model(request: ModelCertifyRequest):
 async def evaluate_capability(request: EvaluateRequest):
     """Benchmark one capability via the evaluation harness."""
     try:
-        from common_lib.modules.integration.ports.evaluation_port import (
+        from common_lib.modules.integration.ports.evaluation.evaluation_port import (
             run_capability_benchmark,
         )
 
@@ -143,7 +143,7 @@ async def evaluate_capability(request: EvaluateRequest):
 async def telemetry_aggregates(capability: str | None = None):
     """Quality priors per (model, capability) for routing + dashboard."""
     try:
-        from common_lib.modules.integration.ports.cognitive_runtime_port import (
+        from common_lib.modules.integration.ports.cognitive_runtime.cognitive_runtime_port import (
             get_telemetry_aggregates,
         )
 

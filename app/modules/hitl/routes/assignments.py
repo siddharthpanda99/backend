@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from common_lib.modules.integration.ports.hitl_port import get_hitl_legacy_service
+from common_lib.modules.integration.ports.hitl.hitl_port import get_hitl_legacy_service
 
 router = APIRouter(prefix="/assignments", tags=["HITL — Assignments"])
 

@@ -146,7 +146,7 @@ def test_progress_notification_failure_never_fails_the_job(monkeypatch):
         async def notify_job_complete(**_kw):
             raise RuntimeError("notification bus is down")
 
-    import common_lib.modules.integration.ports.notification_port as port
+    import common_lib.modules.integration.ports.notification.notification_port as port
 
     monkeypatch.setattr(
         port, "get_notification_controller", lambda: _BrokenController()
@@ -162,7 +162,7 @@ def test_progress_notification_failure_never_fails_the_job(monkeypatch):
 
 def test_missing_notification_controller_is_skipped(monkeypatch):
     """Port returning None (module absent) → silent skip, job still runs."""
-    import common_lib.modules.integration.ports.notification_port as port
+    import common_lib.modules.integration.ports.notification.notification_port as port
 
     monkeypatch.setattr(port, "get_notification_controller", lambda: None)
 

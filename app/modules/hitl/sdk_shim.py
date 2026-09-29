@@ -66,7 +66,7 @@ def _invalid(detail: str) -> dict[str, Any]:
 def _default_service_factory() -> Any | None:
     """Resolve the backing store via the HITL port (null-guarded)."""
     try:
-        from common_lib.modules.integration.ports.hitl_port import (
+        from common_lib.modules.integration.ports.hitl.hitl_port import (
             get_hitl_legacy_service,
         )
 

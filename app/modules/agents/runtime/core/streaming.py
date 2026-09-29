@@ -71,7 +71,7 @@ async def stream_agent_generator(
     )
     from app.core.common_lib_integration import common_memory
     from common_lib.modules.orchestration.agents.agent.tracing import TraceRecorder
-    from common_lib.modules.integration.ports.tracing_port import (
+    from common_lib.modules.integration.ports.observability.tracing_port import (
         get_current_correlation_id,
     )
     from common_lib.modules.observability.constants import TRACE_FULL_PAYLOADS
