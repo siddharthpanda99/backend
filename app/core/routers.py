@@ -298,7 +298,6 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         router as permissions_router,
     )
     from app.modules.users.routes.users import router as users_router
-    from app.modules.projects.routes.projects import router as projects_router
     from app.modules.agents.routes.index import router as agents_router
     from app.modules.agents.routes.policy_routes import router as policy_router
     from app.modules.agents.routes.task_routes import router as task_router
@@ -588,8 +587,16 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
         return router
 
-    def _governance_router():
-        """Lazy-load Lineage, Governance & Compliance router."""
+    def _db_studio_governance_router():
+        """Lazy-load Lineage, Governance & Compliance router.
+
+        Distinct from the module-level `_governance_router()` (agent governance).
+        This was previously named `_governance_router` and, being nested inside
+        register_routers, silently shadowed the module-level one — so the
+        /governance mount was serving the db_studio lineage router and the
+        19-router app/modules/governance surface was unreachable. Each call
+        site now names the router it actually wants.
+        """
         from app.modules.db_studio.governance.routes.router import router
 
         return router
@@ -730,6 +737,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
         return router
 
+    def _pm_project_routes_router():
+        """Canonical project CRUD (field-secured). Alias mount for /api/v1/projects."""
+        from app.modules.project_management.routes.project_routes import router
+
+        return router
+
     def _toolchain_router():
         from app.modules.toolchain import router
 
@@ -739,14 +752,14 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         """Build router entries for the Secrets Manager multi-router package."""
         from app.modules.secrets_manager.routes import (
             vault_router,
-            policy_router,
+            policy_router as sm_policy_router,
             core_router,
             audit_router,
             dynamic_router,
             rotation_router,
             pki_router,
             ssh_router,
-            proxy_router,
+            proxy_router as sm_proxy_router,
             kubernetes_router,
             cloud_router,
             seal_router,
@@ -754,7 +767,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             event_router,
             scanning_router,
             replication_router,
-            plugin_router,
+            plugin_router as sm_plugin_router,
             monitoring_router,
             import_export_router,
         )
@@ -767,7 +780,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
                 "auth": True,
             },
             {
-                "router": policy_router,
+                "router": sm_policy_router,
                 "prefix": "/secrets",
                 "tags": ["Secrets Manager — Policy"],
                 "auth": True,
@@ -809,7 +822,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
                 "auth": True,
             },
             {
-                "router": proxy_router,
+                "router": sm_proxy_router,
                 "prefix": "/secrets",
                 "tags": ["Secrets Manager — Proxy/SDK"],
                 "auth": True,
@@ -859,7 +872,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
                 "auth": True,
             },
             {
-                "router": plugin_router,
+                "router": sm_plugin_router,
                 "prefix": "",
                 "tags": ["Secrets Manager — Plugins"],
                 "auth": True,
@@ -908,7 +921,14 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         },
         {"router": users_router, "prefix": "/users", "tags": ["Users"], "auth": True},
         {
-            "router": projects_router,
+            # Legacy /api/v1/projects alias. Previously mounted
+            # app.modules.projects.routes.projects — a 5-endpoint strict subset
+            # of project_management's 18-endpoint surface, with no
+            # field-security filtering and a different list_projects()
+            # signature for the same ProjectService. The frontend had zero
+            # callers of /api/v1/projects, but the path is public API, so it
+            # now resolves to the richer canonical router instead of dying.
+            "router": _pm_project_routes_router(),
             "prefix": "/projects",
             "tags": ["Projects"],
             "auth": True,
@@ -1126,6 +1146,19 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
         },
         {
+            # KPE (Knowledge Processing Engine) — the extraction /
+            # classification / summarization / embedding pipeline. The
+            # _kpe_router factory existed but was never added to
+            # ROUTER_DEFINITIONS, so all 19 endpoints were unreachable while
+            # the frontend called 5+ of them
+            # (AgenticOSStudioPage/hooks/useAgenticOSAPI.ts:328,360,393,500,574).
+            # The router self-prefixes "/kpe", so the mount prefix is empty.
+            "router": _kpe_router(),
+            "prefix": "",
+            "tags": ["Knowledge Processing Engine"],
+            "auth": True,
+        },
+        {
             "router": ai_models_catalog_router,
             "prefix": "/ai_models",
             "tags": ["Model Catalog"],
@@ -1302,7 +1335,16 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["Plugin Management"],
             "auth": True,
         },
-        {"router": plugin_router, "prefix": "", "tags": ["Plugins"], "auth": True},
+        {
+            # app.modules.plugins.routes.plugin_router — plugin *instances* and
+            # *links* (/plugins/instances, /plugins/links). Distinct from
+            # plugins_router (Plugin Management) and from the secrets_manager
+            # plugin router, so it keeps its own mount. Self-prefixed "/plugins".
+            "router": plugin_router,
+            "prefix": "",
+            "tags": ["Plugins"],
+            "auth": True,
+        },
         {
             "router": connector_router,
             "prefix": "",
@@ -1337,8 +1379,14 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         },
         {"router": settings_router, "prefix": "", "tags": ["Settings"], "auth": True},
         {
+            # NOTE: namespaced mount. `keys_router` declares a collection root
+            # at "@router.get('/')" / "@router.post('/')", so mounting it at ""
+            # put it at /api/v1/ — where `_unified_hooks_router()` also mounts,
+            # and first-match-wins meant `POST /api/v1/` ran `create_key` instead
+            # of `create_hook`. /keys matches the sibling `credentials_router`
+            # mount (/keys/credentials) immediately below.
             "router": keys_router,
-            "prefix": "",
+            "prefix": "/keys",
             "tags": ["Keys Management"],
             "auth": True,
         },
@@ -1870,9 +1918,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
         },
         # ── Plugin Marketplace & Extension SDK ────────────────────────────────────────────────
+        # Namespaced to /plugins/marketplace: the marketplace router claims
+        # "/{plugin_id}", which collided head-on with the Plugin System and
+        # Plugin Management routers on /plugins. Same shape as the /etl and
+        # /security separations — distinct capability, distinct prefix.
         {
             "router": _plugin_marketplace_router(),
-            "prefix": "/plugins",
+            "prefix": "/plugins/marketplace",
             "tags": ["Plugin Marketplace & Extension SDK"],
             "auth": True,
         },
@@ -1892,7 +1944,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         },
         # ── Lineage, Governance & Compliance ────────────────────────────────────────────────────
         {
-            "router": _governance_router(),
+            "router": _db_studio_governance_router(),
             "prefix": "",
             "tags": ["Lineage, Governance & Compliance"],
             "auth": True,
@@ -1943,8 +1995,15 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
         },
         {
+            # NOTE: namespaced mount. This router is ALREADY mounted correctly at
+            # "/hooks" above (see the `hooks_router` entry). Mounting the same
+            # router again at "" duplicated its collection root at /api/v1/,
+            # where it collided with `keys_router` and shadowed
+            # `create_hook` behind `create_key`. The "" mount also served no
+            # purpose beyond the duplicate: every path it added is already
+            # reachable under /hooks.
             "router": _unified_hooks_router(),
-            "prefix": "",
+            "prefix": "/unified-hooks",
             "tags": ["Unified Hooks"],
             "auth": True,
         },
@@ -2024,15 +2083,6 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             ).router,
             "prefix": "/db-provisioning",
             "tags": ["DB Provisioning"],
-            "auth": True,
-        },
-        # ── Image Runtime ────────────────────────────────────────
-        {
-            "router": __import__(
-                "app.modules.image_runtime.routes.router", fromlist=["router"]
-            ).router,
-            "prefix": "/image-runtime",
-            "tags": ["Image Runtime"],
             "auth": True,
         },
         # ── File System ──────────────────────────────────────────
