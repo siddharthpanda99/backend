@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 from typing import List, Optional, Any, Dict
@@ -68,11 +70,35 @@ class RuleLibraryBlockCreate(BaseModel):
     type: str
     data: dict
 
+    def to_model_kwargs(self) -> dict:
+        """Map the wire shape onto RuleLibraryBlockModel's columns.
+
+        The API contract uses `data: dict` (and the frontend types it that
+        way), but the table column is `content: str | None`. Passing the dump
+        straight through meant `data` was silently dropped — SQLModel ignores
+        unknown kwargs — so every block was stored with `content = None` and
+        the payload was lost. Serialise here instead.
+        """
+        payload = self.model_dump(exclude={"data"})
+        payload["content"] = json.dumps(self.data)
+        return payload
+
 
 class RuleLibraryBlockUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     data: Optional[dict] = None
+
+    def to_model_kwargs(self) -> dict:
+        """Same `data` -> `content` mapping as RuleLibraryBlockCreate.
+
+        Applied only for fields the client actually set (`exclude_unset`), so a
+        partial update that omits `data` does not blank `content`.
+        """
+        payload = self.model_dump(exclude_unset=True, exclude={"data"})
+        if self.data is not None and "data" in self.model_fields_set:
+            payload["content"] = json.dumps(self.data)
+        return payload
 
 
 class RuleEvaluateRequest(BaseModel):
@@ -97,7 +123,7 @@ def create_library_block(
     session: Session = Depends(get_session),
     service: GovernanceRulesService = Depends(get_service),
 ):
-    return service.create_library_block(session, block.model_dump())
+    return service.create_library_block(session, block.to_model_kwargs())
 
 
 @router.get("/library/{block_id}", response_model=RuleLibraryBlockModel)
@@ -121,7 +147,7 @@ def update_library_block(
 ):
     try:
         return service.update_library_block(
-            session, block_id, updates.model_dump(exclude_unset=True)
+            session, block_id, updates.to_model_kwargs()
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Library block not found")

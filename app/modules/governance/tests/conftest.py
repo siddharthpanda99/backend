@@ -41,6 +41,21 @@ from common_lib.modules.governance.db_models import (  # noqa: F401
     GovernancePolicyHookLink,
 )
 
+# The rules-engine persistence tables (rule_sets / rules / rule_library_blocks /
+# rule_set_rule_links / rule_policy_*) live in a separate db_models module.
+# Without this import they never register in SQLModel.metadata, so
+# SQLModel.metadata.create_all() below silently omits them and every
+# rules-engine test fails with "no such table: rule_sets".
+from common_lib.modules.governance.rules_engine.db_models import (  # noqa: F401
+    RuleLibraryBlockModel,
+    RuleSetModel,
+    RuleModel,
+    RuleSetRuleLink,
+    PolicyModel,
+    PolicyGroupModel,
+    PolicyGroupPolicyLink,
+)
+
 TEST_DB_URL = "sqlite:///:memory:"
 engine = create_engine(
     TEST_DB_URL,
