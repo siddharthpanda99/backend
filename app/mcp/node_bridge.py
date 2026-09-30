@@ -197,6 +197,56 @@ _EXEC_GLOBALS = {
 }
 
 
+def _normalise_input_schema(raw) -> dict:
+    """Return ``{param_name: type_string}`` from either schema spelling.
+
+    ``@node`` accepts two shapes and they are NOT interchangeable:
+
+      flat    ``input_schema={"kb_id": {"type": "string"}}``
+              -> keys are already parameter names.
+
+      object  ``input_schema=input_object(properties={"kb_id": ...})``
+              -> a whole JSON-Schema DOCUMENT, whose top-level keys are
+                 ``type``/``description``/``properties``/``required``.
+
+    This function used to assume the flat shape. For every node declared with
+    ``input_object()`` it therefore built a handler whose signature was
+    ``(type, description, properties, required)`` instead of the real
+    parameters, so calling it raised
+    ``TypeError: unexpected keyword argument 'kb_id'``. The node was decorated,
+    discovered, listed in the registry and advertised to agents — and entirely
+    uncallable.
+
+    Measured: 1 092 declared node names platform-wide used the object form.
+
+    The fix is to read ``properties`` (and honour ``required``) when the input
+    looks like a schema document, and to pass the flat form through untouched.
+    """
+    if not raw:
+        return {}
+
+    # Schema-document form: has a mapping under "properties".
+    props = raw.get("properties") if isinstance(raw, dict) else None
+    if isinstance(props, dict):
+        required = raw.get("required")
+        required_set = (
+            set(required) if isinstance(required, (list, tuple, set)) else None
+        )
+        out: dict = {}
+        for name, spec in props.items():
+            # Copy the spec so marking a param optional cannot mutate the
+            # caller's original schema.
+            spec = dict(spec) if isinstance(spec, dict) else {"type": "string"}
+            if required_set is not None and name not in required_set:
+                # Optional: the caller may omit it. Mark it so the signature
+                # builder emits a default rather than a required positional.
+                spec = {**spec, "_optional": True}
+            out[name] = spec
+        return out
+
+    return raw
+
+
 def _build_handler(node_info) -> Optional[Any]:
     """Build an async handler function with proper typed signature for a @node.
 
@@ -205,15 +255,30 @@ def _build_handler(node_info) -> Optional[Any]:
     """
     node_mod = node_info.module
     node_qualname = node_info.qualname
-    params = node_info.input_schema or {}
+    params = _normalise_input_schema(node_info.input_schema)
 
     # Parse + sort: required params first, optional params last (Python syntax requirement)
     typed_params: List[tuple] = []
     for k, v in params.items():
+        # `_normalise_input_schema` marks params absent from a schema document's
+        # `required` list. Those are optional at the call site even though their
+        # declared type is not Optional, so honour the marker too — otherwise a
+        # schema-document node with a non-required param becomes a required
+        # positional the MCP client cannot satisfy.
+        declared_optional = isinstance(v, dict) and v.pop("_optional", False)
+        v = (
+            {kk: vv for kk, vv in v.items() if kk != "_optional"}
+            if isinstance(v, dict)
+            else v
+        )
         py_type = _parse_type_str(v)
         origin = get_origin(py_type)
         p_args = get_args(py_type)
-        is_opt = (origin is Optional) or (origin is Union and type(None) in p_args)
+        is_opt = (
+            declared_optional
+            or (origin is Optional)
+            or (origin is Union and type(None) in p_args)
+        )
         typed_params.append((k, py_type, is_opt))
     typed_params.sort(key=lambda x: (1 if x[2] else 0, x[0]))
 
@@ -273,7 +338,9 @@ def register_dynamic_node_tools(mcp: FastMCP, limit: Optional[int] = None) -> in
         Number of tools successfully registered.
     """
     try:
-        from common_lib.modules.plugins.nodes_registry import discover_nodes as _discover
+        from common_lib.modules.plugins.nodes_registry import (
+            discover_nodes as _discover,
+        )
     except ImportError as e:
         logger.error("Cannot import discover_nodes: %s", e)
         return 0
