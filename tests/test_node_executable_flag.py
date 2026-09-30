@@ -32,6 +32,7 @@ pointed at finding a concrete implementation.
 from __future__ import annotations
 
 import asyncio
+import inspect
 
 import pytest
 
@@ -142,3 +143,61 @@ def test_handler_is_still_built_for_a_declaration():
         _Info("probe.decl3", "declared_only", {}, declared_only._node_metadata)
     )
     assert handler is not None
+
+
+# ── regression: the flag must be read off a REAL NodeInfo, not a stand-in ────
+#
+# The tests above use `_Info`, a hand-rolled stand-in that carries `executable`
+# inside `.metadata` and has no `.executable` attribute. Real `NodeInfo` is the
+# opposite: `executable` is a dataclass FIELD, and `.metadata` holds only the
+# inner user dict. So the fake validated itself while the real bridge silently
+# read `metadata.get("executable")` -> None -> True for every node, and all 259
+# markings were inert. These tests use real discovered nodes so that cannot
+# happen again.
+
+
+def test_real_nodeinfo_carries_executable_as_a_field_not_in_metadata():
+    from common_lib.modules.plugins.nodes_registry import discover_nodes
+
+    marked = [n for n in discover_nodes() if getattr(n, "executable", True) is False]
+    assert marked, "expected the platform to have non-executable declarations"
+    sample = marked[0]
+    # The field is populated ...
+    assert sample.executable is False
+    # ... and metadata does NOT carry it. Reading metadata is the bug.
+    assert "executable" not in sample.metadata, (
+        "if metadata now carries the flag, this regression test is obsolete"
+    )
+
+
+def test_bridge_guard_fires_for_a_real_marked_node():
+    """A marked node must return the guard, not a raw TypeError."""
+    import asyncio
+
+    from common_lib.modules.plugins.nodes_registry import discover_nodes
+
+    marked = [n for n in discover_nodes() if getattr(n, "executable", True) is False]
+    assert marked
+    sample = marked[0]
+    handler = _build_handler(sample)
+    assert handler is not None, "a marked node must still be buildable/discoverable"
+    # Supply the declared parameters; the guard must fire before the body runs.
+    kwargs = {name: {} for name in (sample.input_schema or {})}
+    for name in inspect.signature(handler).parameters:
+        kwargs.setdefault(name, {})
+    result = asyncio.run(handler(**kwargs))
+    assert result.get("executable") is False
+    assert result.get("error") == "not executable"
+    assert "self" not in str(result.get("reason", ""))
+
+
+def test_bridge_does_not_guard_a_real_plain_function():
+    """The guard must not fire for ordinary functions."""
+    import asyncio
+
+    from common_lib.modules.plugins.nodes_registry import discover_nodes
+
+    plain = [n for n in discover_nodes() if "." not in (n.qualname or "")]
+    assert plain
+    result = asyncio.run(_build_handler(plain[0])())
+    assert "executable" not in result

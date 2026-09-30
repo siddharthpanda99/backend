@@ -454,10 +454,26 @@ def _build_handler(node_info) -> Optional[Any]:
     # `executable` defaults to True when the key is absent, so nodes declared
     # before the flag existed are unaffected. Only an explicit False marks a
     # declaration that has no implementation to call.
+    # Read the flag from the NodeInfo FIELD, not from metadata.
+    #
+    # `NodeInfo.metadata` holds only the *inner* user dict
+    # (schema_version / node_kind / is_tool_use_safe ...); the enriched metadata
+    # that carries `executable` never reaches it. Reading
+    # `metadata.get("executable", True)` therefore yielded None -> True for
+    # every node, and all 259 `executable=False` markings were inert: the
+    # generated handler still called an uncallable declaration and returned a
+    # raw TypeError instead of the intended guard.
+    #
+    # The attribute is the single source of truth
+    # (nodes_registry/__init__.py: `executable=bool(meta.get("executable", True))`),
+    # so prefer it and fall back to metadata only for older NodeInfo shapes.
     _executable = True
     try:
-        _meta = getattr(node_info, "metadata", None) or {}
-        _executable = bool(_meta.get("executable", True))
+        _flag = getattr(node_info, "executable", None)
+        if _flag is None:
+            _meta = getattr(node_info, "metadata", None) or {}
+            _flag = _meta.get("executable", True)
+        _executable = bool(_flag)
     except Exception:  # noqa: BLE001
         _executable = True
     safe_name = str(getattr(node_info, "name", "") or "").replace("'", "\\'")
@@ -467,18 +483,22 @@ def _build_handler(node_info) -> Optional[Any]:
     # dict, not the locals dict it was defined with, so a `_EXECUTABLE` local
     # raised NameError on every call.
     _non_exec_guard = (
-        "    return {\n"
-        "        'error': 'not executable',\n"
-        "        'reason': (\n"
-        f"            '{safe_name} is a declaration (an abstract method, a '\n"
-        "            'Protocol/ABC interface, or a type descriptor). It is '\n"
-        "            'published so the contract is DISCOVERABLE, but it has no '\n"
-        "            'implementation to invoke. Find and call a concrete '\n"
-        "            'implementation instead.'\n"
-        "        ),\n"
-        "        'executable': False,\n"
-        "    }\n"
-    ) if not _executable else "    pass  # executable\n"
+        (
+            "    return {\n"
+            "        'error': 'not executable',\n"
+            "        'reason': (\n"
+            f"            '{safe_name} is a declaration (an abstract method, a '\n"
+            "            'Protocol/ABC interface, or a type descriptor). It is '\n"
+            "            'published so the contract is DISCOVERABLE, but it has no '\n"
+            "            'implementation to invoke. Find and call a concrete '\n"
+            "            'implementation instead.'\n"
+            "        ),\n"
+            "        'executable': False,\n"
+            "    }\n"
+        )
+        if not _executable
+        else "    pass  # executable\n"
+    )
 
     body = f"""async def _handler({params_code}):
 {_non_exec_guard}    try:
