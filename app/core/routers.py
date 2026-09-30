@@ -1383,7 +1383,12 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["Proxy Routing"],
             "auth": True,
         },
-        {"router": system_router, "prefix": "", "tags": ["System"], "auth": True},
+        {
+            "router": system_router,
+            "prefix": "/system",
+            "tags": ["System"],
+            "auth": True,
+        },
         {
             "router": app_ops_router,
             "prefix": "",
