@@ -1399,6 +1399,39 @@ def create_app() -> FastAPI:
         f"{', '.join(_feature_report['disabled_modules']) or 'none'}"
     )
 
+    # ── @node instance registry ──────────────────────────────────────────────
+    # MUST run after `load_feature_config()` and before `register_routers()` and the
+    # MCP warmup's `discover_nodes()`. Two reasons, both about ordering:
+    #
+    #   1. AFTER the feature config, because each wiring entry is gated on the
+    #      pruning flag for its module. Constructing instances for a module the
+    #      operator switched off is exactly the waste the pruning work exists to
+    #      avoid, and the wiring reads the same `is_module_enabled` predicate the
+    #      router/node pruners use so the two can never disagree.
+    #   2. BEFORE discovery, because binding happens when the bridge generates a
+    #      handler for a dotted `Class.method` node. Register afterwards and every
+    #      node generated during this boot's scan was already built unbound — the
+    #      registry would be correct and useless.
+    #
+    # Resilient by construction: a class that cannot be constructed is logged and
+    # skipped, never fatal. See app/core/node_instances.py for the table, the
+    # per-request mechanism the refused population needs, and the counts.
+    try:
+        from app.core.node_instances import register_startup_instances
+
+        _instance_report = register_startup_instances()
+        print(f"[NodeInstances] {_instance_report.summary()}")
+        if _instance_report.failed:
+            print(
+                f"[NodeInstances] owners left unbound (their nodes stay advertised "
+                f"but uncallable): {', '.join(sorted(_instance_report.failed))}"
+            )
+    except Exception as _instance_error:  # noqa: BLE001 - never block the boot
+        print(
+            f"[NodeInstances] registry wiring skipped entirely: "
+            f"{type(_instance_error).__name__}: {_instance_error}"
+        )
+
     app = FastAPI(
         title=settings.PROJECT_NAME,
         version=settings.VERSION,
