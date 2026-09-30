@@ -6,6 +6,7 @@ All CRUD + test endpoints.
 """
 
 import json
+import os
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -14,9 +15,47 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.triggers.models import HookDefinitionDB
+from common_lib.modules.integration.ports.interceptors.triggers_port import (
+    get_trigger_models_module,
+)
 
 router = APIRouter(prefix="/hook-definitions", tags=["Unified Hooks"])
+
+# G9/G4 — actually executing a stored hook definition against a mock context
+# is new behaviour, so it ships behind a default-OFF flag. Until it exists,
+# the endpoint answers 501 rather than the "success" it used to claim.
+_TEST_EXECUTION_ENABLED = os.getenv(
+    "HOOKS_ENABLE_HOOK_TEST_EXECUTION", ""
+).strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+
+def _hook_definition_model():
+    """Resolve ``HookDefinitionDB`` through the integration port (G2).
+
+    This module previously imported ``common_lib.modules.triggers.models``
+    directly. That is a cross-module import outside ``integration/ports/``,
+    and the cross-module import guard does not scan ``Backend/app`` — which
+    is why it reported zero violations while this line existed. The hooks
+    engine already reached the same model through
+    ``interceptors.triggers_port.get_trigger_models_module``; this now uses
+    the same door, so there is one resolution path rather than two that can
+    drift.
+    """
+    models_module = get_trigger_models_module()
+    if models_module is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Hook definitions are unavailable: the triggers models module "
+                "could not be resolved through the integration port."
+            ),
+        )
+    return models_module.HookDefinitionDB
 
 
 # ── Pydantic Schemas ────────────────────────────────────────────────
@@ -155,15 +194,40 @@ def delete_hook(hook_id: int, session: Session = Depends(get_session)):
 
 
 @router.post("/{hook_id}/test")
-def test_hook(hook_id: int, body: HookTestRequest, session: Session = Depends(get_session)):
-    """Test a hook with mock context."""
+def test_hook(
+    hook_id: int, body: HookTestRequest, session: Session = Depends(get_session)
+):
+    """Test a hook with mock context.
+
+    This endpoint reported ``result.status == "success"`` for a test that had
+    not run: the body was a literal dict with a ``# TODO`` above it and no
+    hook was ever instantiated or executed. A caller polling this endpoint to
+    confirm a hook works was told it worked. 501 is the truthful answer until
+    the execution is actually wired to ``HookEngine.run_phase``.
+
+    G9/G4 — the real implementation is new behaviour, so it is gated behind
+    ``HOOKS_ENABLE_HOOK_TEST_EXECUTION`` (default OFF) rather than
+    implemented speculatively.
+    """
+    HookDefinitionDB = _hook_definition_model()
     h = session.get(HookDefinitionDB, hook_id)
     if not h:
         raise HTTPException(status_code=404, detail="Hook not found")
-    # TODO: actually instantiate and run the hook_class with the context
-    return {
-        "hook_id": hook_id,
-        "hook_class": h.hook_class,
-        "context": body.context,
-        "result": {"status": "success", "message": "Hook test stub — implement HookEngine.run_phase() integration"},
-    }
+
+    if not _TEST_EXECUTION_ENABLED:
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "Hook test execution is not implemented. This endpoint no "
+                "longer reports a 'success' result for a test that did not "
+                "run. To exercise a hook for real, register it and call "
+                f"POST /api/v1/hooks/{{hook_id}}/trigger — or set "
+                "HOOKS_ENABLE_HOOK_TEST_EXECUTION=true once the HookEngine "
+                "integration lands."
+            ),
+        )
+
+    raise HTTPException(
+        status_code=501,
+        detail="Hook test execution is gated but not yet implemented.",
+    )

@@ -18,7 +18,13 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session
 
 from common_lib.modules.agentic_os import (
-    get_config_registry, get_section_registry, get_builder_registry,
+    get_config_registry,
+    get_section_registry,
+    get_builder_registry,
+)
+from common_lib.modules.agentic_os.errors import (
+    ComposedSystemNotPersistedError,
+    ConfigPersistenceError,
 )
 from common_lib.modules.data_storage.database.connection import get_session
 
@@ -36,10 +42,26 @@ def _inject_session(session: Session = Depends(get_session)) -> None:
     _config_registry.set_session(session)
 
 
+@router.get("/health")
+async def get_health(_: None = Depends(_inject_session)):
+    """Report whether the config registry's last DB sync SUCCEEDED.
+
+    Exists because ``GET /agentic-os/configs`` cannot distinguish a DOWN
+    database from "the user has no configs": ``_sync_from_db`` logs a warning
+    and returns, leaving only the code-defined system defaults in memory, and
+    the response is a well-formed ``{"configs": [...], "total": 12}`` either
+    way. This endpoint is the honest signal.
+    """
+    return _config_registry.sync_health()
+
+
 # ── Schemas ────────────────────────────────────────────────────────────
 
+
 class ConfigCreateRequest(BaseModel):
-    section_type: str = Field(description="Section type (extraction, embedding, rag, etc.)")
+    section_type: str = Field(
+        description="Section type (extraction, embedding, rag, etc.)"
+    )
     name: str = Field(description="Config name")
     description: str = Field(default="", description="Config description")
     values: Dict[str, Any] = Field(description="Config field values")
@@ -56,11 +78,16 @@ class ConfigUpdateRequest(BaseModel):
 class ComposeSystemRequest(BaseModel):
     name: str = Field(description="System name")
     description: str = Field(default="", description="System description")
-    sections: Dict[str, str] = Field(description="Map of section_type -> config_id for each section")
-    builder_type: str = Field(default="agent_builder", description="Builder type to use for composition")
+    sections: Dict[str, str] = Field(
+        description="Map of section_type -> config_id for each section"
+    )
+    builder_type: str = Field(
+        default="agent_builder", description="Builder type to use for composition"
+    )
 
 
 # ── Schema Endpoints ───────────────────────────────────────────────────
+
 
 @router.get("/schemas")
 async def list_schemas(_: None = Depends(_inject_session)):
@@ -79,14 +106,19 @@ async def get_schema(section_type: str, _: None = Depends(_inject_session)):
     """Get the schema for a specific section type."""
     schema = _config_registry.get_schema(section_type)
     if not schema:
-        raise HTTPException(status_code=404, detail=f"No schema for section type: {section_type}")
+        raise HTTPException(
+            status_code=404, detail=f"No schema for section type: {section_type}"
+        )
     return schema.to_dict()
 
 
 # ── Config Endpoints (Full CRUD) ───────────────────────────────────────
 
+
 @router.get("/configs")
-async def list_configs(_: None = Depends(_inject_session), section_type: Optional[str] = None):
+async def list_configs(
+    _: None = Depends(_inject_session), section_type: Optional[str] = None
+):
     """List all config instances, optionally filtered by section type.
 
     Each section type has a list of usable configs: system defaults + user-created.
@@ -109,47 +141,78 @@ async def get_config(config_id: str, _: None = Depends(_inject_session)):
 
 
 @router.post("/configs")
-async def create_config(payload: ConfigCreateRequest, _: None = Depends(_inject_session)):
-    """Create a new user config for a section type."""
-    errors = _config_registry.validate_config_values(payload.section_type, payload.values)
+async def create_config(
+    payload: ConfigCreateRequest, _: None = Depends(_inject_session)
+):
+    """Create a new user config for a section type.
+
+    Answers 503 when the DB write failed and the
+    ``agentic_os.config.fail_on_persistence_error`` flag is on. With the flag
+    off (the default) the historical behaviour is preserved: the config comes
+    back with 200 even though nothing was written. Use
+    ``GET /agentic-os/health`` to detect that.
+    """
+    errors = _config_registry.validate_config_values(
+        payload.section_type, payload.values
+    )
     if errors:
         raise HTTPException(status_code=422, detail={"errors": errors})
-    cfg = _config_registry.create_config(
-        section_type=payload.section_type,
-        values=payload.values,
-        name=payload.name,
-        description=payload.description,
-        tags=payload.tags,
-    )
+    try:
+        cfg = _config_registry.create_config(
+            section_type=payload.section_type,
+            values=payload.values,
+            name=payload.name,
+            description=payload.description,
+            tags=payload.tags,
+        )
+    except ConfigPersistenceError as exc:
+        logger.error("agentic-os create_config persistence failure: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return cfg.to_dict()
 
 
 @router.put("/configs/{config_id}")
-async def update_config(config_id: str, payload: ConfigUpdateRequest, _: None = Depends(_inject_session)):
+async def update_config(
+    config_id: str, payload: ConfigUpdateRequest, _: None = Depends(_inject_session)
+):
     """Update an existing user config."""
-    cfg = _config_registry.update_config(
-        config_id=config_id,
-        values=payload.values,
-        name=payload.name,
-        description=payload.description,
-        tags=payload.tags,
-    )
+    try:
+        cfg = _config_registry.update_config(
+            config_id=config_id,
+            values=payload.values,
+            name=payload.name,
+            description=payload.description,
+            tags=payload.tags,
+        )
+    except ConfigPersistenceError as exc:
+        logger.error("agentic-os update_config persistence failure: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if not cfg:
-        raise HTTPException(status_code=404, detail="Config not found or is read-only (system)")
+        raise HTTPException(
+            status_code=404, detail="Config not found or is read-only (system)"
+        )
     return cfg.to_dict()
 
 
 @router.delete("/configs/{config_id}")
 async def delete_config(config_id: str, _: None = Depends(_inject_session)):
     """Delete a user config. System configs cannot be deleted."""
-    success = _config_registry.delete_config(config_id)
+    try:
+        success = _config_registry.delete_config(config_id)
+    except ConfigPersistenceError as exc:
+        logger.error("agentic-os delete_config persistence failure: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if not success:
-        raise HTTPException(status_code=404, detail="Config not found or is read-only (system)")
+        raise HTTPException(
+            status_code=404, detail="Config not found or is read-only (system)"
+        )
     return {"success": True, "id": config_id}
 
 
 @router.post("/configs/{config_id}/duplicate")
-async def duplicate_config(config_id: str, name: Optional[str] = None, _: None = Depends(_inject_session)):
+async def duplicate_config(
+    config_id: str, name: Optional[str] = None, _: None = Depends(_inject_session)
+):
     """Clone a config (system or user) as a new user-created config."""
     cfg = _config_registry.duplicate_config(config_id, new_name=name or "")
     if not cfg:
@@ -158,6 +221,7 @@ async def duplicate_config(config_id: str, name: Optional[str] = None, _: None =
 
 
 # ── Section Endpoints ──────────────────────────────────────────────────
+
 
 @router.get("/sections")
 async def list_sections():
@@ -176,11 +240,14 @@ async def get_section(section_type: str):
     """Get a section definition by type."""
     section = _section_registry.get_by_str(section_type)
     if not section:
-        raise HTTPException(status_code=404, detail=f"Section not found: {section_type}")
+        raise HTTPException(
+            status_code=404, detail=f"Section not found: {section_type}"
+        )
     return section.to_dict()
 
 
 # ── Builder Endpoints ──────────────────────────────────────────────────
+
 
 @router.get("/builders")
 async def list_builders():
@@ -199,14 +266,19 @@ async def get_builder(builder_type: str):
     """Get a builder definition by type."""
     builder = _builder_registry.get_by_str(builder_type)
     if not builder:
-        raise HTTPException(status_code=404, detail=f"Builder not found: {builder_type}")
+        raise HTTPException(
+            status_code=404, detail=f"Builder not found: {builder_type}"
+        )
     return builder.to_dict()
 
 
 # ── System Composition Endpoints ───────────────────────────────────────
 
+
 @router.post("/compose")
-async def compose_system(payload: ComposeSystemRequest):
+async def compose_system(
+    payload: ComposeSystemRequest, _: None = Depends(_inject_session)
+):
     """Compose a system from selected config sections.
 
     Takes a map of section_type -> config_id and produces a fully composed
@@ -216,10 +288,20 @@ async def compose_system(payload: ComposeSystemRequest):
     - Merged config values for each section
     - Tool bindings for each configured section
     - Builder blueprint for deployment
+
+    **Note on the session dependency:** this route previously had none, so
+    ``_config_registry`` was left holding whatever session the *last* config
+    route happened to inject — a session FastAPI had already closed by the time
+    this handler ran. With ``agentic_os.config.persist_composed_system`` on, a
+    compose against that closed session would have written nothing while
+    claiming ``success: true``; the dependency makes the session a real one for
+    the duration of the request.
     """
     builder = _builder_registry.get_by_str(payload.builder_type)
     if not builder:
-        raise HTTPException(status_code=404, detail=f"Builder not found: {payload.builder_type}")
+        raise HTTPException(
+            status_code=404, detail=f"Builder not found: {payload.builder_type}"
+        )
 
     sections_config = {}
     errors = []
@@ -228,7 +310,9 @@ async def compose_system(payload: ComposeSystemRequest):
         # Get the config instance
         cfg = _config_registry.get_config(config_id)
         if not cfg:
-            errors.append(f"Config '{config_id}' not found for section '{section_type}'")
+            errors.append(
+                f"Config '{config_id}' not found for section '{section_type}'"
+            )
             continue
 
         # Validate section type
@@ -267,13 +351,35 @@ async def compose_system(payload: ComposeSystemRequest):
         "sections": sections_config,
         "section_count": len(sections_config),
         "mcp_tool_names": [
-            f"agentic_os_{section_type}_{cfg.get('config_name', 'default')}".lower().replace(" ", "_")
+            f"agentic_os_{section_type}_{cfg.get('config_name', 'default')}".lower().replace(
+                " ", "_"
+            )
             for section_type, cfg in sections_config.items()
         ],
     }
+
+    # Persist the blueprint. `mcp_tool_names` above are *derived strings* — no
+    # MCP tool is registered under any of them (nothing in this module creates
+    # one), so `mcp_tools_registered` reports that honestly rather than letting a
+    # caller believe composing deployed a tool. Persistence itself reports
+    # whether the row was actually written.
+    try:
+        persistence = _config_registry.persist_composed_system(
+            name=payload.name,
+            description=payload.description,
+            builder_type=payload.builder_type,
+            blueprint=composed,
+        )
+    except ComposedSystemNotPersistedError as exc:
+        logger.error("agentic-os compose persistence failure: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    composed["mcp_tools_registered"] = False
+    composed["mcp_tool_names_are_derived"] = True
 
     return {
         "success": True,
         "system": composed,
         "errors": [],
+        "persistence": persistence,
     }

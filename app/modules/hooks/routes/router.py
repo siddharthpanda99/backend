@@ -9,7 +9,7 @@ import re
 
 from fastapi import APIRouter, HTTPException
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from common_lib.modules.hooks import (
     HookEngine,
@@ -44,7 +44,7 @@ def _normalise_event(event: str) -> str:
 class HookCreateRequest(BaseModel):
     name: str
     phase: str
-    config: dict = {}
+    config: dict = Field(default_factory=dict)
 
 
 class HookResponse(BaseModel):
@@ -195,8 +195,17 @@ class _ManagedHook(Hook):
         )
         _stdout, stderr = await proc.communicate()
         if proc.returncode != 0:
+            # Was `HookStatus.ERROR`, which does not exist on HookStatus
+            # (members are CONTINUE / BLOCK / MODIFY / HITL). Evaluating it
+            # raised AttributeError from inside the hook, so a managed hook
+            # whose command failed was reported by the registry as a hook
+            # crash rather than as the command failure it actually was. The
+            # exit code is the failure signal, not the phase status, so it is
+            # carried on HookResult.failed (G4 additive).
             return HookResult(
-                status=HookStatus.ERROR,
+                status=HookStatus.CONTINUE,
+                failed=True,
+                failed_hooks=[self.name],
                 message=(
                     f"execute_command exited {proc.returncode}: "
                     f"{stderr.decode('utf-8', 'replace')[:300]}"
@@ -356,10 +365,28 @@ async def trigger_hook(hook_id: str, request: WebhookTriggerRequest):
             detail=f"{type(e).__name__}: hook {hook_id!r} raised during execution",
         ) from e
 
+    if result is None:
+        # A hook can be unregistered by another request between the 404 check
+        # above and the execution below. Say so rather than answering
+        # "unknown" as if a run had happened.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Hook {hook_id!r} was unregistered while the trigger was in "
+                "flight; nothing ran."
+            ),
+        )
+
     return {
         "triggered": hook_id,
         "event_type": request.event_type,
         "result": result.status.value if result else "unknown",
+        # G4 additive. A handler can return CONTINUE *and* have failed (a
+        # non-blocking hook that raised), so `result` alone is not proof the
+        # run was clean.
+        "failed": result.failed,
+        "failed_hooks": list(result.failed_hooks or []),
+        "message": result.message,
     }
 
 
@@ -470,6 +497,17 @@ async def trigger_webhook(request: WebhookTriggerRequest):
             "triggered_hooks": selected,
             "total": len(selected),
             "matched": phase is not None,
+            # G4 additive. Naming a set of hooks "triggered_hooks" implied
+            # they had run; nothing here executes anything. The two keys
+            # below say so explicitly rather than relying on a client
+            # noticing that no side effect followed.
+            "executed_hooks": [],
+            "executed": False,
+            "note": (
+                "No hooks were executed by this request. `triggered_hooks` "
+                "lists the hooks registered in the resolved phase. To actually "
+                f"run one, POST /api/v1/hooks/{{hook_id}}/trigger."
+            ),
         }
     except HTTPException:
         raise
@@ -553,8 +591,18 @@ async def instantiate_template(template_id: str, parameters: dict):
 
 @router.get("/schemas/")
 async def list_schemas():
-    """List validation schemas."""
-    return {"schemas": []}
+    """List validation schemas.
+
+    Was ``{"schemas": []}`` with HTTP 200 — indistinguishable from "this
+    module genuinely has no schemas", and it has none to report: the hook
+    registry stores no schema documents. 501 with an explanation is the
+    truthful answer, matching the sibling endpoints above.
+    """
+    raise _not_implemented(
+        "Hook validation schemas",
+        "Hooks are Python classes; their input contract is the HookContext "
+        "dataclass in common_lib.modules.hooks.types, not a stored schema.",
+    )
 
 
 _dlq_engine = None

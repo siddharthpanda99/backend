@@ -4,19 +4,10 @@
     "interceptors": [],
     "policies": [
         {
-            "id": 1759,
+            "id": 1,
             "approval_policy_id": "apv_7ecfdb225694",
-            "name": "production-deploy",
             "description": "Production deployment approval policy",
-            "trigger_conditions": [],
-            "approvers": {},
-            "timeout": {},
-            "escalation": {},
-            "trigger_ids": [],
-            "hook_ids": [],
-            "created_at": "2026-09-01T00:00:00Z"
-        }
-    ],
-    "requests": [],
-    "overrides": []
-}
+            "approvers": "{}",
+            "escalation": "{}",
+            "hook_ids": "[]",
+            "updated_at": 
