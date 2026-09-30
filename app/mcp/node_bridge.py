@@ -390,8 +390,37 @@ def _build_handler(node_info) -> Optional[Any]:
     safe_mod = node_mod.replace("'", "\\'")
     safe_qualname = node_qualname.replace("'", "\\'")
 
-    body = f"""async def _handler({params_code}):
+    # `executable` defaults to True when the key is absent, so nodes declared
+    # before the flag existed are unaffected. Only an explicit False marks a
+    # declaration that has no implementation to call.
+    _executable = True
     try:
+        _meta = getattr(node_info, "metadata", None) or {}
+        _executable = bool(_meta.get("executable", True))
+    except Exception:  # noqa: BLE001
+        _executable = True
+    safe_name = str(getattr(node_info, "name", "") or "").replace("'", "\\'")
+
+    # Bake the guard into the generated source as a literal rather than looking
+    # it up at call time. An exec'd function resolves names against the GLOBALS
+    # dict, not the locals dict it was defined with, so a `_EXECUTABLE` local
+    # raised NameError on every call.
+    _non_exec_guard = (
+        "    return {\n"
+        "        'error': 'not executable',\n"
+        "        'reason': (\n"
+        f"            '{safe_name} is a declaration (an abstract method, a '\n"
+        "            'Protocol/ABC interface, or a type descriptor). It is '\n"
+        "            'published so the contract is DISCOVERABLE, but it has no '\n"
+        "            'implementation to invoke. Find and call a concrete '\n"
+        "            'implementation instead.'\n"
+        "        ),\n"
+        "        'executable': False,\n"
+        "    }\n"
+    ) if not _executable else "    pass  # executable\n"
+
+    body = f"""async def _handler({params_code}):
+{_non_exec_guard}    try:
         _node_mod = importlib.import_module('{safe_mod}')
         _node_func = _resolve_callable(_node_mod, '{safe_qualname}')
         _kwargs = {{{kwarg_expr}}}
