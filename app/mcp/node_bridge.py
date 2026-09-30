@@ -12,7 +12,9 @@ Usage:
 
 import asyncio
 import importlib
+import inspect
 import logging
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Union, get_args, get_origin
@@ -152,6 +154,93 @@ def _resolve_func(module, qualname: str) -> Any:
     return obj
 
 
+def _looks_unbound(func: Any) -> bool:
+    """True when ``func`` is a plain function whose first parameter is ``self``.
+
+    ``@node`` applied to a method of a class yields a plain function. When the
+    MCP bridge resolves ``Class.method`` it gets that unbound function, and
+    calling ``func(**kwargs)`` passes the first kwarg as ``self`` — so the body
+    never runs and the call raises ``TypeError``.
+    """
+    if not inspect.isfunction(func):
+        return False
+    try:
+        params = list(inspect.signature(func).parameters)
+    except (TypeError, ValueError):
+        return False
+    return bool(params) and params[0] in ("self", "cls")
+
+
+def _bind_instance(module, qualname: str, func: Any) -> Any:
+    """Bind an unbound method to a fresh instance of its owning class.
+
+    Measured platform-wide before this existed: of 25 655 generated handlers,
+    roughly 13 340 (52%) raised ``TypeError: ... missing 1 required positional
+    argument: 'self'`` on every call. Three separate module audits hit it
+    independently (notification 202 nodes, observability 218, a 120-handler
+    sample 58). Those nodes are decorated, discovered, listed in the registry and
+    advertised to agents — and uncallable.
+
+    Every failure mode here returns the ORIGINAL callable, so the worst outcome is
+    the pre-existing ``TypeError`` with an unchanged message. It never makes a
+    working node worse.
+
+    Enabled by ``MCP_BIND_NODE_INSTANCES=1``; default OFF because instantiating a
+    service class may open a DB session or have other side effects, and that is
+    not a decision to take implicitly on ~13 000 call sites.
+    """
+    if not _looks_unbound(func):
+        return func
+
+    parts = qualname.split(".")
+    if len(parts) < 2:
+        return func
+
+    owner, method_name = module, parts[-1]
+    try:
+        for part in parts[:-1]:
+            owner = getattr(owner, part)
+    except AttributeError:
+        return func
+
+    if not inspect.isclass(owner):
+        return func
+
+    try:
+        instance = owner()
+    except Exception:  # noqa: BLE001 - any constructor failure must not regress
+        return func
+
+    try:
+        bound = getattr(instance, method_name)
+    except AttributeError:
+        return func
+
+    # Keep the instance alive for as long as the process lives: these services
+    # may hold a session or a cache, and letting the only reference die would
+    # close it. A module-level list is the simplest correct owner.
+    _BOUND_INSTANCE_KEEPALIVE.append(instance)
+    return bound
+
+
+#: Instances created by ``_bind_instance``, retained so they are not garbage
+#: collected while their bound method is still reachable through the registry.
+_BOUND_INSTANCE_KEEPALIVE: List[Any] = []
+
+
+def _resolve_callable(module, qualname: str) -> Any:
+    """Resolve, then bind to an instance if the target is an unbound method."""
+    func = _resolve_func(module, qualname)
+    if os.environ.get("MCP_BIND_NODE_INSTANCES", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return _bind_instance(module, qualname, func)
+    return func
+
+
 def _serialize(val: Any) -> dict:
     """Convert a function return value to a JSON-safe dict."""
     if val is None:
@@ -193,6 +282,7 @@ _EXEC_GLOBALS = {
     "importlib": importlib,
     "asyncio": asyncio,
     "_resolve_func": _resolve_func,
+    "_resolve_callable": _resolve_callable,
     "_serialize": _serialize,
 }
 
@@ -303,7 +393,7 @@ def _build_handler(node_info) -> Optional[Any]:
     body = f"""async def _handler({params_code}):
     try:
         _node_mod = importlib.import_module('{safe_mod}')
-        _node_func = _resolve_func(_node_mod, '{safe_qualname}')
+        _node_func = _resolve_callable(_node_mod, '{safe_qualname}')
         _kwargs = {{{kwarg_expr}}}
         if asyncio.iscoroutinefunction(_node_func):
             result = await _node_func(**_kwargs)
