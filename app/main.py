@@ -1359,6 +1359,46 @@ def get_plugin_context():
 
 
 def create_app() -> FastAPI:
+    # ── Per-instance feature config ──────────────────────────────────────────
+    # MUST be the first thing create_app() does. Everything after this point can
+    # observe or act on flag state: register_routers() (line ~1519) prunes
+    # ROUTER_DEFINITIONS, and the MCP warmup in `lifespan` calls
+    # discover_nodes(), which prunes the node list. Applying the config later would
+    # let both read stale state and prune the wrong modules.
+    #
+    # `load_feature_config` raises FeatureConfigError on an unreadable or structurally
+    # invalid document. That is deliberate and it propagates: a refused start is loud,
+    # whereas silently falling back to all-on would boot a server with modules the
+    # operator believes are gone. See docs/duplication-audit/FEATURE-CONFIG.md.
+    from common_lib.modules.common.feature_config import (
+        FeatureConfigError,
+        load_feature_config,
+    )
+
+    try:
+        _feature_report = load_feature_config()
+    except FeatureConfigError as _feature_error:
+        print("")
+        print("=" * 78)
+        print("FATAL: invalid per-instance feature config — refusing to start.")
+        print("=" * 78)
+        print(str(_feature_error))
+        print(
+            "\nSet PLATFORM_FEATURE_CONFIG to a valid document, or delete it to fall "
+            "back to the shipped reference (all flags on)."
+        )
+        print("See docs/duplication-audit/FEATURE-CONFIG.md for the schema.")
+        raise
+
+    print(
+        f"[FeatureConfig] {_feature_report['config_path']} "
+        f"(source={_feature_report['source']}): "
+        f"{_feature_report['applied']} flag value(s) applied, "
+        f"{_feature_report['disabled_count']} disabled — "
+        f"modules off: "
+        f"{', '.join(_feature_report['disabled_modules']) or 'none'}"
+    )
+
     app = FastAPI(
         title=settings.PROJECT_NAME,
         version=settings.VERSION,

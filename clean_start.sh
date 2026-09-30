@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # --- CONFIGURATION ---
 RESOURCES_DIR="../../resources"
@@ -7,10 +7,66 @@ MINIO_COMPOSE="minio.compose.yml"
 VLLM_COMPOSE="vllm.compose.yml"
 DOWN_ON_EXIT=0
 
+# `set -e` is deliberately NOT enabled. This script is a linear orchestration of steps
+# that are individually allowed to fail on a developer machine — no container runtime,
+# `populate_db.py` warning about an already-seeded DB, `pkill` finding nothing. With
+# `-e` the script would abort at the first tolerated hiccup, which is a behaviour change
+# for every existing invocation. Every step that genuinely must succeed checks its own
+# exit status explicitly. `-u` and `pipefail` are on: they only catch real bugs
+# (unexpanded variables, a swallowed failure in a pipeline).
+set -uo pipefail
+
+# Initialised here so `cleanup`'s `[ -z "$SKIP_CONTAINER" ]` is safe under `set -u`.
+SKIP_CONTAINER=""
+
+FEATURE_CONFIG=""
+SHOW_FEATURE_CONFIG=0
+
+usage() {
+    cat <<'USAGE'
+Usage: ./clean-start.sh [OPTIONS] [CONFIG_PATH]
+
+Start the backend API server on :8000 with watchfiles reload, optionally driven by a
+per-instance feature-flag config.
+
+Options:
+  -c, --config PATH   Per-instance feature config to apply (JSON).
+      --show-config   Print the resolved config path + boot summary and exit.
+  -h, --help          Show this help.
+
+Precedence for the config (highest first):
+  1. CONFIG_PATH / --config PATH
+  2. $PLATFORM_FEATURE_CONFIG
+  3. the shipped reference (resources/feature_flags.reference.json, every flag on)
+
+With no arguments the reference is used, so an unchanged invocation behaves exactly as
+before this feature existed. See docs/duplication-audit/FEATURE-CONFIG.md.
+USAGE
+}
+
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --down-on-exit) DOWN_ON_EXIT=1 ;;
+        -c|--config)
+            if [[ "$#" -lt 2 ]]; then
+                echo "ERROR: $1 requires a path argument" >&2
+                exit 2
+            fi
+            FEATURE_CONFIG="$2"
+            shift
+            ;;
+        --config=*) FEATURE_CONFIG="${1#*=}" ;;
+        --show-config) SHOW_FEATURE_CONFIG=1 ;;
+        -h|--help) usage; exit 0 ;;
+        -*) echo "ERROR: unknown option '$1'" >&2; usage >&2; exit 2 ;;
+        *)
+            if [[ -n "$FEATURE_CONFIG" ]]; then
+                echo "ERROR: more than one config path given ('$FEATURE_CONFIG' and '$1')" >&2
+                exit 2
+            fi
+            FEATURE_CONFIG="$1"
+            ;;
     esac
     shift
 done
@@ -33,6 +89,63 @@ echo "!!! AGGRESSIVE BACKEND RECOVERY & INFRA ORCHESTRATION STARTING !!!"
 echo "Resources dir: $ABS_RESOURCES_DIR"
 echo "Backend dir: $ABS_BACKEND_DIR"
 echo "Python path: $PYTHON_PATH"
+
+# ── Feature config resolution ──────────────────────────────────────────────────
+# Python is the single source of truth for the precedence chain (resolve_config_path),
+# so this script never re-implements it. Run from the backend dir so `common_lib`
+# resolves the same way it does at runtime.
+resolve_config() {
+    if [[ -n "$FEATURE_CONFIG" ]]; then
+        # Resolve to an absolute path so the value handed to the server does not depend
+        # on the working directory the server happens to start in.
+        (cd "$(dirname "$FEATURE_CONFIG")" 2>/dev/null && printf '%s/%s\n' "$(pwd)" "$(basename "$FEATURE_CONFIG")") \
+            || printf '%s\n' "$FEATURE_CONFIG"
+        return
+    fi
+    (cd "$ABS_BACKEND_DIR" && "$PYTHON_PATH" -c \
+        'from common_lib.modules.common.feature_config import resolve_config_path; print(resolve_config_path(None))' \
+        2>/dev/null)
+}
+
+FEATURE_CONFIG_RESOLVED="$(resolve_config)"
+if [[ -z "$FEATURE_CONFIG_RESOLVED" ]]; then
+    echo "ERROR: could not resolve a feature config path (is common_lib importable?)" >&2
+    exit 1
+fi
+export PLATFORM_FEATURE_CONFIG="$FEATURE_CONFIG_RESOLVED"
+
+if [[ ! -f "$FEATURE_CONFIG_RESOLVED" ]]; then
+    echo "ERROR: feature config not found: $FEATURE_CONFIG_RESOLVED" >&2
+    echo "       create it by copying resources/feature_flags.reference.json," >&2
+    echo "       or run './clean-start.sh' with no argument to use the shipped reference." >&2
+    exit 1
+fi
+
+# Validate BEFORE launching. Structural problems abort; unknown flag paths are printed
+# as warnings only (flag registration is import-time, so a document from a newer
+# checkout legitimately names flags this build has not registered yet).
+echo "Feature config: $FEATURE_CONFIG_RESOLVED"
+if ! (cd "$ABS_BACKEND_DIR" && "$PYTHON_PATH" -m common_lib.modules.common.feature_config "$FEATURE_CONFIG_RESOLVED"); then
+    echo "" >&2
+    echo "CRITICAL: feature config is invalid — refusing to start." >&2
+    echo "          Fix the file above, or unset PLATFORM_FEATURE_CONFIG to use the" >&2
+    echo "          shipped reference. See docs/duplication-audit/FEATURE-CONFIG.md." >&2
+    exit 1
+fi
+
+# One-line boot summary: path used, flags loaded, modules disabled.
+FEATURE_SUMMARY="$(cd "$ABS_BACKEND_DIR" && "$PYTHON_PATH" -m common_lib.modules.common.feature_config \
+    --summary "$FEATURE_CONFIG_RESOLVED" 2>/dev/null)" || FEATURE_SUMMARY=""
+if [[ -n "$FEATURE_SUMMARY" ]]; then
+    echo "Boot summary: $FEATURE_SUMMARY"
+else
+    echo "Boot summary: $FEATURE_CONFIG_RESOLVED (details unavailable — server will print its own)"
+fi
+
+if [[ "$SHOW_FEATURE_CONFIG" -eq 1 ]]; then
+    echo "Resolved config: $FEATURE_CONFIG_RESOLVED"
+    exit 0
+fi
 
 # 1. Force kill all stale python / backend instances
 echo "[1/6] Terminating all stale Python / backend processes on port 8000..."
