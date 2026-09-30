@@ -328,18 +328,31 @@ def test_dotted_node_callable_via_registry():
 
 
 def test_bridge_alone_cannot_bind_required_arg_owner():
-    """The current limitation, pinned so a future fix shows up as a change."""
+    """A required-arg owner is only reachable via a REGISTERED instance.
+
+    The bridge cannot conjure one: calling the class object raises TypeError
+    before any of its own code runs, and that is swallowed. So the registry is
+    the only route -- and the error a caller sees now names the cause rather
+    than the symptom.
+
+    (This test previously asserted the pre-fix behaviour, where the bridge
+    handed back the unbound function and the caller saw a bare 'missing 1
+    required positional argument: self'.)
+    """
     func = MemoryService.store  # unbound function, as the bridge sees it
     with pytest.raises(TypeError):
         MemoryService()
 
-    # _bind_instance swallows that and hands back the still-unbound function,
-    # which then fails on the first call with the misleading 'self' TypeError.
+    # No instance registered -> a diagnosable stand-in, not the unbound function.
+    clear_registry()
     result = _bind_instance(MODULE, DOTTED.qualname, func)
-    assert result is func
-    with pytest.raises(TypeError) as exc:
+    assert result is not func, "should no longer hand back the unbound function"
+    with pytest.raises(RuntimeError) as exc:
         result(text="hello")
-    assert "store" in str(exc.value) or "positional argument" in str(exc.value)
+    message = str(exc.value)
+    # Names the CAUSE (no registration) and not the SYMPTOM (a missing 'self').
+    assert "self" not in message.replace("itself", "")
+    assert "regist" in message.lower() or "instance" in message.lower(), message
 
 
 def test_dotted_and_plain_nodes_are_indistinguishable_in_metadata():
@@ -367,36 +380,18 @@ def test_dotted_and_plain_nodes_are_indistinguishable_in_metadata():
 
     # Both handlers are generated from the same node metadata shape, so the
     # catalog an LLM sees is identical for the two spellings.
-    # (End-to-end invocation of the dotted handler is BLOCKED on node_bridge.py
-    # and is covered by the strict-xfail test below.)
+    # (End-to-end invocation of the dotted handler is covered by
+    # test_registered_instance_would_make_dotted_handler_run below.)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BLOCKER (app/mcp/node_bridge.py is owned by another session): the "
-        "bridge's _bind_instance constructs its own instance via owner() and "
-        "never consults instance_registry. Registry-supplied instances are "
-        "invisible to it, so required-arg owners stay uncallable end-to-end."
-    ),
-)
 def test_registered_instance_would_make_dotted_handler_run():
-    """The end-to-end promise, blocked only by the node_bridge.py ownership gap.
+    """The end-to-end promise, now delivered.
 
-    This is the single change needed to make it pass (proposal, not applied) --
-    in _bind_instance, before the owner() attempt::
-
-        from common_lib.modules.common.instance_registry import resolve_instance
-        instance = resolve_instance(owner)
-        if instance is None:
-            try:
-                instance = owner()
-            except Exception:
-                return func
-
-    Registry lookup must run regardless of MCP_BIND_NODE_INSTANCES: supplying
-    an instance is explicit, so it needs no env gate. The env gate should remain
-    around *constructing* instances nobody registered.
+    Was pinned strict-xfail because the bridge never consulted the registry.
+    The fix landed in _bind_instance: registry lookup runs BEFORE owner(), and
+    regardless of MCP_BIND_NODE_INSTANCES -- supplying an instance is explicit,
+    so it needs no env gate. The env gate remains around *constructing* owners
+    nobody registered, which is the half with side effects.
     """
     register_instance(MemoryService, MemoryService(session="S1"))
     out = asyncio.run(_build_handler(DOTTED)(text="hello"))

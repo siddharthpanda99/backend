@@ -127,12 +127,19 @@ def test_binds_unbound_method_to_a_new_instance(monkeypatch):
     assert bound(name="a") == {"pong": "a"}
 
 
-def test_flag_off_preserves_the_old_unbound_call(monkeypatch):
+def test_flag_off_unregistered_owner_raises_a_diagnosable_error(monkeypatch):
+    """With the gate OFF and nothing registered, the caller learns WHY.
+
+    Previously this returned the unbound function, so every call failed with
+    "missing 1 required positional argument: 'self'" -- which names a missing
+    argument and not the missing registration.
+    """
     _enabled(monkeypatch, False)
     raw = _resolve_callable(MODULE, "Widget.ping")
-    assert _looks_unbound(raw) is True
-    with pytest.raises(TypeError):
+    assert _looks_unbound(raw) is False, "should not be the bare unbound function"
+    with pytest.raises(RuntimeError) as exc:
         raw(name="a")
+    assert "positional argument" not in str(exc.value)
 
 
 def test_plain_functions_are_untouched_by_the_flag(monkeypatch):
@@ -204,12 +211,19 @@ def test_handler_still_builds_when_binding_is_impossible(monkeypatch):
     assert "error" in result, "should report the pre-existing failure shape"
 
 
-def test_flag_off_is_byte_identical_to_previous_behaviour(monkeypatch):
+def test_flag_off_error_names_the_cause_not_the_symptom(monkeypatch):
+    """The handler must not report a missing 'self' when 'self' is not the problem.
+
+    The real cause is that no instance is registered for the owner, so the
+    message says that.
+    """
     _enabled(monkeypatch, False)
     handler = _build_handler(_Info("Widget.ping", {"name": {"type": "string"}}))
     result = asyncio.run(handler(name="hello"))
     assert "error" in result
-    assert "positional argument" in str(result.get("error", ""))
+    message = str(result.get("error", ""))
+    assert "positional argument" not in message, message
+    assert "instance" in message.lower() or "regist" in message.lower(), message
 
 
 def test_bind_instance_is_a_noop_for_bound_methods():

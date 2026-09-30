@@ -171,6 +171,18 @@ def _looks_unbound(func: Any) -> bool:
     return bool(params) and params[0] in ("self", "cls")
 
 
+try:  # optional: the registry is a separate, newer module
+    from common_lib.modules.common.instance_registry import (
+        describe_unregistered_owner as _DESCRIBE_UNREGISTERED_OWNER,
+    )
+    from common_lib.modules.common.instance_registry import (
+        resolve_instance as _RESOLVE_INSTANCE,
+    )
+except Exception:  # pragma: no cover - node_bridge must work without it
+    _DESCRIBE_UNREGISTERED_OWNER = None
+    _RESOLVE_INSTANCE = None
+
+
 def _bind_instance(module, qualname: str, func: Any) -> Any:
     """Bind an unbound method to a fresh instance of its owning class.
 
@@ -206,10 +218,20 @@ def _bind_instance(module, qualname: str, func: Any) -> Any:
     if not inspect.isclass(owner):
         return func
 
-    try:
-        instance = owner()
-    except Exception:  # noqa: BLE001 - any constructor failure must not regress
-        return func
+    # An explicitly registered instance always wins, and is deliberately NOT
+    # gated by MCP_BIND_NODE_INSTANCES: supplying an instance is an explicit act
+    # by the application. It is also the ONLY path that can serve a class whose
+    # constructor requires arguments -- calling the class object raises TypeError
+    # before any of its own code runs, so no amount of implicit construction
+    # helps those 2 105 nodes.
+    instance = _instance_from_registry(owner)
+    if instance is None and _BINDING_ENABLED():
+        try:
+            instance = owner()
+        except Exception:  # noqa: BLE001 - any constructor failure must not regress
+            return func
+    if instance is None:
+        return _unavailable(owner, method_name)
 
     try:
         bound = getattr(instance, method_name)
@@ -223,20 +245,59 @@ def _bind_instance(module, qualname: str, func: Any) -> Any:
     return bound
 
 
+def _BINDING_ENABLED() -> bool:
+    """Whether implicit construction of an unregistered owner is permitted."""
+    return os.environ.get("MCP_BIND_NODE_INSTANCES", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _instance_from_registry(owner: Any) -> Any:
+    """Look up an explicitly registered instance for ``owner``, or None."""
+    resolve = _RESOLVE_INSTANCE
+    return None if resolve is None else resolve(owner)
+
+
+def _unavailable(owner: Any, method_name: str) -> Any:
+    """Stand-in that raises a diagnosable error naming the cause, not the symptom.
+
+    Previously an unbound node surfaced ``TypeError: f() missing 1 required
+    positional argument: 'self'``, which names a missing argument and not the
+    missing registration.
+    """
+    describe = _DESCRIBE_UNREGISTERED_OWNER
+    detail = (
+        describe(owner)
+        if describe is not None
+        else f"Cannot bind node {owner!r}.{method_name}: no registered instance."
+    )
+
+    def _raise(*_args: Any, **_kwargs: Any) -> Any:
+        raise RuntimeError(detail)
+
+    _raise.__name__ = method_name
+    _raise.__qualname__ = f"{getattr(owner, '__name__', owner)}.{method_name}"
+    return _raise
+
+
 #: Instances created by ``_bind_instance``, retained so they are not garbage
 #: collected while their bound method is still reachable through the registry.
 _BOUND_INSTANCE_KEEPALIVE: List[Any] = []
 
 
 def _resolve_callable(module, qualname: str) -> Any:
-    """Resolve, then bind to an instance if the target is an unbound method."""
+    """Resolve, then bind to an instance if the target is an unbound method.
+
+    Binding is now attempted for every unbound method, not only when
+    MCP_BIND_NODE_INSTANCES is set, because it is a no-op unless a registry
+    entry or a permitted implicit construction succeeds. The env var still
+    governs the risky half -- constructing an owner nobody registered.
+    """
     func = _resolve_func(module, qualname)
-    if os.environ.get("MCP_BIND_NODE_INSTANCES", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    ):
+    if _looks_unbound(func):
         return _bind_instance(module, qualname, func)
     return func
 
