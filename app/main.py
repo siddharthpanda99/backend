@@ -1420,16 +1420,23 @@ def create_app() -> FastAPI:
         from app.core.node_instances import register_startup_instances
 
         _instance_report = register_startup_instances()
-        print(f"[NodeInstances] {_instance_report.summary()}")
+        # Structured logger, not print(): golden rule 11. The neighbouring
+        # feature-config block predates that rule and still prints; this hunk does not
+        # add to the debt.
+        logger.info("[NodeInstances] %s", _instance_report.summary())
         if _instance_report.failed:
-            print(
-                f"[NodeInstances] owners left unbound (their nodes stay advertised "
-                f"but uncallable): {', '.join(sorted(_instance_report.failed))}"
+            logger.warning(
+                "[NodeInstances] %d owner(s) left unbound -- their nodes stay "
+                "advertised but uncallable: %s",
+                len(_instance_report.failed),
+                ", ".join(sorted(_instance_report.failed)),
             )
     except Exception as _instance_error:  # noqa: BLE001 - never block the boot
-        print(
-            f"[NodeInstances] registry wiring skipped entirely: "
-            f"{type(_instance_error).__name__}: {_instance_error}"
+        logger.warning(
+            "[NodeInstances] registry wiring skipped entirely: %s: %s",
+            type(_instance_error).__name__,
+            _instance_error,
+            exc_info=True,
         )
 
     app = FastAPI(
