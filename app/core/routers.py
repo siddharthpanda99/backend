@@ -14,7 +14,31 @@ Router entry format:
         "tags": ["<OpenAPI tag>"],
         "auth": True | False,   # True  = include global_deps (default)
                                  # False = no auth (e.g. auth endpoints handle their own)
+        "module": "<top-level module name>",        # OPTIONAL, additive
+        "feature_flag": "<explicit flag path>",     # OPTIONAL, additive
     }
+
+Load-time feature-flag pruning
+-------------------------------
+``module`` and ``feature_flag`` are optional and purely additive — every existing entry
+is valid without them. When present, a router whose module is *explicitly disabled*
+(``set_module_enabled("memory", False)``, or ``memory = false`` in
+``memory_config.ini``) is not mounted: it serves no requests and does not appear in the
+OpenAPI schema. ``feature_flag`` overrides the derived flag path when a router's module
+name does not match its flag namespace — e.g. the ``knowledge_hub`` routers map onto the
+``knowledge_engine.*`` flag namespace, so they set ``feature_flag`` explicitly.
+
+Entries that declare neither key are always mounted (fail-open): most of the 219 entries
+do not, so pruning is opt-in per router and adding the key is the only way to make a
+router prunable.
+
+Pruning is driven by the same helpers as node discovery —
+``common_lib.modules.common.module_pruning`` — and is fail-open in both directions: an
+entry with no ``module``/``feature_flag`` is always mounted, and a module that merely
+ships default-False (e.g. ``platform_controls``) is not pruned. If pruning itself raises,
+the full unfiltered list is mounted.
+
+See ``docs/duplication-audit/MODULE-PRUNING.md``.
 """
 
 from __future__ import annotations
@@ -237,44 +261,116 @@ def _knowledge_hub_entries(api_prefix: str) -> list:
         collections_router,
     )
 
+    # NOTE: `module` below is the load-time pruning key. These routers live in the
+    # `knowledge_hub` module but the *flag namespace* is `knowledge_engine.*`, so the
+    # explicit `feature_flag` is what does the work — `module` alone would never match
+    # a registered flag. Submodules of knowledge_engine that merely ship default-False
+    # (alerts, audit_ledger, extraction, ontology, ...) are NOT pruned: see
+    # module_pruning._is_explicitly_disabled. Only an admin action turns these off.
     return [
         {
             "router": sources_router,
             "prefix": "",
             "tags": ["Knowledge Hub — Sources"],
             "auth": True,
+            "module": "knowledge_engine",
+            "feature_flag": "knowledge_engine",
         },
         {
             "router": pipelines_router,
             "prefix": "",
             "tags": ["Knowledge Hub — Ingestion"],
             "auth": True,
+            "module": "knowledge_engine",
+            "feature_flag": "knowledge_engine",
         },
         {
             "router": packets_router,
             "prefix": "",
             "tags": ["Knowledge Hub — Packets"],
             "auth": True,
+            "module": "knowledge_engine",
+            "feature_flag": "knowledge_engine",
         },
         {
             "router": kh_projects_router,
             "prefix": "",
             "tags": ["Knowledge Hub — Projects"],
             "auth": True,
+            "module": "knowledge_engine",
+            "feature_flag": "knowledge_engine",
         },
         {
             "router": streaming_router,
             "prefix": "",
             "tags": ["Knowledge Hub — Streaming"],
             "auth": True,
+            "module": "knowledge_engine",
+            "feature_flag": "knowledge_engine",
         },
         {
             "router": collections_router,
             "prefix": "",
             "tags": ["Knowledge Hub — Collections"],
             "auth": True,
+            "module": "knowledge_engine",
+            "feature_flag": "knowledge_engine",
         },
     ]
+
+
+def router_prune_candidates(entry: dict) -> List[str]:
+    """Flag candidates for a router entry, most specific first.
+
+    An explicit ``feature_flag`` is used alone; otherwise the candidates are
+    ``["<module>"]`` plus its dotted ancestors. Returns ``[]`` when the entry declares
+    no module, which means "never prune" (fail-open) — the vast majority of entries
+    are in that state today and continue to be mounted unconditionally.
+    """
+    explicit = entry.get("feature_flag")
+    if isinstance(explicit, str) and explicit.strip():
+        return [explicit.strip()]
+
+    module = entry.get("module")
+    if not isinstance(module, str) or not module.strip():
+        return []
+    module = module.strip()
+    parts = [p for p in module.split(".") if p]
+    if not parts:
+        return []
+    return [".".join(parts[:i]) for i in range(len(parts), 0, -1)]
+
+
+def is_router_enabled(entry: dict) -> bool:
+    """Should this router be mounted? Fail-open on every ambiguity."""
+    try:
+        from common_lib.modules.common.module_pruning import resolve_flag_path
+
+        return resolve_flag_path(router_prune_candidates(entry)) is None
+    except Exception:
+        logger.warning(
+            "Router pruning check failed for %s — mounting it anyway (fail-open)",
+            entry.get("tags"),
+            exc_info=True,
+        )
+        return True
+
+
+def prune_router_definitions(entries: List[dict]) -> List[dict]:
+    """Drop routers whose module is explicitly disabled by a feature flag.
+
+    A pruned router is never passed to ``app.include_router``, so it serves no
+    requests and contributes no paths to the OpenAPI schema.
+    """
+    kept = [e for e in entries if is_router_enabled(e)]
+    dropped = len(entries) - len(kept)
+    if dropped:
+        logger.info(
+            "Feature-flag pruning: not mounting %d of %d routers (disabled modules)",
+            dropped,
+            len(entries),
+        )
+    return kept
 
 
 def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> None:
@@ -1234,17 +1330,22 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
         },
         # ── Memory ─────────────────────────────────────────────────
+        # `module` drives load-time pruning: with `set_module_enabled("memory", False)`
+        # these two routers are never mounted (no routes, no OpenAPI paths). `memories`
+        # is the operational sibling of the cognitive memory router and shares the flag.
         {
             "router": cognitive_memory_router,
             "prefix": "/memory",
             "tags": ["Memory"],
             "auth": True,
+            "module": "memory",
         },
         {
             "router": memories_router,
             "prefix": "/memories",
             "tags": ["Memories"],
             "auth": True,
+            "module": "memory",
         },
         {
             "router": decision_router,
@@ -2184,7 +2285,21 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
     orig_lifespan = getattr(app.router, "lifespan_context", None)
 
-    for entry in ROUTER_DEFINITIONS:
+    # Load-time feature-flag pruning: a router whose module is explicitly disabled
+    # is never mounted (no routes, no OpenAPI paths). Fail-open — on any error the
+    # full list is mounted, because an unpruned surface is recoverable and a
+    # missing one is not.
+    try:
+        active_definitions = prune_router_definitions(ROUTER_DEFINITIONS)
+    except Exception:  # pragma: no cover - defensive
+        logger.warning(
+            "Router pruning failed — mounting all %d routers (fail-open)",
+            len(ROUTER_DEFINITIONS),
+            exc_info=True,
+        )
+        active_definitions = ROUTER_DEFINITIONS
+
+    for entry in active_definitions:
         router = entry["router"]
         prefix = f"{api_prefix}{entry['prefix']}"
         tags = entry.get("tags", [])
@@ -2202,7 +2317,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
     logger.info(
         "Startup: Registered %d routers via declarative registry (P2-1)",
-        len(ROUTER_DEFINITIONS),
+        len(active_definitions),
     )
 
 
