@@ -371,15 +371,118 @@ def test_flag_on_uses_the_registered_singleton(monkeypatch) -> None:
 
 
 def test_transient_registry_scope_is_reported_not_hidden(monkeypatch) -> None:
-    """A throwaway registry would always read empty — say so rather than lie."""
+    """A throwaway registry would always read empty — say so rather than lie.
+
+    Reaching ``scope="transient"`` requires *no* live registry at all: no
+    registered singleton AND no live fabric chain. The fabric chain always
+    exists (it is a module-level singleton in ``nodes/fabric.py``), so the test
+    has to remove that collaborator too — otherwise it is not exercising the
+    transient branch it claims to pin.
+    """
     from common_lib.modules.governance.nodes import legacy_tables
 
     monkeypatch.setenv(legacy_tables.ENV_FLAG, "1")
     legacy_tables.register_rules_registry(None)
+
+    import common_lib.modules.governance.rules_engine.nodes.fabric as fabric
+
+    monkeypatch.setattr(fabric, "get_fabric_rule_chain", lambda: None, raising=True)
     result = legacy_tables.gov_rules_all_latest()
     assert result["enabled"] is True
     assert result["scope"] == "transient"
     assert result["rules"] == []
+
+
+def test_rules_readers_follow_the_live_fabric_chain(monkeypatch) -> None:
+    """With no registered singleton the readers must still see real writes.
+
+    ``fabric_rule_append`` writes into the process-wide fabric chain. Before the
+    fix the read nodes built a *fresh* ``RulesRegistry``, so an agent could
+    append a rule version and every read node would report zero rules.
+    """
+    from common_lib.modules.governance.nodes import legacy_tables
+
+    monkeypatch.setenv(legacy_tables.ENV_FLAG, "1")
+    legacy_tables.register_rules_registry(None)
+
+    import common_lib.modules.governance.rules_engine.nodes.fabric as fabric
+
+    chain = fabric.get_fabric_rule_chain()
+    rule_id = "audit_fabric_scope_probe"
+    chain.registry._rules.pop(rule_id, None)
+    try:
+        chain.append(
+            rule_id,
+            {"a": 1},
+            {"set": {"b": 2}},
+            description="scope-probe",
+        )
+        latest = legacy_tables.gov_rules_all_latest()
+        assert latest["scope"] == "fabric", (
+            "with no registered singleton the readers must resolve the live "
+            "fabric chain, not a throwaway registry"
+        )
+        assert rule_id in [r["rule_id"] for r in latest["rules"]]
+
+        history = legacy_tables.gov_rules_version_history(rule_id)
+        assert history["scope"] == "fabric"
+        assert [h["version"] for h in history["history"]] == [1]
+    finally:
+        chain.registry._rules.pop(rule_id, None)
+
+
+def test_policy_version_history_reads_the_live_registry_chain(monkeypatch) -> None:
+    """The policy history node must read the chain ``register()`` appends to.
+
+    ``PolicyRegistry`` owns its chain as ``_versions``
+    (``governance/policy/registry.py:50``) and ``register()`` appends there
+    (``:57``). A node that constructed its own ``PolicyVersionChain`` read a
+    different, permanently empty object — it reported ``history == []`` for
+    every policy forever, which is a silent no-op, not a truthful empty result.
+    """
+    from common_lib.modules.governance.nodes import legacy_tables
+    from common_lib.modules.governance.policy.registry import PolicyRegistry
+
+    monkeypatch.setenv(legacy_tables.ENV_FLAG, "1")
+    from common_lib.modules.governance.policy.registry import ScopedPolicy
+
+    registry = PolicyRegistry()
+    legacy_tables.register_policy_registry(registry)
+    try:
+        version = registry.register(
+            ScopedPolicy(policy_id="p-live", scope="platform", rules={"r": 1}),
+            author="alice",
+        )
+        assert version.version == 1
+
+        result = legacy_tables.gov_policy_version_history("p-live")
+        assert result["enabled"] is True
+        assert result["scope"] == "singleton", (
+            "the node must report that it read the registered registry, and it "
+            "must read that registry's own chain"
+        )
+        assert [h["version"] for h in result["history"]] == [1]
+        assert result["history"][0]["author"] == "alice"
+
+        import json
+
+        json.dumps(result)  # must be serialisable for the MCP bridge
+    finally:
+        legacy_tables.register_policy_registry(None)
+
+
+def test_policy_version_history_scope_is_transient_without_a_singleton(
+    monkeypatch,
+) -> None:
+    """With no registered registry the node must say so, not imply a live read."""
+    from common_lib.modules.governance.nodes import legacy_tables
+
+    monkeypatch.setenv(legacy_tables.ENV_FLAG, "1")
+    legacy_tables.register_policy_registry(None)
+    result = legacy_tables.gov_policy_version_history("p1")
+    assert result["enabled"] is True
+    assert result["scope"] == "transient"
+    assert result["history"] == []
 
 
 def test_history_nodes_return_serialisable_dicts(monkeypatch) -> None:
@@ -395,9 +498,10 @@ def test_history_nodes_return_serialisable_dicts(monkeypatch) -> None:
 
     import json
 
+    # No registry is registered, so the node correctly reports a transient read.
     result = legacy_tables.gov_policy_version_history("p1")
     assert result["enabled"] is True
-    # A fresh chain is empty — the node documents that rather than failing.
+    assert result["scope"] == "transient"
     assert result["history"] == []
     json.dumps(result)  # must be serialisable for the MCP bridge
 
@@ -690,3 +794,149 @@ def test_generated_ids_are_unique(client: TestClient) -> None:
     )
     assert a.status_code == 200 and b.status_code == 200
     assert a.json()["id"] != b.json()["id"]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# C1 — the reactive flow's only execution entry point had no agent path.
+#
+# `ReactiveFlow.process_event` is the one method on the class that actually RUNS
+# a flow (interceptors -> triggers -> rules -> hooks). Every other wrapped method
+# is a wiring setter, and the class itself is auto-registered as a node, so an
+# agent could wire a flow but had no way to execute one.
+# ══════════════════════════════════════════════════════════════════════════
+
+REACTIVE = GOV_LIB / "rules_engine" / "flow" / "reactive.py"
+
+
+def test_reactive_process_event_has_an_agent_reachable_node() -> None:
+    """AST: the async coroutine has a sync @node adapter, not just the class."""
+    tree = ast.parse(REACTIVE.read_text())
+    reactive_flow = next(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.ClassDef) and n.name == "ReactiveFlow"
+    )
+    methods = {
+        m.name: m
+        for m in reactive_flow.body
+        if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert "process_event" in methods, "the coroutine itself must still exist"
+    assert isinstance(methods["process_event"], ast.AsyncFunctionDef), (
+        "process_event must stay a coroutine — the @node wrapper adapts it, "
+        "it does not replace it"
+    )
+    adapter = methods["process_event_node"]
+    assert any(
+        isinstance(d, ast.Call) and ast.unparse(d.func).split(".")[-1] == "node"
+        for d in adapter.decorator_list
+    ), "process_event_node must carry an @node decorator"
+
+
+def test_reactive_process_event_node_is_gated_off_by_default(monkeypatch) -> None:
+    """G9: importing the wrapper must not make it live, and flag-off runs nothing."""
+    from common_lib.modules.governance.rules_engine.flow import reactive
+
+    monkeypatch.delenv(reactive._PROCESS_EVENT_ENV, raising=False)
+    assert reactive._process_event_nodes_enabled() is False
+
+    ran: list[str] = []
+    flow = reactive.ReactiveFlow(name="gate-probe")
+    flow._before_interceptors.append(lambda ctx: ran.append("before"))
+
+    out = flow.process_event_node("evt", {})
+    assert out["enabled"] is False
+    assert out["operation"] == "process_event"
+    assert reactive._PROCESS_EVENT_FLAG in out["reason"]
+    assert ran == [], "flag off must not execute any interceptor"
+
+
+def test_reactive_process_event_node_runs_the_flow_when_enabled(monkeypatch) -> None:
+    """Flag ON: the adapter really drives the coroutine and returns its result."""
+    from common_lib.modules.governance.rules_engine.flow import reactive
+
+    monkeypatch.setenv(reactive._PROCESS_EVENT_ENV, "1")
+    assert reactive._process_event_nodes_enabled() is True
+
+    ran: list[str] = []
+    flow = reactive.ReactiveFlow(name="run-probe")
+    flow._before_interceptors.append(lambda ctx: ran.append("before"))
+
+    out = flow.process_event_node("order.created", {"id": 7}, source="test")
+    assert out["enabled"] is True
+    assert ran == ["before"], "the before-interceptor must actually have run"
+    assert out["result"]["event_id"].startswith("evt_")
+    # json-serialisable for the MCP bridge
+    import json
+
+    json.dumps(out)
+
+
+def test_reactive_process_event_node_reports_failure_without_raising(
+    monkeypatch,
+) -> None:
+    """G8: a node must never take the MCP bridge down."""
+    from common_lib.modules.governance.rules_engine.flow import reactive
+
+    monkeypatch.setenv(reactive._PROCESS_EVENT_ENV, "1")
+    flow = reactive.ReactiveFlow(name="boom-probe")
+
+    async def _explode(*args, **kwargs):
+        raise RuntimeError("interceptor exploded")
+
+    monkeypatch.setattr(flow, "process_event", _explode)
+    out = flow.process_event_node("evt", {})
+    assert out["enabled"] is True
+    assert out["ok"] is False
+    assert "RuntimeError" in out["error"]
+
+
+def test_reactive_process_event_node_carries_full_g3_metadata() -> None:
+    """G3: all eight fields, and a description an agent can act on."""
+    from common_lib.modules.governance.rules_engine.flow import reactive
+
+    meta = reactive.ReactiveFlow.process_event_node._node_metadata
+    for field in (
+        "name",
+        "description",
+        "category",
+        "tags",
+        "audience",
+        "input_schema",
+        "output_schema",
+        "execution_timeout",
+    ):
+        assert meta.get(field), f"missing G3 field: {field}"
+    assert meta["name"] == "rules_engine.ReactiveFlow.process_event"
+    assert len(meta["description"]) > 80, "description is too thin to route on"
+    assert len(meta["tags"]) >= 3
+
+
+def test_reactive_process_event_node_name_is_declared_exactly_once() -> None:
+    """C3: node_bridge flattens first-wins over unsorted os.walk, so a duplicated
+    declared name is resolved by filesystem order. AST over the whole rules_engine
+    package (not just this slice) proves the new name is not shadowed."""
+    from common_lib.modules.governance.rules_engine.flow import reactive
+
+    name = reactive.ReactiveFlow.process_event_node._node_metadata["name"]
+    root = GOV_LIB / "rules_engine"
+    declarations: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        if "__pycache__" in path.parts or "tests" in path.parts:
+            continue
+        tree = ast.parse(path.read_text())
+        for n in ast.walk(tree):
+            if not isinstance(n, ast.Call):
+                continue
+            if ast.unparse(n.func).split(".")[-1] != "node":
+                continue
+            for kw in n.keywords:
+                if kw.arg == "name" and getattr(kw.value, "value", None) == name:
+                    declarations.append(f"{path.relative_to(root)}:{n.lineno}")
+    assert len(declarations) == 1, (
+        f"{name} is declared {len(declarations)} times: {declarations}. "
+        "A duplicate declared name is resolved by filesystem order at bridge time."
+    )
+    assert declarations[0].startswith("flow/reactive.py:"), (
+        f"{name} is declared outside its own module: {declarations}"
+    )

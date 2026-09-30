@@ -8,7 +8,9 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from common_lib.modules.core_infrastructure.scheduler.service import get_scheduler_service
+from common_lib.modules.core_infrastructure.scheduler.service import (
+    get_scheduler_service,
+)
 
 router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 logger = logging.getLogger(__name__)
@@ -31,7 +33,9 @@ class CreateCronJobRequest(BaseModel):
     max_retries: int = 3
     timeout_seconds: float = 300.0
     metadata: Dict[str, Any] = {}
-    auto_disable_threshold: int = 0  # 0 = disabled; N = auto-pause after N consecutive failures
+    auto_disable_threshold: int = (
+        0  # 0 = disabled; N = auto-pause after N consecutive failures
+    )
 
 
 class UpdateCronJobRequest(BaseModel):
@@ -188,7 +192,9 @@ async def scheduler_stats():
 
 @router.get("/workflows")
 async def list_available_workflows():
-    from common_lib.modules.core_infrastructure.scheduler.workflow_registry import list_workflows
+    from common_lib.modules.core_infrastructure.scheduler.workflow_registry import (
+        list_workflows,
+    )
 
     service = _get_service()
     workflows = list_workflows()
@@ -264,6 +270,21 @@ async def _sse_generator(job_id: Optional[str] = None):
         pass
     finally:
         service.unsubscribe(Channels.GLOBAL, queue)
+
+
+@router.get("/feature-flags")
+async def scheduler_feature_flags():
+    """Report the scheduler module's feature flags and their current values.
+
+    Read-only, additive (G9). Every flag defaults OFF; this endpoint exists so
+    an operator can see whether a gated correction is active in a running
+    process before debugging scheduler behaviour.
+    """
+    from common_lib.modules.core_infrastructure.scheduler.flags import (
+        describe_flags,
+    )
+
+    return {"status": "ok", "flags": describe_flags()}
 
 
 @router.get("/stream")

@@ -9,7 +9,11 @@ from common_lib.modules.plugins.schemas import PluginResponse, PluginDetailRespo
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/plugins", tags=["plugins"])
+# The "/plugins" prefix is supplied by ROUTER_DEFINITIONS. Declaring it
+# here as well produced /api/v1/plugins/plugins/... and left the real
+# /api/v1/plugins/... paths unserved — which the Plugin Manager UI calls
+# (configs/api.ts PLUGINS.LIST, PluginManagerPage.tsx:295).
+router = APIRouter(tags=["plugins"])
 
 
 @router.get("")

@@ -45,7 +45,11 @@ from common_lib.modules.jobs.artifacts import job_dir
 from common_lib.modules.jobs.models import JobRecord
 from common_lib.modules.jobs.service import get_job_service
 
-router = APIRouter(prefix="/dip/ingestion", tags=["dip/ingestion"], dependencies=[Depends(capture_job_actor)])
+router = APIRouter(
+    prefix="/dip/ingestion",
+    tags=["dip/ingestion"],
+    dependencies=[Depends(capture_job_actor)],
+)
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +126,44 @@ async def list_dip_jobs(
     )
     items = [_dip_job_payload(record) for record in records]
     return {"data": items, "total": len(items)}
+
+
+# NOTE: the two literal routes below MUST be declared before "/jobs/{job_id}".
+# FastAPI matches in declaration order, so a param route declared first swallows
+# every sibling literal ("/jobs/stream" used to resolve to get_dip_job("stream"),
+# which made the SSE progress stream unreachable).
+
+
+@router.get("/jobs/stream")
+async def stream_job_progress():
+    """SSE stream for real-time ingestion job progress updates."""
+
+    async def event_generator():
+        async for message in stream_notifications(Channels.INGESTION_PROGRESS):
+            yield message
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/jobs/ingestion")
+async def list_jobs():
+    """List recent and active ingestion jobs from DB + in-memory tracker.
+
+    The canonical job listing is ``GET /jobs`` (list_dip_jobs), which is paginated
+    and backed by the jobs service. This endpoint exposes the controller-level
+    ``list_ingestion_jobs`` view; it used to be declared a second time at "/jobs",
+    where it was permanently shadowed by list_dip_jobs and therefore unreachable.
+    """
+    jobs = await list_ingestion_jobs()
+    return {"data": jobs}
 
 
 @router.get("/jobs/{job_id}")
@@ -205,17 +247,24 @@ async def upload_and_process(
     file_data = []
     for f in files:
         content = await f.read()
-        file_data.append({
-            "filename": f.filename,
-            "content_type": f.content_type,
-            "content": base64.b64encode(content).decode("utf-8"),
-        })
+        file_data.append(
+            {
+                "filename": f.filename,
+                "content_type": f.content_type,
+                "content": base64.b64encode(content).decode("utf-8"),
+            }
+        )
 
     from app.modules.dip.runtime.job_executors import INGESTION_PROCESS_KIND
 
     record = _ensure_dip_jobs().submit(
         INGESTION_PROCESS_KIND,
-        params={"files": file_data, "parser": parser, "compare_mode": compare_mode, "output_dest": output_dest},
+        params={
+            "files": file_data,
+            "parser": parser,
+            "compare_mode": compare_mode,
+            "output_dest": output_dest,
+        },
     )
     return {"status": "queued", **_dip_job_payload(record)}
 
@@ -234,7 +283,10 @@ async def compare_parsers(
 
     if sync:
         job_id = str(uuid.uuid4())
-        from common_lib.modules.dip.ingestion.controller import parse_file_with_comparator_content
+        from common_lib.modules.dip.ingestion.controller import (
+            parse_file_with_comparator_content,
+        )
+
         background_tasks = BackgroundTasks()
         background_tasks.add_task(
             parse_file_with_comparator_content,
@@ -418,7 +470,6 @@ async def sync_source(source_id: str, sync: bool = False):
     return {"status": "queued", **_dip_job_payload(record)}
 
 
-
 @router.get("/vault")
 async def get_vault_documents(limit: int = Query(100)):
     """List all documents in vault."""
@@ -457,41 +508,17 @@ async def rename_vault_document(document_id: str, new_filename: str = Form(...))
         raise HTTPException(status_code=404, detail="Document not found")
     return {"success": True}
 
+
 @router.post("/upload")
 async def upload_source_file(
     file: UploadFile = File(...),
     parser: str = Form("pypdf"),
-    service: Any = None # Placeholder for ingestion service
+    service: Any = None,  # Placeholder for ingestion service
 ):
     """Simple upload endpoint for the UI's Ingestion Wizard."""
     # Logic similar to /process but focused on storage
     result = await process_documents([file], parser, False, "vault")
     return {"data": result, "status": "uploaded"}
-
-@router.get("/jobs/stream")
-async def stream_job_progress():
-    """SSE stream for real-time ingestion job progress updates."""
-
-    async def event_generator():
-        async for message in stream_notifications(Channels.INGESTION_PROGRESS):
-            yield message
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-@router.get("/jobs")
-async def list_jobs():
-    """List recent and active ingestion jobs from DB + in-memory tracker."""
-    jobs = await list_ingestion_jobs()
-    return {"data": jobs}
 
 
 @router.delete("/jobs/{job_id}")
@@ -502,8 +529,10 @@ async def delete_job(job_id: str):
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
     return {"success": True}
 
+
 @router.get("/metrics")
 async def get_ingestion_metrics():
     """Alias for /stats to match UI expectations."""
     from common_lib.modules.dip.ingestion.controller import get_extraction_stats
+
     return await get_extraction_stats()
