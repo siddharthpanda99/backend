@@ -13,11 +13,18 @@ Design contract under test (see docs/duplication-audit/MODULE-PRUNING.md):
   * Fail-open. Unregistered path => enabled. Never prune the undeclared.
   * Hierarchical. Disabling ``memory`` disables ``memory.core.sessions.create``.
   * Most-specific-off wins, checked in the order the caller supplies.
-  * ``registered default False`` != ``explicitly disabled``. A module that ships
-    itself off (e.g. ``platform_controls``) is NOT pruned.
+  * A feature is pruned on its **effective** flag value. Where that False came from
+    — a declared default, ``memory_config.ini``, or a runtime override — is not part
+    of the question. This replaces the older "only prune what an admin explicitly
+    changed" rule; see ``_is_effectively_disabled``.
+
+Tests updated for the new predicate (updated, never deleted) are marked ``[UPDATED]``
+with the old expectation recorded inline, so the semantic change stays auditable.
 """
 
 from __future__ import annotations
+
+import os
 
 import pytest
 
@@ -37,12 +44,41 @@ from common_lib.modules.nodes_registry import discover_nodes
 EXPECTED_UNPRUNED = 25960
 EXPECTED_AFTER = EXPECTED_UNPRUNED + 1
 
+#: Exact node count for a default install, measured in a FRESH interpreter on
+#: 2026-09-30 with the effective-value predicate in place and every load-gating
+#: flag registered True. Asserted by
+#: :func:`test_standalone_default_install_is_exactly_25961`. In-suite counts are
+#: higher (~25 974) because the pytest session imports more of the package before
+#: discovery runs, so only the out-of-process figure is stable enough to pin.
+EXPECTED_STANDALONE_DEFAULT = 25961
+
+#: The real, shipped config. Captured so a test that repoints the store at a temp
+#: ini can always put it back — the real file must never be written.
+_REAL_CONFIG_PATH = FeatureFlagStore()._config_path
+
 
 @pytest.fixture(autouse=True)
 def _clean_flag_state():
     """Undo any runtime flag mutation a test performs. Never persists to disk."""
     yield
     FeatureFlagStore().reload()
+
+
+def _first_underscore_to_dot(key: str) -> str:
+    """``memory_retrieval.vector_search`` -> ``memory.retrieval.vector_search``.
+
+    The candidate backwards-compatible alias for the dead underscore-form ini keys
+    (see :func:`test_underscore_form_ini_keys_match_no_flag`). Only the FIRST
+    underscore is converted, and only when it precedes the first dot — that maps the
+    whole ``memory_*`` family without mangling already-dotted sub-keys.
+    """
+    first_us = key.find("_")
+    if first_us == -1:
+        return key
+    first_dot = key.find(".")
+    if first_dot != -1 and first_dot < first_us:
+        return key
+    return key[:first_us] + "." + key[first_us + 1 :]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -120,16 +156,15 @@ def test_is_module_enabled_uses_first_segment():
 
 
 def test_most_specific_off_wins_over_on_ancestors():
-    """memory.core.sessions OFF, .create still at its registered default => .sessions wins.
+    """memory.core.sessions OFF => the most specific effectively-off candidate wins.
 
-    The caller offers most-specific-first. `.create` is *not itself* off (its own
-    registered default is True), so the shallower `.sessions` — which IS off — is the
-    answer. Nothing is pruned only when *every* candidate is on.
-
-    Note `is_enabled("memory.core.sessions.create")` is False here, but only because
-    the store's hierarchical walk sees the off ancestor. That is what
-    `_is_explicitly_disabled` compares against the *registered default*, and the
-    reason the resolution lands on `.sessions` rather than `.create`.
+    [UPDATED] Under the old "explicitly disabled" predicate this asserted
+    ``== "memory.core.sessions"``: the leaf `.create` was skipped because its own
+    registered default was True, so the ancestor that was actually switched off was
+    reported. Pruning now acts on the *effective* value, and the store resolves
+    hierarchically, so `.create` is itself effectively off and — being offered
+    first — is the answer. The prune decision is identical either way; only the
+    reported diagnostic path changed.
     """
     store = FeatureFlagStore()
     store.set_enabled("memory.core.sessions", False, persist=False)
@@ -140,7 +175,8 @@ def test_most_specific_off_wins_over_on_ancestors():
         "memory.core",
         "memory",
     ]
-    assert mp.resolve_flag_path(candidates) == "memory.core.sessions"
+    assert store.is_enabled("memory.core.sessions.create") is False
+    assert mp.resolve_flag_path(candidates) == "memory.core.sessions.create"
 
 
 def test_all_candidates_on_resolves_to_none():
@@ -169,58 +205,93 @@ def test_deepest_disabled_wins_when_both_off():
 
 
 def test_leaf_turned_back_on_falls_through_to_parent():
-    """Re-enabling the leaf while the parent is off reports the parent instead."""
+    """Re-enabling the leaf while the parent is off still prunes via the parent.
+
+    [UPDATED] Previously asserted ``== "memory.core.sessions"`` — the premise was that
+    the leaf was "not itself off" once restored to its registered default. With the
+    effective-value predicate, restoring the leaf's own value cannot rescue it while
+    an ancestor is off: `is_enabled("memory.core.sessions.create")` is still False,
+    so the most specific effectively-off candidate is returned and the subtree stays
+    pruned. Re-enabling a child is not a way to override a disabled parent.
+    """
     store = FeatureFlagStore()
     store.set_module_enabled("memory", False, persist=False)
     store.set_enabled("memory.core.sessions.create", True, persist=False)
     candidates = ["memory.core.sessions.create", "memory.core.sessions", "memory"]
-    # .create matches its registered default again, so .sessions is the first
-    # candidate that is genuinely off.
-    assert mp.resolve_flag_path(candidates) == "memory.core.sessions"
+    assert store.is_enabled("memory.core.sessions.create") is False
+    assert mp.resolve_flag_path(candidates) == "memory.core.sessions.create"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# registered-default-False must NOT be treated as "disabled by an admin"
+# A feature is pruned on its EFFECTIVE value — including a declared default
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_registered_default_false_is_not_pruned():
-    """A module that ships itself off is NOT pruned.
+def test_every_effectively_off_flag_is_pruned():
+    """[UPDATED] An effectively-off flag prunes, wherever that False came from.
 
-    ~44 flags are registered False by their own modules (the whole
-    `platform_controls` subtree, `knowledge_engine.alerts`, ...). Treating those as
-    prunable would remove 243 nodes from the live platform on deploy with no admin
-    action. `is_path_enabled` honestly reports them as off; pruning must not act.
+    Previously this test asserted the opposite — that a flag registered ``False`` was
+    never pruned ("ships default-False must not be treated as disabled by an admin").
+    That rule is gone. The contract is now uniform: an effective False suppresses the
+    feature, whether it was declared, set in ``memory_config.ini``, or set at runtime.
     """
     registered = get_registered_flags()
-    default_falses = [k for k, v in registered.items() if v is False]
-    assert default_falses, "registry should still contain default-False flags"
+    effective = FeatureFlagStore().get_effective_flags()
+    off = [k for k, v in effective.items() if not v]
+    assert off, "expected at least one effectively-off flag to exercise the rule"
 
-    for flag in default_falses:
+    for flag in off:
         assert mp.is_path_enabled(flag) is False, f"{flag} should read as off"
-        assert mp.resolve_flag_path([flag]) is None, (
-            f"{flag} ships default-False and must not be pruned without admin action"
+        assert mp.resolve_flag_path([flag]) == flag, (
+            f"{flag} is effectively off and must be prunable"
         )
 
 
-def test_platform_controls_ships_off_and_is_kept():
-    """The flagship default-off module is still loadable until an admin disables it."""
-    assert get_registered_flags()["platform_controls"] is False
-    assert mp.is_path_enabled("platform_controls") is False
+def test_declared_default_false_is_pruned_not_exempt():
+    """[UPDATED] A declared ``False`` is no longer a special, unprunable case.
+
+    This is the single behavioural change. To keep a default install a no-op, every
+    flag that gates *loading* is now registered ``True`` instead — so the population
+    of declared-False flags shrank to behaviour gates that own no ``@node``.
+
+    Registration is import-dependent, so which behaviour-gate flags exist at all
+    varies between a bare interpreter and a full pytest session. This asserts the
+    *rule* against whatever is registered here; it is backed by
+    :func:`test_every_effectively_off_flag_is_pruned` (which always has the
+    ini-driven ``memory.retrieval.vector_search`` subtree to work with) and by the
+    two count assertions that pin the default install.
+    """
+    declared_false = {k for k, v in get_registered_flags().items() if v is False}
+    if not declared_false:
+        pytest.skip("no default-False flags registered in this process")
+
+    for flag in declared_false:
+        assert mp.resolve_flag_path([flag]) == flag, (
+            f"{flag} is declared False and is therefore prunable"
+        )
+def test_platform_controls_is_enabled_by_default():
+    """[UPDATED] platform_controls now ships ENABLED and is loadable.
+
+    Previously: registered ``False``, ``resolve_flag_path(...) is None`` (never
+    pruned), with the rationale that a default-off module must not be load-pruned.
+    Now: registered ``True``, and the load pruning applies uniformly. An operator who
+    wants the control plane gone sets ``platform_controls = false`` in
+    ``resources/memory_config.ini`` — and that now actually works.
+    """
+    assert get_registered_flags()["platform_controls"] is True
+    assert mp.is_path_enabled("platform_controls") is True
     assert mp.resolve_flag_path(["platform_controls"]) is None
-    # A module that ships default-False is *never* "explicitly disabled", because
-    # disabled-by-someone is defined as a value that DIFFERS from the registered
-    # default. Re-asserting False is a no-op (it already matches), so no pruning.
-    # This is a deliberate limit, not an oversight: such a module has declared itself
-    # off, and load-pruning it would change the platform's node surface silently.
-    # An admin who genuinely wants it gone uses `platform.module_pruning_enabled=false`
-    # to restore the pre-pruning surface wholesale, or the module's own default is
-    # flipped to True in its registration.
+
+    # An operator opting out is honoured, and opting back in is honoured too.
     store = FeatureFlagStore()
     store.set_module_enabled("platform_controls", False, persist=False)
-    assert mp.resolve_flag_path(["platform_controls"]) is None
+    assert mp.resolve_flag_path(["platform_controls"]) == "platform_controls"
+    # The whole subtree goes with the master switch (hierarchical).
+    assert mp.is_path_enabled("platform_controls.wake_word") is False
+
     store.set_module_enabled("platform_controls", True, persist=False)
     assert mp.resolve_flag_path(["platform_controls"]) is None
+    assert mp.is_path_enabled("platform_controls.wake_word") is True
 
 
 def test_default_false_module_stays_discoverable_end_to_end():
@@ -254,12 +325,10 @@ def test_discover_nodes_count_unchanged_with_no_flag_disabled():
     pure no-op on a default install, so the pre-existing 25960 nodes must all still
     be there, plus exactly one new node (`common.describe_module_pruning`).
 
-    The absolute number is asserted as a FLOOR, not an equality, because the count is
-    process-dependent — a pytest session that imports more of the package first
-    discovers more nodes (25961 standalone vs ~25974 in-suite). Pinning an exact
-    integer would make this test fail for reasons that have nothing to do with
-    pruning, which is how baseline-drift regressions get normalised. The exact
-    invariant that IS deterministic is asserted in
+    ``EXPECTED_UNPRUNED``/``EXPECTED_AFTER`` are asserted as a FLOOR, not an equality,
+    because the count is process-dependent — a pytest session that imports more of
+    the package first discovers more nodes (25961 standalone vs ~25974 in-suite).
+    The *exact* invariant that is deterministic is asserted in
     test_pruning_removes_nothing_on_a_default_install: in-process, discover_nodes()
     returns exactly what the unpruned scan returns.
     """
@@ -271,6 +340,171 @@ def test_discover_nodes_count_unchanged_with_no_flag_disabled():
     )
     names = {n.name for n in nodes}
     assert "common.describe_module_pruning" in names
+
+
+_PROBE_SRC = """
+import json
+from common_lib.modules.nodes_registry import discover_nodes
+from common_lib.modules.common import module_pruning as mp
+from common_lib.modules.common.feature_flags import (
+    FeatureFlagStore,
+    get_registered_flags,
+)
+
+nodes = discover_nodes()
+off = {k for k, v in FeatureFlagStore().get_effective_flags().items() if not v}
+owners = {}
+for n in nodes:
+    for c in mp.node_flag_candidates(n):
+        if c in off:
+            owners[c] = owners.get(c, 0) + 1
+            break
+print("PROBE" + json.dumps({
+    "count": len(nodes),
+    "owners": owners,
+    "off": sorted(off),
+    "declared_false": sorted(
+        k for k, v in get_registered_flags().items() if v is False
+    ),
+}))
+"""
+
+
+def _standalone_probe() -> dict[str, object]:
+    """Run the default-install probe in a FRESH interpreter; return its numbers.
+
+    This must be out-of-process. ``discover_nodes`` is an AST scan, so it never
+    executes module-level ``register_flags`` calls — inside a pytest session only the
+    modules that session happened to import are registered, which makes any assertion
+    about "flags registered False by default" silently vacuous in-suite. A fresh
+    interpreter imports everything, so ``get_registered_flags()`` is the real registry.
+    """
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    backend = Path(__file__).resolve().parent.parent
+    src = backend.parent / "Python Libs" / "common_lib" / "src"
+    proc = subprocess.run(
+        [sys.executable, "-c", _PROBE_SRC],
+        capture_output=True,
+        text=True,
+        cwd=str(backend),
+        env={**os.environ, "PYTHONPATH": str(src)},
+        timeout=900,
+    )
+    assert proc.returncode == 0, f"probe subprocess failed:\n{proc.stderr[-3000:]}"
+    line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("PROBE"))
+    return json.loads(line[len("PROBE") :])
+
+
+@pytest.fixture(scope="module")
+def standalone_probe() -> dict[str, object]:
+    """Run :func:`_standalone_probe` ONCE per module and share the result.
+
+    Each probe is a full ~25 961-node discovery in a fresh interpreter, expensive in
+    both time and memory; two independent probes in one pytest session was enough to
+    get the process OOM-killed. Module scope keeps it to one.
+    """
+    return _standalone_probe()
+
+
+def test_standalone_default_install_is_exactly_25961(standalone_probe):
+    """Pins the exact 25 961 figure, measured in a FRESH interpreter.
+
+    The predicate change made "prune on effective value" and "every load-gate
+    defaults to True" a single coupled change: if a new load gate ever ships
+    ``False``, this is the assertion that fails.
+
+    Measured 2026-09-30, fresh interpreter, default install, no flags disabled:
+    ``discover_nodes() == 25961``. With the old explicit-only predicate it was also
+    25 961; the two must not diverge.
+
+    Falsified 2026-09-30 by re-registering ``platform_controls`` and
+    ``platform_controls.enabled`` as False: the probe returned 25856 (105 fewer —
+    the whole control-plane subtree) and this test failed.
+    """
+    probe = standalone_probe
+    assert probe["count"] == EXPECTED_STANDALONE_DEFAULT, (
+        f"default install must be a complete no-op: expected exactly "
+        f"{EXPECTED_STANDALONE_DEFAULT} nodes, got {probe['count']}. A load-gating "
+        f"flag is probably registered False by default — see "
+        f"test_default_off_flags_own_no_nodes (owners: {probe['owners']})."
+    )
+
+
+def test_default_off_flags_own_no_nodes(standalone_probe):
+    """The flags left off by default must not cost the default install any nodes.
+
+    This is the safety interlock for the predicate change. Any flag still
+    effectively off in the default configuration is a behaviour gate resolved by its
+    own module rather than a load gate, so it must own no ``@node``. If someone
+    registers a *load* gate as False, this fails — and so does
+    :func:`test_standalone_default_install_is_exactly_25961`, naming the culprit.
+
+    Out-of-process for the reason documented on :func:`_standalone_probe`.
+    """
+    probe = standalone_probe
+    assert probe["off"], (
+        "expected at least one effectively-off flag to exercise the interlock"
+    )
+    assert probe["owners"] == {}, (
+        f"default-off flags own nodes and would be pruned at startup: {probe['owners']}"
+    )
+
+
+def test_ini_false_suppresses_its_feature_at_startup(tmp_path, monkeypatch):
+    """Invariant 4: a flag set False in memory_config.ini prunes at load time.
+
+    This is the capability the old "explicitly disabled" predicate did not have. A
+    `False` written to the ini by an administrator used to change nothing about what
+    loaded; now it suppresses the feature exactly as a runtime override would.
+
+    Uses a TEMP ini and ``persist=False`` throughout — the real
+    ``resources/memory_config.ini`` is never read or written here.
+    """
+    ini = tmp_path / "memory_config.ini"
+    ini.write_text("[Memory]\nplatform_controls = false\n", encoding="utf-8")
+
+    store = FeatureFlagStore()
+    monkeypatch.setattr(store, "_config_path", ini)
+    monkeypatch.setattr(store, "_overrides", {})
+    store._load_from_file()
+
+    try:
+        # The ini is authoritative: the flag reads off even though its registered
+        # default is True.
+        assert get_registered_flags()["platform_controls"] is True
+        assert store.is_enabled("platform_controls") is False
+        assert mp.is_path_enabled("platform_controls") is False
+        assert mp.resolve_flag_path(["platform_controls"]) == "platform_controls"
+
+        # And it removes real nodes from the advertised surface.
+        survivors = [
+            n
+            for n in discover_nodes(force=True)
+            if "platform_controls" not in (n.module or "")
+        ]
+        assert survivors, "sanity: the registry is populated"
+        assert not [
+            n
+            for n in survivors
+            if n.module.startswith("common_lib.modules.platform_controls")
+        ], "platform_controls nodes must be gone while the ini disables them"
+
+        # Removing the entry restores them.
+        ini.write_text("[Memory]\n", encoding="utf-8")
+        store._load_from_file()
+        assert mp.is_path_enabled("platform_controls") is True
+        assert [
+            n
+            for n in discover_nodes(force=True)
+            if n.module.startswith("common_lib.modules.platform_controls")
+        ], "platform_controls nodes must come back"
+    finally:
+        monkeypatch.setattr(store, "_config_path", _REAL_CONFIG_PATH)
+        store._load_from_file()
 
 
 def test_pruning_removes_nothing_on_a_default_install():
@@ -546,6 +780,69 @@ def test_tests_never_write_memory_config_ini(tmp_path, monkeypatch):
 def test_invalidate_cache_is_available():
     """Sanity: the store exposes the documented reset hook."""
     assert callable(invalidate_cache)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Dead keys in the shipped memory_config.ini (undocumented, NOT fixed here)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_underscore_form_ini_keys_match_no_flag():
+    """The shipped ini's ``memory_retrieval.*`` keys are dead — they match no flag.
+
+    ``FeatureFlagStore._load_from_file`` iterates the *registered* keys and reads
+    each from the ini, so an ini key that is not a registered flag path is silently
+    discarded. The shipped ini mixes two spellings:
+
+        memory_retrieval.vector_search = false      <- underscore: matches nothing
+        memory.retrieval.vector_search = false      <- dotted: matches, and works
+
+    Measured on the shipped ini: 373 keys, of which only 10 match a registered
+    flag. 363 are silently ignored, and 348 of those become live under a
+    first-underscore-to-dot alias.
+
+    NO FIX IS APPLIED HERE, deliberately. Aliasing on read is *not* behaviour
+    neutral: it would start honouring ``memory_security.encryption = false`` and
+    disable memory encryption-at-rest on every boot, on an install that has been
+    running with it enabled. That is a product decision, not a refactor. This test
+    exists to keep the finding visible and to fail loudly if the ini is ever
+    "cleaned up" in a way that assumes these keys were live.
+    """
+    import configparser
+
+    from common_lib.paths import RESOURCES_ROOT
+
+    ini = RESOURCES_ROOT / "memory_config.ini"
+    if not ini.exists():  # pragma: no cover - packaged installs may omit it
+        pytest.skip("memory_config.ini not present in this install")
+
+    cp = configparser.ConfigParser()
+    cp.read(ini, encoding="utf-8")
+    assert cp.has_section("Memory")
+    keys = list(cp["Memory"].keys())
+
+    registered = get_registered_flags()
+    matching = [k for k in keys if k in registered]
+    dead = [k for k in keys if k not in registered]
+
+    # Both spellings coexist today; the dotted one is the only reason
+    # memory.retrieval.vector_search currently reads False.
+    assert "memory.retrieval.vector_search" in matching
+    assert "memory_retrieval.vector_search" in dead
+
+    # The dead set is overwhelmingly the underscore spelling.
+    underscored = [k for k in dead if "_" in k]
+    assert len(underscored) > len(dead) // 2, (
+        f"expected most dead keys to use the underscore form; {len(underscored)} of "
+        f"{len(dead)}"
+    )
+    # Every underscore key that a first-underscore alias would resolve is a
+    # would-be-live config change — i.e. the blast radius of any future fix.
+    resolvable = [k for k in underscored if _first_underscore_to_dot(k) in registered]
+    assert len(resolvable) > 300, (
+        f"alias blast radius changed: {len(resolvable)} underscore keys would become "
+        f"live (was 348). Re-measure before changing the alias behaviour."
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
