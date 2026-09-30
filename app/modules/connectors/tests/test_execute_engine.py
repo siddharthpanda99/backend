@@ -182,7 +182,16 @@ class TestPathSubstitution:
 
 
 class TestExecuteFlow:
-    def _make_connection(self, key_id: int = 1) -> Connection:
+    # NOTE: `Connection.key_id` is declared `str | None`
+    # (common_lib/modules/plugins/connectors/models/connection.py:70) while the
+    # downstream consumer `KeyService.get_key(key_id: int)`
+    # (common_lib/modules/secrets_manager/keys_management/service.py:418) is typed
+    # `int`. That is a real G10 contract drift, owned by the `plugins` module.
+    # This fixture honours the *declared* model type so the engine tests reach
+    # the execution path instead of dying in Pydantic validation.
+    # `test_key_id_contract_drift_is_real` below pins the drift so that whoever
+    # fixes the model is forced to revisit this fixture.
+    def _make_connection(self, key_id: str = "1") -> Connection:
         return Connection(
             id="conn-1",
             connector_id="github",
