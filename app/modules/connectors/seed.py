@@ -1,15 +1,23 @@
-"""20 pre-seeded connector definitions with form schemas.
+"""Connector catalogue: definitions with auth schemes and form schemas.
 
-Each connector includes:
+Each connector carries:
 - Auth scheme configuration
 - Connection form schema (JSON Schema with ui:* hints)
-- Tool definitions
-- Metadata (categories, tags, docs URLs, logos)
+- Tool definitions (id, name, description, input schema)
+- Derivation provenance in ``metadata_json.derivation``
 
-Data is loaded from resources/connector_seeds.json to avoid Python's
-nested parentheses parser limit with large tool arrays.
+Data is loaded from ``app/resources/connector_seeds.json``. That file is
+DERIVED from the real connector implementations by
+``app/modules/connectors/derive_connector_catalogue.py`` and is committed.
 
 Used by the seed endpoint and lifespan startup.
+
+Note: the catalogue describes the *REST* connectors under
+``app/modules/connectors/providers/``. It is a different thing from the
+knowledge-ingestion sources under
+``common_lib/modules/plugins/native/`` (github, rss, s3, webdav, ...), which
+take credentials as constructor arguments and produce RawDocuments; they are
+registered through ``knowledge_engine.ingestion.registry`` instead.
 """
 
 import json
@@ -67,34 +75,38 @@ def resolve_seeds_path() -> Optional[str]:
     return None
 
 
+def _describe_missing() -> str:
+    """Accurate description of what is missing and how to restore it."""
+    return (
+        f"{SEEDS_FILENAME} was not found in any of the "
+        f"{len(_candidate_seed_paths())} candidate locations, so the connector "
+        f"catalogue is empty and GET /api/v1/connectors/ returns 0 items. "
+        f"Restore it with: ./.venv/bin/python -m "
+        f"app.modules.connectors.derive_connector_catalogue (from "
+        f"Backend Monorepo/Backend). That file is derived from the connector "
+        f"providers under app/modules/connectors/providers/ and from "
+        f"execute_engine.TOOL_ENDPOINTS, and it is meant to be committed. "
+        f"Searched: {_candidate_seed_paths()}"
+    )
+
+
 def get_connector_seeds() -> List[Dict[str, Any]]:
     """Load connector seed data from the JSON resource file.
 
-    Returns an empty list when the resource is absent. That is a *silent
-    degradation*: every seeded connector disappears while the API still
-    answers 200 with an empty catalogue. The absence is therefore logged at
-    ERROR (not ``print`` — golden-rules rule 11) and the caller-visible
-    contract is unchanged.
+    Returns an empty list when the resource is absent. That is a silent
+    degradation: every seeded connector disappears while the API still answers
+    200 with an empty catalogue. The absence is therefore logged at ERROR (not
+    ``print`` -- golden-rules rule 11) and the caller-visible contract is
+    unchanged.
+
+    The catalogue itself is no longer scraped out of this module. It is derived
+    from the real connector implementations by
+    ``app/modules/connectors/derive_connector_catalogue.py`` and committed to
+    ``app/resources/connector_seeds.json``.
     """
     json_path = resolve_seeds_path()
     if json_path is None:
-        logger.error(
-            "connectors.seeds: %s not found in any of %d candidate locations; "
-            "returning 0 seeds. The connector catalogue will be empty. "
-            "Regenerate with app/modules/connectors/convert_seeds_to_json.py. "
-            "Searched: %s",
-            SEEDS_FILENAME,
-            len(_candidate_seed_paths()),
-            _candidate_seed_paths(),
-        )
-        # The "Regenerate with ..." advice above was wrong and cost real time.
-        # The connector data was moved out of this module into
-        # connector_seeds.json, and that path is excluded by a bare
-        # ``resources/`` rule in .gitignore -- so the file was never committed.
-        # The generator reads THIS module, which no longer contains any
-        # connector definitions, so running it yields an empty list rather than
-        # the 20 connectors the module docstring still claims. The definitions
-        # must be restored before "regenerate" means anything.
+        logger.error("connectors.seeds: %s", _describe_missing())
         return []
 
     with open(json_path, "r", encoding="utf-8") as f:

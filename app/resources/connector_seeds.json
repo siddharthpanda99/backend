@@ -1,0 +1,2749 @@
+[
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Airtable",
+        "description": "Sent to airtable as the Authorization header. Evidence: default.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "airtable",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/airtable/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "Airtable",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "airtable.create_record",
+        "name": "Create record",
+        "description": "POST /{base_id}/{table_name}",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "base_id": {
+              "type": "string",
+              "title": "Base Id",
+              "description": "Substituted into the path template /{base_id}/{table_name}."
+            },
+            "table_name": {
+              "type": "string",
+              "title": "Table Name",
+              "description": "Substituted into the path template /{base_id}/{table_name}."
+            }
+          },
+          "required": [
+            "base_id",
+            "table_name"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/{base_id}/{table_name}",
+          "endpoint_source": "providers/airtable/provider.py"
+        }
+      },
+      {
+        "id": "airtable.list_records",
+        "name": "List records",
+        "description": "GET /{base_id}/{table_name}",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "base_id": {
+              "type": "string",
+              "title": "Base Id",
+              "description": "Substituted into the path template /{base_id}/{table_name}."
+            },
+            "table_name": {
+              "type": "string",
+              "title": "Table Name",
+              "description": "Substituted into the path template /{base_id}/{table_name}."
+            }
+          },
+          "required": [
+            "base_id",
+            "table_name"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/{base_id}/{table_name}",
+          "endpoint_source": "providers/airtable/provider.py"
+        }
+      },
+      {
+        "id": "airtable.update_record",
+        "name": "Update record",
+        "description": "PATCH /{base_id}/{table_name}/{record_id}",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "base_id": {
+              "type": "string",
+              "title": "Base Id",
+              "description": "Substituted into the path template /{base_id}/{table_name}/{record_id}."
+            },
+            "record_id": {
+              "type": "string",
+              "title": "Record Id",
+              "description": "Substituted into the path template /{base_id}/{table_name}/{record_id}."
+            },
+            "table_name": {
+              "type": "string",
+              "title": "Table Name",
+              "description": "Substituted into the path template /{base_id}/{table_name}/{record_id}."
+            }
+          },
+          "required": [
+            "base_id",
+            "record_id",
+            "table_name"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "PATCH",
+          "path": "/{base_id}/{table_name}/{record_id}",
+          "endpoint_source": "providers/airtable/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "basic_auth",
+        "label": "Atlassian API token",
+        "description": "Atlassian account email plus an API token, sent as HTTP Basic (email:api_token).",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": {
+      "type": "object",
+      "title": "Connect to Atlassian",
+      "properties": {
+        "api_token": {
+          "type": "string",
+          "title": "API token",
+          "description": "Optional fallback. Used only when the connection has no stored key (key_id); the stored key takes precedence.",
+          "ui:widget": "password"
+        },
+        "email": {
+          "type": "string",
+          "title": "Account email",
+          "description": "Atlassian account email. Combined with the API token as HTTP Basic (email:api_token)."
+        },
+        "instance_url": {
+          "type": "string",
+          "title": "Instance Url",
+          "description": "Read by the atlassian connector as form_data['instance_url']."
+        }
+      },
+      "required": [
+        "email",
+        "instance_url"
+      ]
+    },
+    "description": "Handles execution for all 4 Atlassian Cloud products.",
+    "form_schema": null,
+    "id": "atlassian",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [
+          "bitbucket",
+          "confluence",
+          "jira",
+          "jira_sm"
+        ],
+        "provider_module": "app/modules/connectors/providers/atlassian/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "providers/atlassian/provider.py:545-556 (_build_headers: basic_auth -> email:api_token)",
+        "required_connection_fields": [
+          "email",
+          "instance_url"
+        ],
+        "optional_connection_fields": [
+          "api_token"
+        ]
+      }
+    },
+    "name": "Atlassian",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "bitbucket.get_pipeline_status",
+        "name": "Get pipeline status",
+        "description": "GET /repositories/{workspace}/{repo_slug}/pipelines/{pipeline_uuid}",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "pipeline_uuid": {
+              "type": "string",
+              "title": "Pipeline Uuid",
+              "description": "Substituted into the path template /repositories/{workspace}/{repo_slug}/pipelines/{pipeline_uuid}."
+            },
+            "repo_slug": {
+              "type": "string",
+              "title": "Repo Slug",
+              "description": "Substituted into the path template /repositories/{workspace}/{repo_slug}/pipelines/{pipeline_uuid}."
+            },
+            "workspace": {
+              "type": "string",
+              "title": "Workspace",
+              "description": "Substituted into the path template /repositories/{workspace}/{repo_slug}/pipelines/{pipeline_uuid}."
+            }
+          },
+          "required": [
+            "pipeline_uuid",
+            "repo_slug",
+            "workspace"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/repositories/{workspace}/{repo_slug}/pipelines/{pipeline_uuid}",
+          "endpoint_source": "providers/atlassian/provider.py"
+        }
+      },
+      {
+        "id": "bitbucket.list_branches",
+        "name": "List branches",
+        "description": "GET /repositories/{workspace}/{repo_slug}/refs/branches",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "repo_slug": {
+              "type": "string",
+              "title": "Repo Slug",
+              "description": "Substituted into the path template /repositories/{workspace}/{repo_slug}/refs/branches."
+            },
+            "workspace": {
+              "type": "string",
+              "title": "Workspace",
+              "description": "Substituted into the path template /repositories/{workspace}/{repo_slug}/refs/branches."
+            }
+          },
+          "required": [
+            "repo_slug",
+            "workspace"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/repositories/{workspace}/{repo_slug}/refs/branches",
+          "endpoint_source": "providers/atlassian/provider.py"
+        }
+      },
+      {
+        "id": "bitbucket.list_pull_requests",
+        "name": "List pull requests",
+        "description": "GET /repositories/{workspace}/{repo_slug}/pullrequests",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "repo_slug": {
+              "type": "string",
+              "title": "Repo Slug",
+              "description": "Substituted into the path template /repositories/{workspace}/{repo_slug}/pullrequests."
+            },
+            "workspace": {
+              "type": "string",
+              "title": "Workspace",
+              "description": "Substituted into the path template /repositories/{workspace}/{repo_slug}/pullrequests."
+            }
+          },
+          "required": [
+            "repo_slug",
+            "workspace"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/repositories/{workspace}/{repo_slug}/pullrequests",
+          "endpoint_source": "providers/atlassian/provider.py"
+        }
+      },
+      {
+        "id": "bitbucket.list_repos",
+        "name": "List repos",
+        "description": "GET /repositories/{workspace}",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "workspace": {
+              "type": "string",
+              "title": "Workspace",
+              "description": "Substituted into the path template /repositories/{workspace}."
+            }
+          },
+          "required": [
+            "workspace"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/repositories/{workspace}",
+          "endpoint_source": "providers/atlassian/provider.py"
+        }
+      },
+      {
+        "id": "confluence.create_page",
+        "name": "Create page",
+        "description": "POST /wiki/api/v2/pages",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/wiki/api/v2/pages",
+          "endpoint_source": "providers/atlassian/provider.py"
+        }
+      },
+      {
+        "id": "confluence.get_page",
+        "name": "Get page",
+        "description": "GET /wiki/api/v2/pages/{page_id}",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "page_id": {
+              "type": "string",
+              "title": "Page Id",
+              "description": "Substituted into the path template /wiki/api/v2/pages/{page_id}."
+            }
+          },
+          "required": [
+            "page_id"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/wiki/api/v2/pages/{page_id}",
+          "endpoint_source": "providers/atlassian/provider.py"
+        }
+      },
+      {
+        "id": "confluence.list_spaces",
+        "name": "List spaces",
+        "description": "GET /wiki/api/v2/spaces",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/wiki/api/v2/spaces",
+          "endpoint_source": "providers/atlassian/provider.py"
+        }
+      },
+      {
+        "id": "confluence.search",
+        "name": "Search",
+        "description": "GET /wiki/rest/api/search",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/wiki/rest/api/search",
+          "endpoint_source": "providers/atlassian/provider.py"
+        }
+      },
+      {
+        "id": "jira.create_issue",
+        "name": "Create issue",
+        "description": "POST /rest/api/3/issue",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/rest/api/3/issue",
+          "endpoint_source": "providers/atlassian/provider.py"
+        }
+      },
+      {
+        "id": "jira.list_projects",
+        "name": "List projects",
+        "description": "GET /rest/api/3/project",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/rest/api/3/project",
+          "endpoint_source": "providers/atlassian/provider.py"
+        }
+      },
+      {
+        "id": "jira.search_issues",
+        "name": "Search issues",
+        "description": "GET /rest/api/3/search",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/rest/api/3/search",
+          "endpoint_source": "providers/atlassian/provider.py"
+        }
+      },
+      {
+        "id": "jira_sm.create_request",
+        "name": "Create request",
+        "description": "POST /rest/servicedeskapi/request",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/rest/servicedeskapi/request",
+          "endpoint_source": "providers/atlassian/provider.py"
+        }
+      },
+      {
+        "id": "jira_sm.list_requests",
+        "name": "List requests",
+        "description": "GET /rest/servicedeskapi/request",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/rest/servicedeskapi/request",
+          "endpoint_source": "providers/atlassian/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Aws",
+        "description": "Sent to aws as the Authorization header. Evidence: default.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": {
+      "type": "object",
+      "title": "Connect to Aws",
+      "properties": {
+        "region": {
+          "type": "string",
+          "title": "Region",
+          "description": "AWS region used to build the S3 endpoint host.",
+          "default": "us-east-1"
+        }
+      }
+    },
+    "description": null,
+    "form_schema": null,
+    "id": "aws",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/aws/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default",
+        "required_connection_fields": [],
+        "optional_connection_fields": [
+          "region"
+        ]
+      }
+    },
+    "name": "AWS",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "aws.ec2_describe_instances",
+        "name": "Ec2 describe instances",
+        "description": "POST /",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/",
+          "endpoint_source": "providers/aws/provider.py"
+        }
+      },
+      {
+        "id": "aws.s3_list_buckets",
+        "name": "S3 list buckets",
+        "description": "GET /",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/",
+          "endpoint_source": "providers/aws/provider.py"
+        }
+      },
+      {
+        "id": "aws.s3_list_objects",
+        "name": "S3 list objects",
+        "description": "GET /{bucket}",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "bucket": {
+              "type": "string",
+              "title": "Bucket",
+              "description": "Substituted into the path template /{bucket}."
+            }
+          },
+          "required": [
+            "bucket"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/{bucket}",
+          "endpoint_source": "providers/aws/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Azure",
+        "description": "Sent to azure as the Authorization header. Evidence: default.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "azure",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/azure/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "Azure",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "azure.list_resource_groups",
+        "name": "List resource groups",
+        "description": "GET /subscriptions/{subscription_id}/resourcegroups",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "subscription_id": {
+              "type": "string",
+              "title": "Subscription Id",
+              "description": "Substituted into the path template /subscriptions/{subscription_id}/resourcegroups."
+            }
+          },
+          "required": [
+            "subscription_id"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/subscriptions/{subscription_id}/resourcegroups",
+          "endpoint_source": "providers/azure/provider.py"
+        }
+      },
+      {
+        "id": "azure.list_vms",
+        "name": "List vms",
+        "description": "GET /subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Compute/virtualMachines",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "resource_group": {
+              "type": "string",
+              "title": "Resource Group",
+              "description": "Substituted into the path template /subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Compute/virtualMachines."
+            },
+            "subscription_id": {
+              "type": "string",
+              "title": "Subscription Id",
+              "description": "Substituted into the path template /subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Compute/virtualMachines."
+            }
+          },
+          "required": [
+            "resource_group",
+            "subscription_id"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Compute/virtualMachines",
+          "endpoint_source": "providers/azure/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Digitalocean",
+        "description": "Sent to digitalocean as the Authorization header. Evidence: default.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "digitalocean",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/digitalocean/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "DigitalOcean",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "digitalocean.create_droplet",
+        "name": "Create droplet",
+        "description": "POST /v2/droplets",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/v2/droplets",
+          "endpoint_source": "providers/digitalocean/provider.py"
+        }
+      },
+      {
+        "id": "digitalocean.list_droplets",
+        "name": "List droplets",
+        "description": "GET /v2/droplets",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/v2/droplets",
+          "endpoint_source": "providers/digitalocean/provider.py"
+        }
+      },
+      {
+        "id": "digitalocean.list_kubernetes_clusters",
+        "name": "List kubernetes clusters",
+        "description": "GET /v2/kubernetes/clusters",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/v2/kubernetes/clusters",
+          "endpoint_source": "providers/digitalocean/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Discord",
+        "description": "Sent to discord as the Authorization header. Evidence: default.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "discord",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/discord/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "Discord",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "discord.get_channel_messages",
+        "name": "Get channel messages",
+        "description": "GET /channels/{channel_id}/messages",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "channel_id": {
+              "type": "string",
+              "title": "Channel Id",
+              "description": "Substituted into the path template /channels/{channel_id}/messages."
+            }
+          },
+          "required": [
+            "channel_id"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/channels/{channel_id}/messages",
+          "endpoint_source": "providers/discord/provider.py"
+        }
+      },
+      {
+        "id": "discord.send_message",
+        "name": "Send message",
+        "description": "POST /channels/{channel_id}/messages",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "channel_id": {
+              "type": "string",
+              "title": "Channel Id",
+              "description": "Substituted into the path template /channels/{channel_id}/messages."
+            }
+          },
+          "required": [
+            "channel_id"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/channels/{channel_id}/messages",
+          "endpoint_source": "providers/discord/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Dropbox",
+        "description": "Sent to dropbox as the Authorization header. Evidence: default.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "dropbox",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/dropbox/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "Dropbox",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "dropbox.download_file",
+        "name": "Download file",
+        "description": "POST /files/download",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/files/download",
+          "endpoint_source": "providers/dropbox/provider.py"
+        }
+      },
+      {
+        "id": "dropbox.list_files",
+        "name": "List files",
+        "description": "POST /files/list_folder",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/files/list_folder",
+          "endpoint_source": "providers/dropbox/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Gcp",
+        "description": "Sent to gcp as the Authorization header. Evidence: default.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "gcp",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/gcp/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "GCP",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "gcp.list_compute_instances",
+        "name": "List compute instances",
+        "description": "GET /compute/v1/projects/{project_id}/zones/{zone}/instances",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "project_id": {
+              "type": "string",
+              "title": "Project Id",
+              "description": "Substituted into the path template /compute/v1/projects/{project_id}/zones/{zone}/instances."
+            },
+            "zone": {
+              "type": "string",
+              "title": "Zone",
+              "description": "Substituted into the path template /compute/v1/projects/{project_id}/zones/{zone}/instances."
+            }
+          },
+          "required": [
+            "project_id",
+            "zone"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/compute/v1/projects/{project_id}/zones/{zone}/instances",
+          "endpoint_source": "providers/gcp/provider.py"
+        }
+      },
+      {
+        "id": "gcp.list_storage_buckets",
+        "name": "List storage buckets",
+        "description": "GET /storage/v1/b",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/storage/v1/b",
+          "endpoint_source": "providers/gcp/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "GitHub token",
+        "description": "Personal access token or OAuth token, sent as an Authorization: Bearer header.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "github",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/github/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "GitHub",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "github.create_issue",
+        "name": "Create issue",
+        "description": "POST /repos/{owner}/{repo}/issues",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "Substituted into the path template /repos/{owner}/{repo}/issues."
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo",
+              "description": "Substituted into the path template /repos/{owner}/{repo}/issues."
+            }
+          },
+          "required": [
+            "owner",
+            "repo"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/repos/{owner}/{repo}/issues",
+          "endpoint_source": "providers/github/provider.py"
+        }
+      },
+      {
+        "id": "github.get_repo",
+        "name": "Get repo",
+        "description": "GET /repos/{owner}/{repo}",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "Substituted into the path template /repos/{owner}/{repo}."
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo",
+              "description": "Substituted into the path template /repos/{owner}/{repo}."
+            }
+          },
+          "required": [
+            "owner",
+            "repo"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/repos/{owner}/{repo}",
+          "endpoint_source": "providers/github/provider.py"
+        }
+      },
+      {
+        "id": "github.list_issues",
+        "name": "List issues",
+        "description": "GET /repos/{owner}/{repo}/issues",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "Substituted into the path template /repos/{owner}/{repo}/issues."
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo",
+              "description": "Substituted into the path template /repos/{owner}/{repo}/issues."
+            }
+          },
+          "required": [
+            "owner",
+            "repo"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/repos/{owner}/{repo}/issues",
+          "endpoint_source": "providers/github/provider.py"
+        }
+      },
+      {
+        "id": "github.list_pull_requests",
+        "name": "List pull requests",
+        "description": "GET /repos/{owner}/{repo}/pulls",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "Substituted into the path template /repos/{owner}/{repo}/pulls."
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo",
+              "description": "Substituted into the path template /repos/{owner}/{repo}/pulls."
+            }
+          },
+          "required": [
+            "owner",
+            "repo"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/repos/{owner}/{repo}/pulls",
+          "endpoint_source": "providers/github/provider.py"
+        }
+      },
+      {
+        "id": "github.list_repos",
+        "name": "List repos",
+        "description": "GET /user/repos",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/user/repos",
+          "endpoint_source": "providers/github/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "api_key",
+        "label": "GitLab personal access token",
+        "description": "Personal access token, sent in the PRIVATE-TOKEN header.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": {
+      "type": "object",
+      "title": "Connect to Gitlab",
+      "properties": {
+        "instance_url": {
+          "type": "string",
+          "title": "Instance URL",
+          "description": "Self-hosted GitLab base URL. Defaults to https://gitlab.com. /api/v4 is appended automatically.",
+          "default": "https://gitlab.com"
+        }
+      }
+    },
+    "description": null,
+    "form_schema": null,
+    "id": "gitlab",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/gitlab/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "providers/gitlab/provider.py:20-24 (api_key -> PRIVATE-TOKEN header)",
+        "required_connection_fields": [],
+        "optional_connection_fields": [
+          "instance_url"
+        ]
+      }
+    },
+    "name": "GitLab",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "gitlab.create_issue",
+        "name": "Create issue",
+        "description": "POST /projects/{project_id}/issues",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "project_id": {
+              "type": "string",
+              "title": "Project Id",
+              "description": "Substituted into the path template /projects/{project_id}/issues."
+            }
+          },
+          "required": [
+            "project_id"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/projects/{project_id}/issues",
+          "endpoint_source": "providers/gitlab/provider.py"
+        }
+      },
+      {
+        "id": "gitlab.list_issues",
+        "name": "List issues",
+        "description": "GET /projects/{project_id}/issues",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "project_id": {
+              "type": "string",
+              "title": "Project Id",
+              "description": "Substituted into the path template /projects/{project_id}/issues."
+            }
+          },
+          "required": [
+            "project_id"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/projects/{project_id}/issues",
+          "endpoint_source": "providers/gitlab/provider.py"
+        }
+      },
+      {
+        "id": "gitlab.list_pipelines",
+        "name": "List pipelines",
+        "description": "GET /projects/{project_id}/pipelines",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "project_id": {
+              "type": "string",
+              "title": "Project Id",
+              "description": "Substituted into the path template /projects/{project_id}/pipelines."
+            }
+          },
+          "required": [
+            "project_id"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/projects/{project_id}/pipelines",
+          "endpoint_source": "providers/gitlab/provider.py"
+        }
+      },
+      {
+        "id": "gitlab.list_projects",
+        "name": "List projects",
+        "description": "GET /projects",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/projects",
+          "endpoint_source": "providers/gitlab/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Google Drive",
+        "description": "Sent to google_drive as the Authorization header. Evidence: default.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "google_drive",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/google_drive/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "Google Drive",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "google_drive.get_file",
+        "name": "Get file",
+        "description": "GET /files/{file_id}",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file_id": {
+              "type": "string",
+              "title": "File Id",
+              "description": "Substituted into the path template /files/{file_id}."
+            }
+          },
+          "required": [
+            "file_id"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/files/{file_id}",
+          "endpoint_source": "providers/google_drive/provider.py"
+        }
+      },
+      {
+        "id": "google_drive.list_files",
+        "name": "List files",
+        "description": "GET /files",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/files",
+          "endpoint_source": "providers/google_drive/provider.py"
+        }
+      },
+      {
+        "id": "google_drive.upload_file",
+        "name": "Upload file",
+        "description": "POST /files",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/files",
+          "endpoint_source": "providers/google_drive/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Hubspot",
+        "description": "Sent to hubspot as the Authorization header. Evidence: default.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "hubspot",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/hubspot/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "HubSpot",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "hubspot.create_contact",
+        "name": "Create contact",
+        "description": "POST /crm/v3/objects/contacts",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/crm/v3/objects/contacts",
+          "endpoint_source": "providers/hubspot/provider.py"
+        }
+      },
+      {
+        "id": "hubspot.list_contacts",
+        "name": "List contacts",
+        "description": "GET /crm/v3/objects/contacts",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/crm/v3/objects/contacts",
+          "endpoint_source": "providers/hubspot/provider.py"
+        }
+      },
+      {
+        "id": "hubspot.list_deals",
+        "name": "List deals",
+        "description": "GET /crm/v3/objects/deals",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/crm/v3/objects/deals",
+          "endpoint_source": "providers/hubspot/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "api_key",
+        "label": "Linear API key",
+        "description": "Linear API key, sent verbatim in the Authorization header.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "linear",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/linear/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "providers/linear/provider.py:16-17 (Authorization header carries the raw API key)",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "Linear",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "linear.create_issue",
+        "name": "Create issue",
+        "description": "POST /graphql",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/graphql",
+          "endpoint_source": "providers/linear/provider.py"
+        }
+      },
+      {
+        "id": "linear.get_user",
+        "name": "Get user",
+        "description": "POST /graphql",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/graphql",
+          "endpoint_source": "providers/linear/provider.py"
+        }
+      },
+      {
+        "id": "linear.list_issues",
+        "name": "List issues",
+        "description": "POST /graphql",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/graphql",
+          "endpoint_source": "providers/linear/provider.py"
+        }
+      },
+      {
+        "id": "linear.list_teams",
+        "name": "List teams",
+        "description": "POST /graphql",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/graphql",
+          "endpoint_source": "providers/linear/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Notion",
+        "description": "Sent to notion as the Authorization header. Evidence: providers/notion/provider.py:16-19 (bearer_token + Notion-Version).",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "notion",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/notion/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "providers/notion/provider.py:16-19 (bearer_token + Notion-Version)",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "Notion",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "notion.create_page",
+        "name": "Create page",
+        "description": "POST /pages",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/pages",
+          "endpoint_source": "providers/notion/provider.py"
+        }
+      },
+      {
+        "id": "notion.query_database",
+        "name": "Query database",
+        "description": "POST /databases/{database_id}/query",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "database_id": {
+              "type": "string",
+              "title": "Database Id",
+              "description": "Substituted into the path template /databases/{database_id}/query."
+            }
+          },
+          "required": [
+            "database_id"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/databases/{database_id}/query",
+          "endpoint_source": "providers/notion/provider.py"
+        }
+      },
+      {
+        "id": "notion.retrieve_page",
+        "name": "Retrieve page",
+        "description": "GET /pages/{page_id}",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "page_id": {
+              "type": "string",
+              "title": "Page Id",
+              "description": "Substituted into the path template /pages/{page_id}."
+            }
+          },
+          "required": [
+            "page_id"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/pages/{page_id}",
+          "endpoint_source": "providers/notion/provider.py"
+        }
+      },
+      {
+        "id": "notion.search",
+        "name": "Search",
+        "description": "POST /search",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/search",
+          "endpoint_source": "providers/notion/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Paypal",
+        "description": "Sent to paypal as the Authorization header. Evidence: default (OAuth2 access token).",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": {
+      "type": "object",
+      "title": "Connect to Paypal",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "title": "Environment",
+          "description": "PayPal environment. Anything other than 'live' uses the sandbox host.",
+          "default": "sandbox",
+          "ui:widget": "select",
+          "ui:options": {
+            "choices": [
+              {
+                "value": "sandbox",
+                "label": "Sandbox"
+              },
+              {
+                "value": "live",
+                "label": "Live"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "description": null,
+    "form_schema": null,
+    "id": "paypal",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/paypal/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default (OAuth2 access token)",
+        "required_connection_fields": [],
+        "optional_connection_fields": [
+          "mode"
+        ]
+      }
+    },
+    "name": "PayPal",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "paypal.capture_order",
+        "name": "Capture order",
+        "description": "POST /v2/checkout/orders/{order_id}/capture",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "order_id": {
+              "type": "string",
+              "title": "Order Id",
+              "description": "Substituted into the path template /v2/checkout/orders/{order_id}/capture."
+            }
+          },
+          "required": [
+            "order_id"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/v2/checkout/orders/{order_id}/capture",
+          "endpoint_source": "providers/paypal/provider.py"
+        }
+      },
+      {
+        "id": "paypal.create_order",
+        "name": "Create order",
+        "description": "POST /v2/checkout/orders",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/v2/checkout/orders",
+          "endpoint_source": "providers/paypal/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Salesforce",
+        "description": "Sent to salesforce as the Authorization header. Evidence: default (OAuth2 access token).",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": {
+      "type": "object",
+      "title": "Connect to Salesforce",
+      "properties": {
+        "instance_url": {
+          "type": "string",
+          "title": "Instance URL",
+          "description": "Your Salesforce instance URL, e.g. https://your-domain.my.salesforce.com"
+        }
+      },
+      "required": [
+        "instance_url"
+      ]
+    },
+    "description": null,
+    "form_schema": null,
+    "id": "salesforce",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/salesforce/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default (OAuth2 access token)",
+        "required_connection_fields": [
+          "instance_url"
+        ],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "Salesforce",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "salesforce.create_record",
+        "name": "Create record",
+        "description": "POST /services/data/v{api_version}/sobjects/{object_name}",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "api_version": {
+              "type": "string",
+              "title": "Api Version",
+              "description": "Substituted into the path template /services/data/v{api_version}/sobjects/{object_name}."
+            },
+            "object_name": {
+              "type": "string",
+              "title": "Object Name",
+              "description": "Substituted into the path template /services/data/v{api_version}/sobjects/{object_name}."
+            }
+          },
+          "required": [
+            "api_version",
+            "object_name"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/services/data/v{api_version}/sobjects/{object_name}",
+          "endpoint_source": "providers/salesforce/provider.py"
+        }
+      },
+      {
+        "id": "salesforce.describe_object",
+        "name": "Describe object",
+        "description": "GET /services/data/v{api_version}/sobjects/{object_name}/describe",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "api_version": {
+              "type": "string",
+              "title": "Api Version",
+              "description": "Substituted into the path template /services/data/v{api_version}/sobjects/{object_name}/describe."
+            },
+            "object_name": {
+              "type": "string",
+              "title": "Object Name",
+              "description": "Substituted into the path template /services/data/v{api_version}/sobjects/{object_name}/describe."
+            }
+          },
+          "required": [
+            "api_version",
+            "object_name"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/services/data/v{api_version}/sobjects/{object_name}/describe",
+          "endpoint_source": "providers/salesforce/provider.py"
+        }
+      },
+      {
+        "id": "salesforce.soql_query",
+        "name": "Soql query",
+        "description": "GET /services/data/v{api_version}/query",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "api_version": {
+              "type": "string",
+              "title": "Api Version",
+              "description": "Substituted into the path template /services/data/v{api_version}/query."
+            }
+          },
+          "required": [
+            "api_version"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/services/data/v{api_version}/query",
+          "endpoint_source": "providers/salesforce/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Sendgrid",
+        "description": "Sent to sendgrid as the Authorization header. Evidence: default.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "sendgrid",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/sendgrid/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "SendGrid",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "sendgrid.send_email",
+        "name": "Send email",
+        "description": "POST /v3/mail/send",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/v3/mail/send",
+          "endpoint_source": "providers/sendgrid/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "bearer_token",
+        "label": "Slack",
+        "description": "Sent to slack as the Authorization header. Evidence: default.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "slack",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/slack/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "default",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "Slack",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "slack.get_channel_history",
+        "name": "Get channel history",
+        "description": "GET /conversations.history",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/conversations.history",
+          "endpoint_source": "providers/slack/provider.py"
+        }
+      },
+      {
+        "id": "slack.list_channels",
+        "name": "List channels",
+        "description": "GET /conversations.list",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/conversations.list",
+          "endpoint_source": "providers/slack/provider.py"
+        }
+      },
+      {
+        "id": "slack.post_message",
+        "name": "Post message",
+        "description": "POST /chat.postMessage",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/chat.postMessage",
+          "endpoint_source": "providers/slack/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "basic_auth",
+        "label": "Stripe secret key",
+        "description": "Stripe secret key, sent as HTTP Basic using the key as the username.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "stripe",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/stripe/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "providers/stripe/provider.py:19-31 (execute() hardcodes Basic base64(<key>:))",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "Stripe",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "stripe.create_customer",
+        "name": "Create customer",
+        "description": "POST /v1/customers",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/v1/customers",
+          "endpoint_source": "providers/stripe/provider.py"
+        }
+      },
+      {
+        "id": "stripe.create_payment_intent",
+        "name": "Create payment intent",
+        "description": "POST /v1/payment_intents",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/v1/payment_intents",
+          "endpoint_source": "providers/stripe/provider.py"
+        }
+      },
+      {
+        "id": "stripe.list_charges",
+        "name": "List charges",
+        "description": "GET /v1/charges",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/v1/charges",
+          "endpoint_source": "providers/stripe/provider.py"
+        }
+      },
+      {
+        "id": "stripe.list_customers",
+        "name": "List customers",
+        "description": "GET /v1/customers",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": true,
+        "requires_approval": false,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "GET",
+          "path": "/v1/customers",
+          "endpoint_source": "providers/stripe/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  },
+  {
+    "auth_schemes": [
+      {
+        "type": "basic_auth",
+        "label": "Twilio account SID",
+        "description": "Twilio account SID, sent as HTTP Basic using the SID as the username and the auth token resolved from key management as the password.",
+        "config": {},
+        "default_scopes": [],
+        "requires_key": true
+      }
+    ],
+    "categories": [],
+    "connection_form_schema": null,
+    "description": null,
+    "form_schema": null,
+    "id": "twilio",
+    "metadata_json": {
+      "derivation": {
+        "generator": "app/modules/connectors/derive_connector_catalogue.py",
+        "product_prefixes": [],
+        "provider_module": "app/modules/connectors/providers/twilio/provider.py",
+        "provider_source_present": true,
+        "auth_evidence": "providers/twilio/provider.py:13-27 (execute() hardcodes Basic base64(<key>:))",
+        "required_connection_fields": [],
+        "optional_connection_fields": []
+      }
+    },
+    "name": "Twilio",
+    "status": "active",
+    "tags": [],
+    "tools": [
+      {
+        "id": "twilio.send_sms",
+        "name": "Send sms",
+        "description": "POST /2010-04-01/Accounts/{account_sid}/Messages.json",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "account_sid": {
+              "type": "string",
+              "title": "Account Sid",
+              "description": "Substituted into the path template /2010-04-01/Accounts/{account_sid}/Messages.json."
+            }
+          },
+          "required": [
+            "account_sid"
+          ]
+        },
+        "output_schema": {
+          "type": "object"
+        },
+        "execution_mode": "sync",
+        "timeout_seconds": 30,
+        "cacheable": false,
+        "idempotent": false,
+        "requires_approval": true,
+        "deprecated": false,
+        "tags": [],
+        "metadata": {
+          "http_method": "POST",
+          "path": "/2010-04-01/Accounts/{account_sid}/Messages.json",
+          "endpoint_source": "providers/twilio/provider.py"
+        }
+      }
+    ],
+    "version": "1.0.0"
+  }
+]

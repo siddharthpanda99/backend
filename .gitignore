@@ -96,6 +96,20 @@ resources/
 GENERATED_CONTENT/
 generated_content/
 
+# The bare `resources/` rule above also matched app/resources/, which is why
+# connector_seeds.json was never committed and the catalogue was empty at every
+# startup. That file is CHECKED-IN SOURCE: it is the committed, regenerable
+# output of app/modules/connectors/derive_connector_catalogue.py and the input
+# to get_connector_seeds(). Only this exact file is re-included.
+#
+# `!app/resources/` is required -- git cannot re-include a file whose parent
+# directory is excluded -- but it would expose everything in the directory, so
+# `app/resources/*` immediately re-excludes the contents and the final line
+# re-includes just the one file. Order matters: the last matching rule wins.
+!app/resources/
+app/resources/*
+!app/resources/connector_seeds.json
+
 # Scratch directories
 scratch/external_wildcards/
 scratch/nul
