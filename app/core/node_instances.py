@@ -510,6 +510,19 @@ STARTUP_INSTANCE_WIRINGS: Tuple[InstanceWiring, ...] = (
         nodes=11,
     ),
     InstanceWiring(
+        owner="common_lib.modules.workflows.config_service.WorkflowConfigService",
+        source="app.core.node_instances:_build_workflow_config_service",
+        module="workflows",
+        rationale=(
+            "This is the exact construction the production router already performs "
+            "at import time (app/modules/workflows/routes/configs.py:70), with the "
+            "same factory-backed memory store. The service holds the store and "
+            "nothing else; every config_id, comment_id and parent_id is a per-call "
+            "argument."
+        ),
+        nodes=15,
+    ),
+    InstanceWiring(
         owner=(
             "common_lib.modules.memory.memory_adaptation.bandit.adapter"
             ".OnlineBanditAdapter"
@@ -745,6 +758,19 @@ def _build_agent_version_service() -> Any:
     )
 
     return AgentVersionService(_shared_memory_store())
+
+
+def _build_workflow_config_service() -> Any:
+    """``WorkflowConfigService(common_memory)`` — 15 nodes, the 3rd-largest owner.
+
+    The router constructs exactly this at import time
+    (``Backend/app/modules/workflows/routes/configs.py:70``), so this is the
+    production construction, not an invention. ``common_memory`` is the same
+    factory-backed store.
+    """
+    from common_lib.modules.workflows.config_service import WorkflowConfigService
+
+    return WorkflowConfigService(_shared_memory_store())
 
 
 def _build_entity_sync_manager() -> Any:
