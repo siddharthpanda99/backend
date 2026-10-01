@@ -148,12 +148,28 @@ previously an uncaught crash path) so the pass always returns, and
 |---|---|---|
 | `tests/test_node_instance_wiring_group_b.py` (new) | — | **29 passed** |
 | `test_node_instance_wiring.py` + `test_node_bridge_instance_binding.py` + `test_instance_registry.py` | **49 passed** | **49 passed** |
-| the four above together | — | **78 passed** |
-| `tests/` collection | **5 collection errors**, 3718 collected | unchanged (same 5, same count + 29) |
+| **All node-registry-affected suites** (the 10 files importing `node_instances` / `instance_registry` / `node_bridge`, plus the catalogue and definition-CRD suites) | — | **128 passed, 2 failed** |
+| `tests/` collection | **5 collection errors**, 3718 collected | same 5, +30 collected |
 
-Full-suite run with those 5 pre-existing collection errors ignored is recorded in
-§9. The 5 errors are pre-existing and unrelated (missing `litellm` / `langgraph` /
-`psycopg2` / `hypothesis`).
+Both of the 2 failures were **proven pre-existing** by re-running them with
+`node_instances.py` reverted to `HEAD~1` and the new test file removed: they fail
+identically (`test_no_implicit_instance_offenders.py::test_no_unmarked_offenders_outside_the_known_set`,
+`test_node_definition_crud.py::test_node_definition_crud_flow`).
+
+A whole-`tests/` run gives **690 failed / 2731 passed / 317 errors**. That is the
+pre-existing environment surface (missing `litellm` / `langgraph` / `psycopg2` /
+`hypothesis`, and the 5 collection errors above), not this change: the affected-suite
+figure above is the controlled comparison, and no platform node total is asserted.
+
+**One defect this change's own testing caught:** 2 of the 29 tests failed when run
+*alongside* `test_no_implicit_instance_offenders.py` rather than alone. Cause:
+`tests/` has no `__init__.py`, so pytest's import mode decides whether the file is
+`tests.test_node_instance_wiring_group_b` or `test_node_instance_wiring_group_b`,
+and another test file in the run shifted `sys.path` so the hard-coded `tests.`
+prefix stopped resolving — the falsification fixtures died with
+`ModuleNotFoundError` exactly when they were most needed. Fixed by resolving the
+fixture builders via `__name__` (`1033257`). Running the new file alone would
+never have shown it.
 
 ## 8. Pre-existing body bugs found (module source is read-only here)
 
@@ -186,6 +202,7 @@ cannot contaminate the rest. Each was staged by explicit path, never `git add -A
 | `e3b971d` | `workflows` — 1 owner / 15 nodes → 18/136 |
 | `485a6b4` | `plugins` — 1 owner / 4 nodes → 19/140 |
 | `95372cc` | *(tests — 29)* |
+| `1033257` | *(tests — resolve falsification fixtures by `__name__`)* |
 | *(this file)* | `docs(duplication-audit): record the group-B wiring` |
 
 Each intermediate stage was verified to compile **and** to register its expected
