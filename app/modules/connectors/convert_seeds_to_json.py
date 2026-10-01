@@ -46,8 +46,12 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     seed_path = os.path.join(script_dir, 'seed.py')
     
-    # Output to app/resources/ directory
-    app_resources = os.path.join(os.path.dirname(script_dir), 'resources')
+    # Output to app/resources/ -- the loader's Tier 1 candidate.
+    #
+    # This used ``os.path.dirname(script_dir)``, which is ``app/modules``, so it
+    # wrote to app/modules/resources/ while seed.py looked in app/resources/.
+    # The generator could therefore never satisfy the loader it was written for.
+    app_resources = os.path.join(os.path.dirname(os.path.dirname(script_dir)), 'resources')
     os.makedirs(app_resources, exist_ok=True)
     output_path = os.path.join(app_resources, 'connector_seeds.json')
     

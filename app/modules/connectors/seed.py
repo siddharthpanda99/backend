@@ -87,6 +87,14 @@ def get_connector_seeds() -> List[Dict[str, Any]]:
             len(_candidate_seed_paths()),
             _candidate_seed_paths(),
         )
+        # The "Regenerate with ..." advice above was wrong and cost real time.
+        # The connector data was moved out of this module into
+        # connector_seeds.json, and that path is excluded by a bare
+        # ``resources/`` rule in .gitignore -- so the file was never committed.
+        # The generator reads THIS module, which no longer contains any
+        # connector definitions, so running it yields an empty list rather than
+        # the 20 connectors the module docstring still claims. The definitions
+        # must be restored before "regenerate" means anything.
         return []
 
     with open(json_path, "r", encoding="utf-8") as f:
