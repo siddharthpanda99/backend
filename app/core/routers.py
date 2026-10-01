@@ -738,6 +738,16 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
         return router
 
+    def _cron_schedules_router():
+        """Durable cron schedules — thin router over common_lib.modules.triggers.cron.
+
+        A separate router from ``_unified_triggers_router`` so the cron surface
+        can evolve without touching that module's existing routes file.
+        """
+        from app.modules.triggers.cron_routes import router
+
+        return router
+
     def _unified_hooks_router():
         from app.modules.hooks.routes import router
 
@@ -1040,7 +1050,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "module": "sessions",
         },
         # ── Authorization ─────────────────────────────────────────
-        {"router": roles_router, "prefix": "/roles", "tags": ["Roles"], "auth": True, "module": "authorization"},
+        {
+            "router": roles_router,
+            "prefix": "/roles",
+            "tags": ["Roles"],
+            "auth": True,
+            "module": "authorization",
+        },
         {
             "router": permissions_router,
             "prefix": "/permissions",
@@ -1048,7 +1064,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
             "module": "authorization",
         },
-        {"router": users_router, "prefix": "/users", "tags": ["Users"], "auth": True, "module": "users"},
+        {
+            "router": users_router,
+            "prefix": "/users",
+            "tags": ["Users"],
+            "auth": True,
+            "module": "users",
+        },
         {
             # Legacy /api/v1/projects alias. Previously mounted
             # app.modules.projects.routes.projects — a 5-endpoint strict subset
@@ -1072,7 +1094,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "module": "scaffolder",
         },
         # ── Hooks / Webhooks ───────────────────────────────────────
-        {"router": hooks_router, "prefix": "/hooks", "tags": ["Hooks"], "auth": True, "module": "hooks"},
+        {
+            "router": hooks_router,
+            "prefix": "/hooks",
+            "tags": ["Hooks"],
+            "auth": True,
+            "module": "hooks",
+        },
         {
             "router": webhooks_router,
             "prefix": "/webhooks",
@@ -1109,7 +1137,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
             "module": "app_builder",
         },
-        {"router": builder_router, "prefix": "", "tags": ["UI Builder"], "auth": True, "module": "app_builder"},
+        {
+            "router": builder_router,
+            "prefix": "",
+            "tags": ["UI Builder"],
+            "auth": True,
+            "module": "app_builder",
+        },
         {
             "router": schema_router,
             "prefix": "/schema",
@@ -1268,7 +1302,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "module": "workflows",
         },
         # ── Tools & Models ─────────────────────────────────────────
-        {"router": tools_router, "prefix": "/tools", "tags": ["Tools"], "auth": True, "module": "tools"},
+        {
+            "router": tools_router,
+            "prefix": "/tools",
+            "tags": ["Tools"],
+            "auth": True,
+            "module": "tools",
+        },
         {
             "router": models_router,
             "prefix": "/models",
@@ -1304,7 +1344,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
             "module": "ai_models",
         },
-        {"router": sd_models_router, "prefix": "", "tags": ["SD Models"], "auth": True, "module": "sd_models"},
+        {
+            "router": sd_models_router,
+            "prefix": "",
+            "tags": ["SD Models"],
+            "auth": True,
+            "module": "sd_models",
+        },
         # ── Vision & Media ─────────────────────────────────────────
         {
             "router": sam3_router,
@@ -1398,7 +1444,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "module": "open_code_review",
         },
         # ── Nodes / Sandbox ──────────────────────────────────────────
-        {"router": nodes_router, "prefix": "", "tags": ["Nodes"], "auth": True, "module": "nodes"},
+        {
+            "router": nodes_router,
+            "prefix": "",
+            "tags": ["Nodes"],
+            "auth": True,
+            "module": "nodes",
+        },
         {
             "router": sandbox_router,
             "prefix": "/sandbox",
@@ -1474,8 +1526,20 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
             "module": "dip",
         },
-        {"router": dip_rag_router, "prefix": "", "tags": ["dip/rag"], "auth": True, "module": "dip"},
-        {"router": dip_kg_router, "prefix": "", "tags": ["dip/kg"], "auth": True, "module": "dip"},
+        {
+            "router": dip_rag_router,
+            "prefix": "",
+            "tags": ["dip/rag"],
+            "auth": True,
+            "module": "dip",
+        },
+        {
+            "router": dip_kg_router,
+            "prefix": "",
+            "tags": ["dip/kg"],
+            "auth": True,
+            "module": "dip",
+        },
         {
             "router": dip_storage_router,
             "prefix": "",
@@ -1545,7 +1609,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "module": "mcp",
         },
         # ── Configs & Settings ─────────────────────────────────────
-        {"router": configs_router, "prefix": "", "tags": ["Configs"], "auth": True, "module": "configs"},
+        {
+            "router": configs_router,
+            "prefix": "",
+            "tags": ["Configs"],
+            "auth": True,
+            "module": "configs",
+        },
         {
             "router": _agentic_os_router(),
             "prefix": "",
@@ -1553,7 +1623,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
             "module": "agentic_os",
         },
-        {"router": settings_router, "prefix": "", "tags": ["Settings"], "auth": True, "module": "settings"},
+        {
+            "router": settings_router,
+            "prefix": "",
+            "tags": ["Settings"],
+            "auth": True,
+            "module": "settings",
+        },
         {
             # NOTE: namespaced mount. `keys_router` declares a collection root
             # at "@router.get('/')" / "@router.post('/')", so mounting it at ""
@@ -1620,7 +1696,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "module": "notification",
         },
         # ── Background & Scheduling ────────────────────────────────
-        {"router": scheduler_router, "prefix": "", "tags": ["scheduler"], "auth": True, "module": "scheduler"},
+        {
+            "router": scheduler_router,
+            "prefix": "",
+            "tags": ["scheduler"],
+            "auth": True,
+            "module": "scheduler",
+        },
         {
             "router": jobs_router,
             "prefix": "/jobs",
@@ -1628,7 +1710,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
             "module": "jobs",
         },
-        {"router": sd_news_router, "prefix": "", "tags": ["sd-news"], "auth": True, "module": "scheduler"},
+        {
+            "router": sd_news_router,
+            "prefix": "",
+            "tags": ["sd-news"],
+            "auth": True,
+            "module": "scheduler",
+        },
         # ── Dashboard / Analytics ──────────────────────────────────
         {
             "router": dashboard_router,
@@ -1638,7 +1726,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "module": "dashboard",
         },
         # ── External Apps ──────────────────────────────────────────
-        {"router": ext_apps_router, "prefix": "", "tags": ["Ext-Apps"], "auth": True, "module": "ext_apps"},
+        {
+            "router": ext_apps_router,
+            "prefix": "",
+            "tags": ["Ext-Apps"],
+            "auth": True,
+            "module": "ext_apps",
+        },
         # ── Doc Processing (PDF + Excel) ─────────────────────────────
         {
             "router": doc_processing_router,
@@ -1693,7 +1787,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "auth": True,
             "module": "marketplace",
         },
-        {"router": graph_router, "prefix": "/graph", "tags": ["Graph"], "auth": True, "module": "graph"},
+        {
+            "router": graph_router,
+            "prefix": "/graph",
+            "tags": ["Graph"],
+            "auth": True,
+            "module": "graph",
+        },
         # ── Prompt Studio ──────────────────────────────────────────
         {
             "router": prompt_studio_router,
@@ -1814,9 +1914,21 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "module": "agentic_pipelines",
         },
         # ── DAW ────────────────────────────────────────────────────
-        {"router": daw_router, "prefix": "/daw", "tags": ["DAW"], "auth": True, "module": "daw"},
+        {
+            "router": daw_router,
+            "prefix": "/daw",
+            "tags": ["DAW"],
+            "auth": True,
+            "module": "daw",
+        },
         # ── Sync ───────────────────────────────────────────────────
-        {"router": sync_router, "prefix": "/sync", "tags": ["Sync"], "auth": True, "module": "sync"},
+        {
+            "router": sync_router,
+            "prefix": "/sync",
+            "tags": ["Sync"],
+            "auth": True,
+            "module": "sync",
+        },
         # ── Knowledge Engine (heavyweight — registered after observability) ──
         {
             "router": _knowledge_router(),
@@ -1913,7 +2025,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "module": "authorization",
         },
         # ── Team ───────────────────────────────────────────────────
-        {"router": _team_router(), "prefix": "", "tags": ["Team"], "auth": True, "module": "team"},
+        {
+            "router": _team_router(),
+            "prefix": "",
+            "tags": ["Team"],
+            "auth": True,
+            "module": "team",
+        },
         # ── Reporting (Universal Reporting Platform) ───────────────
         {
             "router": _reporting_router(),
@@ -2269,6 +2387,16 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "router": _unified_triggers_router(),
             "prefix": "",
             "tags": ["Unified Triggers"],
+            "auth": True,
+            "module": "triggers",
+        },
+        # Durable cron schedules. Gated at runtime by
+        # 'triggers.cron_durable_schedules' (default OFF) — the routes answer 503
+        # while the flag is off, so a 200 always means a schedule really persisted.
+        {
+            "router": _cron_schedules_router(),
+            "prefix": "",
+            "tags": ["Cron Schedules"],
             "auth": True,
             "module": "triggers",
         },
