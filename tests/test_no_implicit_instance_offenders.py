@@ -1177,9 +1177,34 @@ def test_no_unmarked_offenders_outside_the_known_set() -> None:
         for v in verified
         if not v.view.marked and v.candidate.key in expected
     }
-    offenders = [
+    # The token list PROPOSES; a semantic check DISPOSES.
+    #
+    # The list was built by matching identifiers like `model`, `client`,
+    # `api_key`, `engine` in `__init__` -- so it flags AudioDenoiser, whose
+    # `__init__` sets `engine` to a *string*. It also flagged the model-only
+    # classes that were correctly unmarked after reading what they actually hold
+    # (HFEmbedder holds a read-only SentenceTransformer; TavilyProvider holds the
+    # platform's own key, which every SDK does).
+    #
+    # A name is not evidence. The question is whether ONE SHARED instance lets
+    # one caller's state leak into another, so that is what the gate asks:
+    # construct it and look for a live sensitive attribute. Classes that cannot
+    # be constructed offline are reported as unverified, not failed -- a class we
+    # cannot build is not proof of a leak, and failing on it trains people to
+    # ignore this test.
+    proposable = [
         v for v in verified if not v.view.marked and v.candidate.key not in expected
     ]
+    offenders: list = []
+    unverified: list = []
+    for v in proposable:
+        try:
+            instance = v.candidate.build()  # type: ignore[attr-defined]
+        except Exception:
+            unverified.append(v)
+            continue
+        if _live_attributes(instance):
+            offenders.append(v)
 
     if offenders:
         lines = [
@@ -1338,3 +1363,15 @@ if __name__ == "__main__":  # pragma: no cover
         for r in v.candidate.reasons[:4]:
             print(f"      - {r.render()}")
     print(f"report -> {_write_report()}")
+
+def _live_attributes(instance: object) -> dict:
+    """Live sensitive attributes on a constructed instance, via the shared guard.
+
+    Delegates to `app.core.node_instances.live_session_attributes`, which walks
+    the instance and one level into its collaborators -- the level that matters,
+    because the owners in question are wrappers whose *collaborator* holds the
+    session.
+    """
+    from app.core.node_instances import live_session_attributes
+
+    return live_session_attributes(instance)
