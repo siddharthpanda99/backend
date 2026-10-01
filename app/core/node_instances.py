@@ -509,6 +509,37 @@ STARTUP_INSTANCE_WIRINGS: Tuple[InstanceWiring, ...] = (
         ),
         nodes=11,
     ),
+    InstanceWiring(
+        owner=(
+            "common_lib.modules.memory.memory_adaptation.bandit.adapter"
+            ".OnlineBanditAdapter"
+        ),
+        source="app.core.node_instances:_build_online_bandit_adapter",
+        module="memory",
+        rationale=(
+            "Built from the module's own get_bandit_service() singleton. Purely "
+            "in-process: it samples arms and adjusts alpha/beta counters. It performs "
+            "no I/O, opens no connection, and holds no caller identity -- the "
+            "statistics are aggregate learning state, which is process-wide by "
+            "definition."
+        ),
+        nodes=8,
+    ),
+    InstanceWiring(
+        owner=(
+            "common_lib.modules.memory.memory_context.tokenizer.tokenizer"
+            ".TiktokenBackend"
+        ),
+        source="app.core.node_instances:_build_tiktoken_backend",
+        module="memory",
+        rationale=(
+            "An encoding name is a deployment constant resolved by the platform's own "
+            "get_tokenizer() from the model config. The instance holds a single "
+            "immutable tiktoken Encoding table. No I/O beyond the local encoding "
+            "cache, no session, no socket."
+        ),
+        nodes=3,
+    ),
 )
 
 
@@ -747,6 +778,51 @@ def _build_plugin_loader() -> Any:
     from common_lib.modules.orchestration.plugin.loader import PluginLoader
 
     return PluginLoader(get_context())
+
+
+def _build_online_bandit_adapter() -> Any:
+    """``OnlineBanditAdapter(strategies)`` — 8 nodes; a pure in-process Beta bandit.
+
+    ``get_bandit_service()`` is the module's own singleton, built with the
+    ``["default"]`` arm list. It holds counters and no I/O at all: ``select_strategy``
+    samples, ``update`` adjusts alpha/beta, and nothing opens a connection. The
+    statistics are aggregate, not per-request, so there is no caller identity to
+    leak between tenants.
+    """
+    from common_lib.modules.memory.memory_adaptation.bandit.adapter import (
+        get_bandit_service,
+    )
+
+    return get_bandit_service()
+
+
+def _build_tiktoken_backend() -> Any:
+    """``TiktokenBackend(encoding_name)`` — 3 nodes; a tokenizer over a name.
+
+    The name is a deployment constant resolved by the platform's own
+    ``get_tokenizer()``, which picks the encoding from the model config
+    (``cl100k_base`` for OpenAI models). The instance holds a ``tiktoken.Encoding``
+    — an immutable lookup table — and nothing else.
+    """
+    from common_lib.modules.memory.memory_context.tokenizer.tokenizer import (
+        get_tokenizer,
+    )
+
+    backend = get_tokenizer().backend
+    # The owner registered here is TiktokenBackend; if the platform ever resolves
+    # the default model to a non-tiktoken backend, refuse rather than register a
+    # MockTokenizer under the wrong key.
+    from common_lib.modules.memory.memory_context.tokenizer.tokenizer import (
+        TiktokenBackend,
+    )
+
+    if not isinstance(backend, TiktokenBackend):
+        raise TypeError(
+            "default tokenizer backend is "
+            f"{type(backend).__name__}, not TiktokenBackend; refusing to "
+            "register it under the TiktokenBackend key"
+        )
+    return backend
 
 
 # ── the pass ───────────────────────────────────────────────────────────────
