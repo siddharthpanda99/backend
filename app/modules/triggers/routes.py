@@ -21,6 +21,10 @@ from common_lib.modules.triggers.definition import Trigger
 
 router = APIRouter(prefix="/triggers", tags=["Unified Triggers"])
 
+# Persisted states that map 1:1 onto the TriggerState enum. Used to re-sync the
+# in-memory manager before a fire, and to validate state transitions.
+_VALID_STATES = {s.value for s in TriggerState}
+
 
 # ── Pydantic Schemas ────────────────────────────────────────────────
 
@@ -82,9 +86,13 @@ def _trigger_to_dict(t: TriggerDB) -> dict:
         "trigger_type": t.trigger_type,
         "event_config": json.loads(t.event_config) if t.event_config else {},
         "time_config": json.loads(t.time_config) if t.time_config else {},
-        "condition_config": json.loads(t.condition_config) if t.condition_config else {},
+        "condition_config": json.loads(t.condition_config)
+        if t.condition_config
+        else {},
         "webhook_config": json.loads(t.webhook_config) if t.webhook_config else {},
-        "composite_config": json.loads(t.composite_config) if t.composite_config else {},
+        "composite_config": json.loads(t.composite_config)
+        if t.composite_config
+        else {},
         "state": t.state,
         "enabled": t.enabled,
         "schedule_expression": t.schedule_expression,
@@ -134,9 +142,13 @@ def create_trigger(body: TriggerCreate, session: Session = Depends(get_session))
         trigger_type=body.trigger_type,
         event_config=json.dumps(body.event_config) if body.event_config else "{}",
         time_config=json.dumps(body.time_config) if body.time_config else "{}",
-        condition_config=json.dumps(body.condition_config) if body.condition_config else "{}",
+        condition_config=json.dumps(body.condition_config)
+        if body.condition_config
+        else "{}",
         webhook_config=json.dumps(body.webhook_config) if body.webhook_config else "{}",
-        composite_config=json.dumps(body.composite_config) if body.composite_config else "{}",
+        composite_config=json.dumps(body.composite_config)
+        if body.composite_config
+        else "{}",
         enabled=body.enabled,
         state="draft",
         schedule_expression=body.schedule_expression,
@@ -179,7 +191,18 @@ def update_trigger(
 
     update_data = body.model_dump(exclude_unset=True)
     for field_name, value in update_data.items():
-        if field_name in ("event_config", "time_config", "condition_config", "webhook_config", "composite_config", "tags") and value is not None:
+        if (
+            field_name
+            in (
+                "event_config",
+                "time_config",
+                "condition_config",
+                "webhook_config",
+                "composite_config",
+                "tags",
+            )
+            and value is not None
+        ):
             setattr(t, field_name, json.dumps(value))
         else:
             setattr(t, field_name, value)
@@ -205,19 +228,53 @@ def delete_trigger(trigger_id: int, session: Session = Depends(get_session)):
 
 @router.post("/{trigger_id}/fire")
 def fire_trigger(trigger_id: int, session: Session = Depends(get_session)):
+    """Fire a trigger.
+
+    The fire count is incremented only when the dispatch actually reached its target.
+    It used to be incremented and committed BEFORE calling ``TriggerManager.fire``,
+    which then returned ``{"error": "Trigger not found or cannot fire"}`` — the row
+    recorded a completed fire for work that never happened, and the endpoint still
+    answered HTTP 200.
+    """
     t = session.get(TriggerDB, trigger_id)
     if not t:
         raise HTTPException(status_code=404, detail="Trigger not found")
     if not t.enabled:
         raise HTTPException(status_code=400, detail="Trigger is disabled")
-    # Update fire count
-    t.fire_count += 1
+
+    # Re-sync the in-memory manager with the persisted row. `create_trigger` and
+    # `transition_state` write straight to the DB, so without this the manager keeps a
+    # DRAFT copy that can never fire.
+    mgr = get_trigger_manager()
+    in_memory = mgr.get(str(trigger_id))
+    if in_memory is None:
+        mgr.register(Trigger.from_db(t))
+    else:
+        in_memory.enabled = t.enabled
+        in_memory.state = (
+            TriggerState(t.state) if t.state in _VALID_STATES else in_memory.state
+        )
+        in_memory.target_type = t.target_type
+        in_memory.target_id = t.target_id
+
+    result = mgr.fire(str(trigger_id))
+
+    if result.get("error"):
+        # The fire did not complete: leave fire_count/last_fired_at untouched.
+        raise HTTPException(status_code=409, detail=result["error"])
+
+    # fire() owns fire_count. With `triggers.honest_dispatch` OFF it does not echo the
+    # new value back, so fall back to the manager's in-memory trigger — never to a
+    # blind increment, which is how a failed fire used to be counted.
+    managed = mgr.get(str(trigger_id))
+    if "fire_count" in result:
+        t.fire_count = result["fire_count"]
+    elif managed is not None:
+        t.fire_count = managed.fire_count
     t.last_fired_at = datetime.utcnow()
     session.add(t)
     session.commit()
-    # Fire via in-memory manager
-    mgr = get_trigger_manager()
-    result = mgr.fire(str(trigger_id))
+    session.refresh(t)
     result["fire_count"] = t.fire_count
     return result
 
@@ -230,7 +287,7 @@ def transition_state(
     if not t:
         raise HTTPException(status_code=404, detail="Trigger not found")
 
-    valid_states = {s.value for s in TriggerState}
+    valid_states = _VALID_STATES
     if body.state not in valid_states:
         raise HTTPException(status_code=400, detail=f"Invalid state: {body.state}")
 
@@ -240,4 +297,16 @@ def transition_state(
     session.add(t)
     session.commit()
     session.refresh(t)
+
+    # Sync the in-memory manager. Without this the manager keeps whatever state it
+    # last saw, so activating a trigger here left it DRAFT in memory and every
+    # subsequent /fire failed.
+    mgr = get_trigger_manager()
+    in_memory = mgr.get(str(trigger_id))
+    if in_memory is None:
+        mgr.register(Trigger.from_db(t))
+    else:
+        in_memory.state = TriggerState(t.state)
+        in_memory.enabled = t.enabled
+
     return _trigger_to_dict(t)
