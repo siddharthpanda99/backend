@@ -123,6 +123,21 @@ def _wiring(owner: str, source: str, module: str) -> InstanceWiring:
     )
 
 
+def _fixture_source(fname: str) -> str:
+    """A ``pkg.mod:attr`` spec for a builder defined in THIS module.
+
+    ``tests/`` has no ``__init__.py``, so pytest's import mode decides whether
+    this file is imported as ``test_node_instance_wiring_group_b`` or as
+    ``tests.test_node_instance_wiring_group_b`` -- and ``sys.path`` decides
+    whether the ``tests.`` prefix is importable at all. Hard-coding either name
+    makes the falsification fixtures fail with ``ModuleNotFoundError`` when
+    another test file in the same run shifts ``sys.path``, i.e. exactly when they
+    matter most. Using ``__name__`` is correct under both import modes, because
+    the name pytest imported this module *by* is by definition importable.
+    """
+    return f"{__name__}:{fname}"
+
+
 def _shipped_wiring(owner: str) -> InstanceWiring:
     """The real table row for ``owner``, so tests exercise shipped config."""
     for wiring in STARTUP_INSTANCE_WIRINGS:
@@ -286,7 +301,7 @@ def test_guard_refuses_an_owner_that_holds_a_live_session(caplog):
     """
     wiring = _wiring(
         UNSAFE_OWNER,
-        "tests.test_node_instance_wiring_group_b:_build_unsafe_api_key_service",
+        _fixture_source("_build_unsafe_api_key_service"),
         "rbac",
     )
 
@@ -317,7 +332,7 @@ def test_guard_is_green_again_once_the_unsafe_owner_is_removed():
     """
     unsafe = _wiring(
         UNSAFE_OWNER,
-        "tests.test_node_instance_wiring_group_b:_build_unsafe_api_key_service",
+        _fixture_source("_build_unsafe_api_key_service"),
         "rbac",
     )
     safe_owner, safe_module, _node = GROUP_B_OWNERS[0]
@@ -465,7 +480,7 @@ def test_guard_walks_into_collaborators_not_just_the_top_level_object():
 
     wiring = _IW(
         owner=unsafe_owner,
-        source="tests.test_node_instance_wiring_group_b:_build_nested_unsafe_recorder",
+        source=_fixture_source("_build_nested_unsafe_recorder"),
         module="orchestration",
         rationale="falsification fixture",
         nodes=1,
