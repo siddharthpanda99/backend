@@ -4,7 +4,10 @@ from fastapi import APIRouter
 
 from app.modules.cognitive_runtime.routes import evaluate, execute, infer, plan, runs
 
-router = APIRouter(prefix="/cognitive", tags=["Cognitive Runtime"])
+# No prefix here: app/core/routers.py registers this router with
+# prefix="/cognitive", and FastAPI concatenates the two. Declaring "/cognitive"
+# here as well produced /api/v1/cognitive/cognitive/... for all 13 routes.
+router = APIRouter(tags=["Cognitive Runtime"])
 
 router.include_router(infer.router)
 router.include_router(plan.router)

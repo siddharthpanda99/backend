@@ -3,10 +3,10 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from common_lib.modules.cognitive_runtime.services.runtime import CognitiveRuntime
+from app.modules.cognitive_runtime.routes._runtime import get_runtime
 
 router = APIRouter(prefix="/plan", tags=["Cognitive Plan"])
-_runtime = CognitiveRuntime()
+_runtime = get_runtime()
 
 
 class PlanRequest(BaseModel):

@@ -2,10 +2,10 @@
 
 from fastapi import APIRouter, HTTPException
 
-from common_lib.modules.cognitive_runtime.services.runtime import CognitiveRuntime
+from app.modules.cognitive_runtime.routes._runtime import get_runtime
 
 router = APIRouter(prefix="/runs", tags=["Cognitive Runs"])
-_runtime = CognitiveRuntime()
+_runtime = get_runtime()
 
 
 @router.get("/{run_id}")

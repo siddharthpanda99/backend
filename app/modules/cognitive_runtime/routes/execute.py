@@ -6,10 +6,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from common_lib.modules.cognitive_runtime.models.constraints import ExecutionConstraints
-from common_lib.modules.cognitive_runtime.services.runtime import CognitiveRuntime
+from app.modules.cognitive_runtime.routes._runtime import get_runtime
 
 router = APIRouter(prefix="/execute", tags=["Cognitive Execute"])
-_runtime = CognitiveRuntime()
+_runtime = get_runtime()
 
 
 class ExecuteRequest(BaseModel):
