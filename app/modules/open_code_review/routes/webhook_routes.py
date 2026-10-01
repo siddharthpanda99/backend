@@ -1,9 +1,12 @@
 """Code Review Webhook Routes."""
 
+import json
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlmodel import Session
 
 from common_lib.modules.integration.adapters.database_adapter import get_db_port
+from common_lib.modules.open_code_review.models import WebhookProvider
 from common_lib.modules.open_code_review.schemas import WebhookPayload
 from common_lib.modules.open_code_review.service import get_open_code_review_service
 
@@ -27,16 +30,23 @@ async def github_webhook(
     """Handle GitHub webhook events."""
     service = get_open_code_review_service(db)
     try:
-        payload = await request.json()
-        signature = (
-            x_hub_signature_256.replace("sha256=", "") if x_hub_signature_256 else None
-        )
+        # GitHub signs the exact bytes it sent; decode a copy and keep the raw
+        # body so the HMAC can actually be reproduced.
+        raw_body = await request.body()
+        payload = json.loads(raw_body or b"{}")
+        signature = x_hub_signature_256 or None
 
         result = service.process_webhook(
-            provider="github",
+            provider=WebhookProvider.GITHUB,
             event=x_github_event,
             payload=payload,
             signature=signature,
+            raw_body=raw_body,
+            # The full header set, not just the one signature. Without it the
+            # verifier can never see the legacy sha1 X-Hub-Signature header (a
+            # caller holding one string cannot express "which header was this"),
+            # nor any replay timestamp a reverse proxy added.
+            headers=dict(request.headers),
         )
         return result
     except Exception as e:
@@ -53,13 +63,19 @@ async def gitlab_webhook(
     """Handle GitLab webhook events."""
     service = get_open_code_review_service(db)
     try:
-        payload = await request.json()
+        raw_body = await request.body()
+        payload = json.loads(raw_body or b"{}")
 
         result = service.process_webhook(
-            provider="gitlab",
+            provider=WebhookProvider.GITLAB,
             event=x_gitlab_event,
             payload=payload,
             signature=x_gitlab_token,
+            raw_body=raw_body,
+            # X-Gitlab-Webhook-Timestamp (GitLab >= 16.9) lives in here. It is
+            # the only replay defence the GitLab scheme has, and it is
+            # unreachable without the full headers.
+            headers=dict(request.headers),
         )
         return result
     except Exception as e:
@@ -75,13 +91,19 @@ async def gerrit_webhook(
     """Handle Gerrit webhook events."""
     service = get_open_code_review_service(db)
     try:
-        payload = await request.json()
+        raw_body = await request.body()
+        payload = json.loads(raw_body or b"{}")
 
         result = service.process_webhook(
-            provider="gerrit",
+            provider=WebhookProvider.GERRIT,
             event=x_gerrit_event,
             payload=payload,
             signature=None,
+            raw_body=raw_body,
+            # Gerrit signs nothing, so the credential is the operator-supplied
+            # X-Gerrit-Token header (and any proxy-added X-Gerrit-Timestamp
+            # replay stamp). Both are only visible in the full header set.
+            headers=dict(request.headers),
         )
         return result
     except Exception as e:
