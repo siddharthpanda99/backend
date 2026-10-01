@@ -128,3 +128,45 @@ def test_the_module_list_covers_every_declared_fk_target():
             assert table in SQLModel.metadata.tables, (
                 f"{module_path} claims {table}, which is not in SQLModel.metadata"
             )
+
+
+def test_association_tables_are_created_in_a_bare_process():
+    """End-to-end in a FRESH interpreter that imports only the registrar.
+
+    This file imports `agents.agent.core.models` at module scope, which registers
+    the association tables as a side effect. That masked a real gap: with only
+    the FK *targets* registered, `create_all` reported zero unresolved FKs and
+    still silently omitted `agent_memories`, because the module declaring it had
+    never been imported. Registering targets is not enough -- the owners must be
+    registered too, or the tables are never created.
+
+    A subprocess is the only honest way to test this.
+    """
+    import subprocess
+    import sys
+
+    script = (
+        "import sys\n"
+        "sys.path.insert(0, '/home/siddharth/Documents/Dev/agentic-platform/"
+        "Backend Monorepo/Python Libs/common_lib/src')\n"
+        "from sqlmodel import SQLModel\n"
+        "from common_lib.modules.data_storage.database.model_registration import (\n"
+        "    FK_OWNER_MODULES, register_fk_target_models, unresolved_fks)\n"
+        "register_fk_target_models()\n"
+        "from sqlalchemy import create_engine, inspect\n"
+        "e = create_engine('sqlite://')\n"
+        "SQLModel.metadata.create_all(e, checkfirst=True)\n"
+        "present = set(inspect(e).get_table_names())\n"
+        "owners = {t for v in FK_OWNER_MODULES.values() for t in v}\n"
+        "print('MISSING=' + ','.join(sorted(owners - present)))\n"
+        "print('UNRESOLVED=' + str(len(unresolved_fks())))\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=300
+    )
+    assert proc.returncode == 0, proc.stderr[-800:]
+    out = proc.stdout
+    missing = out.split("MISSING=")[1].splitlines()[0].strip()
+    unresolved = out.split("UNRESOLVED=")[1].splitlines()[0].strip()
+    assert missing == "", f"association tables never created: {missing}"
+    assert unresolved == "0", f"{unresolved} unresolved FKs in a bare process"
