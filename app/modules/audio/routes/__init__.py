@@ -13,6 +13,7 @@ from app.modules.audio.routes.tts_stream import router as tts_stream_router
 from app.modules.audio.routes.system import router as system_router
 from app.modules.audio.routes.voice_gallery import router as voice_gallery_router
 from app.modules.audio.routes.capabilities import router as capabilities_router
+from app.modules.audio.routes.stories import router as stories_router
 
 # Merge takes routes into the main audio router under the same prefix
 # The takes_router has sub-path /generate, /takes/*, etc.
@@ -153,8 +154,17 @@ except ImportError as _wf_import_error:  # pragma: no cover
 for route in capabilities_router.routes:
     main_router.routes.append(route)
 
+# Merge audio-story routes at root. stories_router declares its paths with no
+# prefix of its own (/stories, /stories/{story_id}, /stories/{story_id}/items/...),
+# so they are appended verbatim and surface as /api/v1/audio/stories/* — the paths
+# the frontend already calls via API_ENDPOINTS.AUDIO.STORIES in
+# platform-demo/libs/ui/common/src/configs/api.ts. These 11 handlers were dead
+# (declared, never mounted) because this merge step was missing; see
+# docs/duplication-audit/DEAD-ROUTES.md.
+for route in stories_router.routes:
+    main_router.routes.append(route)
+
 __all__ = ["router"]
 
 # Re-export main_router as router
 router = main_router
-

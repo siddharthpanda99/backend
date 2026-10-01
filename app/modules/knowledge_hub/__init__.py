@@ -14,6 +14,7 @@ from app.modules.knowledge_hub.routes.packets import router as packets_router
 from app.modules.knowledge_hub.routes.projects import router as projects_router
 from app.modules.knowledge_hub.routes.streaming import router as streaming_router
 from app.modules.knowledge_hub.routes.collections import router as collections_router
+from app.modules.knowledge_hub.routes.scrapers import router as scrapers_router
 
 __all__ = [
     "sources_router",
@@ -22,4 +23,5 @@ __all__ = [
     "projects_router",
     "streaming_router",
     "collections_router",
+    "scrapers_router",
 ]

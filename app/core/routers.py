@@ -271,6 +271,7 @@ def _knowledge_hub_entries(api_prefix: str) -> list:
         projects_router as kh_projects_router,
         streaming_router,
         collections_router,
+        scrapers_router,
     )
 
     # NOTE: `module` below is the load-time pruning key. These routers live in the
@@ -324,6 +325,19 @@ def _knowledge_hub_entries(api_prefix: str) -> list:
             "router": collections_router,
             "prefix": "",
             "tags": ["Knowledge Hub — Collections"],
+            "auth": True,
+            "module": "knowledge_engine",
+            "feature_flag": "knowledge_engine",
+        },
+        # Scrapers (ScraperConfig CRUD + run/pause/resume/preview) were declared
+        # but absent from both this list and the knowledge_hub package __init__,
+        # so all 9 handlers 404'd. ScraperService implements every method the
+        # handlers call. The router bakes in its own "/knowledge-hub" prefix, so
+        # the entry prefix stays "". See docs/duplication-audit/DEAD-ROUTES.md.
+        {
+            "router": scrapers_router,
+            "prefix": "",
+            "tags": ["Knowledge Hub — Scrapers"],
             "auth": True,
             "module": "knowledge_engine",
             "feature_flag": "knowledge_engine",
