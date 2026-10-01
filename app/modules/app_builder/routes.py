@@ -738,15 +738,30 @@ async def seed_builder_data(
     """Seed demo presets and design tokens for an app."""
     p_created, p_existing = seed_demo_presets(db, app_id)
     t_created, t_existing = seed_demo_tokens(db, app_id)
-    presets_count = p_created or p_existing
-    t_count = t_created or t_existing
-    
+
+    # ``seed_*`` returns (created, already_present). Reporting the second value
+    # as though it were the first claimed "Seeded 34 presets" on a call that
+    # inserted no rows, and counted the app's *unrelated* user presets towards
+    # it. Report what this call actually did, and surface the pre-existing rows
+    # under their own keys.
+    if p_created or t_created:
+        message = (
+            f"Seeded {p_created} presets and {t_created} tokens for app '{app_id}'"
+        )
+    else:
+        message = (
+            f"No demo data seeded for app '{app_id}' -- already present "
+            f"({p_existing} presets, {t_existing} tokens)"
+        )
+
     return APIResponse(
         status="success",
-        message=f"Seeded {presets_count} presets and {t_count} tokens for app '{app_id}'",
+        message=message,
         data={
-            "presets_count": presets_count,
-            "tokens_count": t_count,
+            "presets_created": p_created,
+            "tokens_created": t_created,
+            "presets_existing": p_existing,
+            "tokens_existing": t_existing,
         },
     )
 
