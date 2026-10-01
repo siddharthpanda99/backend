@@ -28,12 +28,13 @@ platform already builds and owns.
 
 WHAT IS DELIBERATELY NOT HERE
 ─────────────────────────────
-425 owner classes with dotted ``@node`` methods take constructor arguments. Only the
-10 below are wired — 49 of the 2 105 nodes, which is the honest number, not a
-target. The rest fall into shapes that a shared instance would turn into a correctness
-bug, and are refused on purpose. Measured by resolving each constructor parameter to
-the attribute it is stored under and then reading how the class body consumes it
-(``/tmp`` script, AST + live import), not by reading parameter names:
+425 owner classes with dotted ``@node`` methods take constructor arguments. 10
+are wired below — 49 of the 2 105 nodes, which is the honest number, not a
+target. The rest fall into shapes that a shared instance would turn into a
+correctness bug, and are refused on purpose. Measured by resolving each
+constructor parameter to the attribute it is stored under and then reading how
+the class body consumes it (``/tmp`` script, AST + live import), not by reading
+parameter names:
 
 * **Live unit-of-work — 103 owners / 1 028 nodes.** ``APIKeyService(session: Session)``
   stores the session and calls ``self.session.commit()``. Registering one instance puts
@@ -64,10 +65,10 @@ when the registry has no entry, with the constructed instance discarded after th
 rather than kept alive — which also retires the keep-alive problem, since a
 request-scoped session would be closed rather than pinned.
 
-Scope: **424 owners / 2 056 nodes** (the 425 minus the 10 wired here, adjusted for the
-report's alias double-counting). Until that exists the honest answer for them is that
-their nodes stay advertised-but-uncallable, which is a known, bounded, documented gap
-rather than a silent one.
+Scope: **415 owners / 2 056 nodes** remain (the 425 minus the 10 wired here,
+adjusted for the report's alias double-counting). Until group A's mechanism exists
+the honest answer for them is that their nodes stay advertised-but-uncallable,
+which is a known, bounded, documented gap rather than a silent one.
 
 FOUND BUT NOT FIXED HERE
 ────────────────────────
@@ -96,11 +97,13 @@ TESTABILITY
 Importing this module constructs nothing and opens no session. ``STARTUP_INSTANCE_WIRINGS``
 is a plain tuple of frozen dataclasses, and ``register_startup_instances(table=...)``
 accepts a substitute, so the pass is testable with no database and no live infrastructure.
+
 """
 
 from __future__ import annotations
 
 import importlib
+import inspect
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -111,8 +114,124 @@ __all__ = [
     "InstanceWiring",
     "WiringReport",
     "STARTUP_INSTANCE_WIRINGS",
+    "live_session_attributes",
     "register_startup_instances",
 ]
+
+
+# ── the session-safety guard ──────────────────────────────────────────────
+#
+# THE ONE FAILURE MODE THAT MATTERS
+# ──────────────────────────────────
+# A registered instance is held for the process lifetime. If it holds a live ORM
+# session, a socket, or a credential handle, then every request of every tenant
+# shares one open transaction: uncommitted writes from one caller are visible to,
+# and committed by, another. That is a cross-tenant data leak, not a bug, and it
+# is the reason 103 owners / 1 028 nodes were refused earlier.
+#
+# So the guard is not "did construction succeed" — it is "does the resolved
+# object carry a live handle". It runs on the REAL instance, not on the
+# constructor signature, because a signature cannot see a session smuggled in
+# through a collaborator (``TraceRecorder._memory`` is a store; the store is what
+# holds the session). Hence the bounded walk into collaborator attributes.
+#
+# Factories are explicitly allowed. ``get_session`` is a callable that OPENS a
+# session per use; ``session=None`` is allowed; an ``Engine`` is a connection
+# pool, which is process-wide by design and is what ``DatabaseService`` already
+# relies on. What is refused is a bound *live* object under one of these names.
+
+#: Attribute names that, when bound to a live object, mean a shared unit of work.
+SESSION_SENSITIVE_ATTRS: Tuple[str, ...] = (
+    "session",
+    "db_session",
+    "_session",
+    "_db_session",
+    "conn",
+    "connection",
+    "_conn",
+    "_connection",
+    "db",
+    "_db",
+    "engine",
+    "_engine",
+)
+
+#: How deep to walk into collaborator attributes. 1 is enough for the shapes
+#: here (``owner -> store -> session``); 2 would start traversing genuinely
+#: unbounded object graphs (plugin contexts, registries) for no extra safety,
+#: because a collaborator that itself holds a session is caught at depth 1.
+_SESSION_WALK_DEPTH = 1
+
+#: Attribute values that are never a live handle even under a sensitive name.
+_SESSION_SAFE_TYPES = (str, bytes, int, float, bool, complex, type(None))
+
+
+def _is_live_handle(value: Any) -> bool:
+    """Whether ``value`` is a bound object rather than a factory or an empty slot.
+
+    ``None`` and ``""`` are empty slots. A callable is a factory: ``get_session``
+    opens a session when *called*, which is the whole point of the DI shape. A
+    class or module is metadata. Everything else is an object that could be, or
+    could carry, a live handle.
+    """
+    if value is None:
+        return False
+    if isinstance(value, _SESSION_SAFE_TYPES):
+        return False
+    if isinstance(value, str) and not value.strip():
+        return False
+    if callable(value) and not isinstance(value, type):
+        return False
+    if isinstance(value, type):
+        return False
+    if inspect.ismodule(value):
+        return False
+    return True
+
+
+def live_session_attributes(instance: Any) -> Dict[str, str]:
+    """Return ``{attribute_path: type_name}`` for every live sensitive attribute.
+
+    Walks ``instance.__dict__`` and, one level in, the ``__dict__`` of each
+    collaborator it holds. The second level is not defensive padding: the owners
+    wired here are wrappers (``TraceRecorder._memory``,
+    ``WorkflowConfigService._common_memory``, ``EntitySyncManager.memory``) and it
+    is the *collaborator* that holds the session. Stopping at depth 0 would pass
+    every one of them.
+
+    Args:
+        instance: The resolved instance to inspect. Not the class.
+
+    Returns:
+        Mapping of dotted attribute path to the offending value's type name.
+        Empty when the instance is safe to share, which is the only case in which
+        it may be registered.
+    """
+    offenders: Dict[str, str] = {}
+    seen: set = set()
+
+    def _walk(obj: Any, prefix: str, depth: int) -> None:
+        if depth > _SESSION_WALK_DEPTH:
+            return
+        marker = id(obj)
+        if marker in seen:
+            return
+        seen.add(marker)
+        try:
+            attributes = vars(obj)
+        except TypeError:
+            return
+        for name, value in list(attributes.items()):
+            if not isinstance(name, str):
+                continue
+            path = f"{prefix}{name}"
+            if name in SESSION_SENSITIVE_ATTRS and _is_live_handle(value):
+                offenders[path] = type(value).__name__
+            if depth < _SESSION_WALK_DEPTH:
+                _walk(value, f"{path}.", depth + 1)
+
+    _walk(instance, "", 0)
+    return offenders
 
 
 @dataclass(frozen=True)
@@ -266,6 +385,7 @@ STARTUP_INSTANCE_WIRINGS: Tuple[InstanceWiring, ...] = (
         ),
         nodes=3,
     ),
+    # ── group B: injected dependencies (factories / configs / registries) ──
 )
 
 
@@ -398,6 +518,44 @@ def _build_story_service() -> Any:
     return StoryService(_get_stories_service)
 
 
+# ── group B: injected dependencies ───────────────────────────────────────
+#
+# The owners below take a *factory, a config, a registry, or a store handle* —
+# never a session. That distinction is the whole basis for registering them:
+# a factory opens its unit of work per call, so nothing about one caller's
+# request can be observed by another. See ``live_session_attributes`` for the
+# guard that enforces it at registration time.
+#
+# The shared memory store is built ONCE and handed to each owner, so every
+# wrapper below reaches the same underlying store through a session factory
+# rather than each capturing its own.
+
+_MEMORY_STORE: Any = None
+
+
+def _shared_memory_store() -> Any:
+    """The process-wide ``SQLAlchemyMemoryStore``, built on a session FACTORY.
+
+    Constructed with ``session_factory=get_session`` rather than a ``db_url``,
+    which is what makes it shareable: ``db_url`` would ``create_engine`` and
+    store the Engine (and, via ``_db_url``, a live connection string) on the
+    instance, and every method would then share one store's identity. With a
+    factory, ``SQLAlchemyMemoryStore._db_session`` opens and closes a session
+    per call -- the same DI shape ``ConfigsService`` already relies on.
+
+    Cached so the wrappers below share one store rather than N equivalent ones.
+    """
+    global _MEMORY_STORE
+    if _MEMORY_STORE is None:
+        from common_lib.modules.data_storage.database.connection import get_session
+        from common_lib.modules.orchestration.context.memory.services import (
+            SQLAlchemyMemoryStore,
+        )
+
+        _MEMORY_STORE = SQLAlchemyMemoryStore(session_factory=get_session)
+    return _MEMORY_STORE
+
+
 # ── the pass ───────────────────────────────────────────────────────────────
 
 
@@ -506,6 +664,7 @@ def register_startup_instances(
         disabled, and what failed.
     """
     from common_lib.modules.common.instance_registry import (
+        InstanceRegistryConflictError,
         get_instance,
         register_instance,
     )
@@ -557,7 +716,51 @@ def register_startup_instances(
         try:
             source = _resolve_dotted(wiring.source)
             instance = source()
+        except Exception as exc:  # noqa: BLE001 - one bad class must not abort startup
+            reason = f"{type(exc).__name__}: {exc}"
+            report.failed[wiring.owner] = reason
+            logger.warning(
+                "[NodeInstances] could not construct %s from %s -- %s. "
+                "Its %d node(s) stay advertised but uncallable; startup continues.",
+                wiring.owner,
+                wiring.source,
+                reason,
+                wiring.nodes,
+            )
+            continue
+
+        # THE GUARD. Refuse before registering, not after: a registered instance
+        # is pinned for the process lifetime, so an unsafe one is worse than an
+        # absent one — it makes the leak permanent and invisible.
+        offenders = live_session_attributes(instance)
+        if offenders:
+            detail = ", ".join(
+                f"{path}={kind}" for path, kind in sorted(offenders.items())
+            )
+            report.failed[wiring.owner] = f"holds a live DB handle: {detail}"
+            logger.error(
+                "[NodeInstances] REFUSING %s -- the constructed instance holds a live "
+                "database handle (%s). A process-wide singleton would put one open "
+                "transaction behind every request of every tenant. Not registered.",
+                wiring.owner,
+                detail,
+            )
+            continue
+
+        try:
             register_instance(owner_cls, instance)
+        except InstanceRegistryConflictError as exc:
+            # A *different* instance is already bound. Registering ours would
+            # swap a live object out from under in-flight calls, and the registry
+            # is right to refuse. Record and move on rather than crash startup.
+            reason = f"{type(exc).__name__}: {exc}"
+            report.failed[wiring.owner] = reason
+            logger.warning(
+                "[NodeInstances] could not register %s -- %s",
+                wiring.owner,
+                reason,
+            )
+            continue
         except Exception as exc:  # noqa: BLE001 - one bad class must not abort startup
             reason = f"{type(exc).__name__}: {exc}"
             report.failed[wiring.owner] = reason
