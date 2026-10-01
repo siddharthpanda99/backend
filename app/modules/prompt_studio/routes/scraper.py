@@ -34,9 +34,14 @@ async def scrape(req: ScrapeRequest):
                 result.get("error"),
             )
             if req.action == "search":
+                # A failed search is NOT an empty result set. Report the failure
+                # so a caller trusting `success` cannot mistake "the scrape
+                # broke" for "there are no prompts".
                 return {
-                    "success": True,
+                    "success": False,
                     "prompts": [],
+                    "posts": [],
+                    "subreddits": [],
                     "count": 0,
                     "error": result.get("error"),
                 }
@@ -55,7 +60,15 @@ async def scrape(req: ScrapeRequest):
             exc_info=True,
         )
         if req.action == "search":
-            return {"success": True, "prompts": [], "count": 0, "error": str(e)}
+            # Same reasoning as above: surface the failure, do not fake success.
+            return {
+                "success": False,
+                "prompts": [],
+                "posts": [],
+                "subreddits": [],
+                "count": 0,
+                "error": str(e),
+            }
         raise HTTPException(status_code=500, detail=str(e))
 
 
