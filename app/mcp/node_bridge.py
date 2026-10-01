@@ -225,11 +225,22 @@ def _bind_instance(module, qualname: str, func: Any) -> Any:
     # before any of its own code runs, so no amount of implicit construction
     # helps those 2 105 nodes.
     instance = _instance_from_registry(owner)
-    if instance is None and _BINDING_ENABLED():
+    if (
+        instance is None
+        and _BINDING_ENABLED()
+        and not _opts_out_of_implicit_construction(owner)
+    ):
         try:
             instance = owner()
-        except Exception:  # noqa: BLE001 - any constructor failure must not regress
-            return func
+        except Exception:  # noqa: BLE001
+            # Fall through to the diagnosable stand-in below rather than
+            # returning `func`. Returning the unbound function here would hand
+            # the caller the bare "missing 1 required positional argument:
+            # 'self'" TypeError -- the exact symptom this path exists to
+            # replace -- and would say nothing about why the owner could not be
+            # built. `describe_unregistered_owner` names the real cause,
+            # including which constructor arguments are required.
+            instance = None
     if instance is None:
         return _unavailable(owner, method_name)
 
@@ -246,12 +257,33 @@ def _bind_instance(module, qualname: str, func: Any) -> Any:
 
 
 def _BINDING_ENABLED() -> bool:
-    """Whether implicit construction of an unregistered owner is permitted."""
-    return os.environ.get("MCP_BIND_NODE_INSTANCES", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
+    """Whether implicit construction of an unregistered owner is permitted.
+
+    DEFAULT ON. This was default OFF because instantiating a service class may
+    open a DB session or have other side effects, and that is not a decision to
+    take implicitly on ~9 500 call sites. Two facts have since changed it:
+
+    1. `instance_registry` is consulted FIRST, so anything the application
+       supplies is used regardless of this gate. Only owners nobody registered
+       are constructed implicitly.
+    2. The dangerous classes take a `session` (or similar) in their constructor,
+       so `owner()` raises on them and they are never constructed implicitly at
+       all. Measured: 103 owners / 1 028 nodes were refused registration for
+       exactly this reason -- a singleton session behind a node reachable from
+       every request is a cross-tenant leak, not a bug.
+
+    What remains is a narrower, enumerable case: a NO-ARG class that opens a
+    session or socket itself. A blanket-off cannot distinguish those from the
+    ~9 400 that are safe, so it hid 9 400 working tools to protect a handful.
+    Those classes now opt out explicitly via `__node_no_implicit_instance__`.
+
+    Set MCP_BIND_NODE_INSTANCES=0 for a fully conservative instance.
+    """
+    return os.environ.get("MCP_BIND_NODE_INSTANCES", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
     )
 
 
@@ -259,6 +291,17 @@ def _instance_from_registry(owner: Any) -> Any:
     """Look up an explicitly registered instance for ``owner``, or None."""
     resolve = _RESOLVE_INSTANCE
     return None if resolve is None else resolve(owner)
+
+
+def _opts_out_of_implicit_construction(owner: Any) -> bool:
+    """Whether ``owner`` declares it must not be constructed implicitly.
+
+    Set ``__node_no_implicit_instance__ = True`` on a no-arg class that opens a
+    DB session, binds a socket, or otherwise has a side effect in ``__init__``.
+    Such a class is reachable through the bridge, so without this it would be
+    constructed once per process and pinned alive by the keep-alive list.
+    """
+    return bool(getattr(owner, "__node_no_implicit_instance__", False))
 
 
 def _unavailable(owner: Any, method_name: str) -> Any:

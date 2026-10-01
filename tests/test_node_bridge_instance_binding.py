@@ -97,10 +97,15 @@ class Outer:
 
 
 def _enabled(monkeypatch, on: bool):
-    if on:
-        monkeypatch.setenv("MCP_BIND_NODE_INSTANCES", "1")
-    else:
-        monkeypatch.delenv("MCP_BIND_NODE_INSTANCES", raising=False)
+    """Express the gate in its current vocabulary.
+
+    Binding now DEFAULTS ON -- it was flipped so that ~9 400 dotted methods stop
+    being advertised as callable while every call raised a missing-'self'
+    TypeError. The opt-out is an explicit MCP_BIND_NODE_INSTANCES=0, so "off"
+    is now a positive value, not an absent one. Deleting the variable now means
+    ON, which is the opposite of what this helper's callers intend.
+    """
+    monkeypatch.setenv("MCP_BIND_NODE_INSTANCES", "1" if on else "0")
 
 
 # ── the detector ─────────────────────────────────────────────────────────────
@@ -150,11 +155,32 @@ def test_plain_functions_are_untouched_by_the_flag(monkeypatch):
 def test_constructor_failure_falls_back_rather_than_raising(monkeypatch):
     """A class needing constructor args must not break the handler build.
 
-    Falling back means the caller sees the pre-existing TypeError, not a new one.
+    The original assertion here was that the bridge hands back the *unbound
+    function*, so the caller sees the pre-existing ``TypeError: ping() missing 1
+    required positional argument: 'self'``. That checked the mechanism rather
+    than the requirement, and it pinned the bad symptom: a bare TypeError names
+    a missing argument and says nothing about the missing registration or the
+    constructor signature.
+
+    The real requirement is only that handler construction must not raise.
+    Returning a stand-in that raises a diagnosable RuntimeError at CALL time
+    satisfies that strictly better, so this asserts the requirement directly.
     """
     _enabled(monkeypatch, True)
     resolved = _resolve_callable(MODULE, "NeedsArgs.ping")
-    assert _looks_unbound(resolved) is True, "should have fallen back to unbound"
+
+    # Building the handler must not raise -- the original guarantee.
+    assert (
+        _build_handler(_Info("NeedsArgs.ping", {"name": {"type": "string"}}))
+        is not None
+    )
+
+    # Calling it explains the cause instead of naming a missing 'self'.
+    with pytest.raises(RuntimeError) as exc:
+        resolved(name="a")
+    message = str(exc.value)
+    assert "positional argument" not in message, message
+    assert "NeedsArgs" in message
 
 
 def test_unresolvable_qualname_still_raises_at_resolution(monkeypatch):
