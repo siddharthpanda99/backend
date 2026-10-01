@@ -523,6 +523,17 @@ STARTUP_INSTANCE_WIRINGS: Tuple[InstanceWiring, ...] = (
         nodes=15,
     ),
     InstanceWiring(
+        owner="common_lib.modules.plugins.plugin_service.PluginService",
+        source="app.core.node_instances:_build_plugin_service",
+        module="plugins",
+        rationale=(
+            "common_memory is the same factory-backed store; templates_root is the "
+            "platform's discovered-tools template directory. Reads plugin/tool YAML "
+            "from that directory and never writes to it. No session is retained."
+        ),
+        nodes=4,
+    ),
+    InstanceWiring(
         owner=(
             "common_lib.modules.memory.memory_adaptation.bandit.adapter"
             ".OnlineBanditAdapter"
@@ -790,6 +801,19 @@ def _build_entity_sync_manager() -> Any:
         memory_store=_shared_memory_store(),
         templates_root=str(COMMON_LIB_TEMPLATES),
     )
+
+
+def _build_plugin_service() -> Any:
+    """``PluginService(common_memory, templates_root)`` — 4 nodes.
+
+    ``templates_root`` is the discovered-tools template directory; the service
+    only reads YAML from it via ``self._templates_root / f"{node_id}.tool.yaml"``
+    and never writes.
+    """
+    from common_lib.modules.plugins.plugin_service import PluginService
+    from common_lib.paths import PLUGINS_TEMPLATES_ROOT
+
+    return PluginService(_shared_memory_store(), PLUGINS_TEMPLATES_ROOT)
 
 
 def _build_plugin_loader() -> Any:
