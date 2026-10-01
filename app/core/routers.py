@@ -48,6 +48,12 @@ from typing import Any, List
 
 from fastapi import FastAPI
 
+from app.core.router_hot_mount import (
+    mount_router_entry,
+    remember_definitions,
+    remember_mount_context,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,6 +76,12 @@ def _layouts_router():
 
 def _cognitive_runtime_router():
     from app.modules.cognitive_runtime.routes import router
+
+    return router
+
+
+def _flag_change_listener_router():
+    from app.core.flag_change_listener import router
 
     return router
 
@@ -1490,6 +1502,16 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["System"],
             "auth": True,
         },
+        # Feature-flag write + live router reconcile. Declares no `module`/
+        # `feature_flag`, so it is always mounted — including when every prunable
+        # module is off. That is deliberate: it is the surface that turns them back
+        # on, so gating it would let a bad flag write brick the recovery path.
+        {
+            "router": _flag_change_listener_router(),
+            "prefix": "/system",
+            "tags": ["Feature Flags"],
+            "auth": True,
+        },
         {
             "router": app_ops_router,
             "prefix": "",
@@ -2299,13 +2321,22 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
         )
         active_definitions = ROUTER_DEFINITIONS
 
-    for entry in active_definitions:
-        router = entry["router"]
-        prefix = f"{api_prefix}{entry['prefix']}"
-        tags = entry.get("tags", [])
-        deps = global_deps if entry.get("auth", True) else []
+    # Remember the unpruned list on the app so a runtime feature-flag change can
+    # re-evaluate it and hot-mount what became enabled (see app/core/router_hot_mount.py).
+    remember_definitions(app, ROUTER_DEFINITIONS)
+    remember_mount_context(app, api_prefix, global_deps)
 
-        app.include_router(router, prefix=prefix, tags=tags, dependencies=deps)
+    # Mount by position in the *unpruned* list so the idempotency key matches the one
+    # `reconcile_router_mounts` derives later. Identity (not equality) marks membership:
+    # `in` on a dict list is an O(n^2) deep compare and two distinct entries could compare
+    # equal.
+    active_ids = {id(e) for e in active_definitions}
+    for position, entry in enumerate(ROUTER_DEFINITIONS):
+        if id(entry) not in active_ids:
+            continue
+        mount_router_entry(
+            app, entry, api_prefix, global_deps, live=False, position=position
+        )
 
     # FastAPI wraps `app.router.lifespan_context` on every `include_router`, creating a 225-level
     # deep nested `_merge_lifespan_context` generator chain even though sub-routers only have a
