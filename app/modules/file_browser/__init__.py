@@ -816,8 +816,14 @@ async def verify_signed_url_handler(token: str):
 
 @router.delete("/signed/{token}", response_model=ApiResponse)
 async def revoke_signed_url_handler(token: str):
-    """Revoke a pre-signed URL."""
-    revoke_signed_url(token)
+    """Revoke a pre-signed URL.
+
+    Reports failure when no such token existed. It previously returned
+    success=True unconditionally, so a caller could not tell a real revocation
+    from a typo.
+    """
+    if not revoke_signed_url(token):
+        raise HTTPException(status_code=404, detail="Token not found")
     return ApiResponse(success=True)
 
 
@@ -886,6 +892,11 @@ async def encrypt_file_handler(file_id: str):
     result = encrypt_file(file_id)
     if not result:
         raise HTTPException(status_code=404, detail="File not found")
+    # encrypt_file signals a refusal with {"error": ...}, which is truthy, so the
+    # `if not result` check above cannot see it. Surface it as a 409 instead of
+    # returning HTTP 200 with an error buried in the body.
+    if "error" in result:
+        raise HTTPException(status_code=409, detail=result["error"])
     return result
 
 
@@ -896,4 +907,9 @@ async def decrypt_file_handler(file_id: str):
     result = decrypt_file(file_id)
     if not result:
         raise HTTPException(status_code=404, detail="File not found")
+    # Same shape as encrypt: {"error": ...} is truthy. Decryption failures are
+    # 422 (the bytes are present but unreadable), "not encrypted" is 409.
+    if "error" in result:
+        status = 422 if "Decryption failed" in result["error"] else 409
+        raise HTTPException(status_code=status, detail=result["error"])
     return result

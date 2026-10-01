@@ -100,15 +100,6 @@ async def get_stats_handler():
     return get_macro_stats()
 
 
-@router.get("/{macro_id}", response_model=MacroResponse)
-async def get_macro_handler(macro_id: str):
-    """Get a macro by ID."""
-    result = get_macro(macro_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Macro not found")
-    return MacroResponse(**result)
-
-
 @router.get("/{macro_id}/actions", response_model=List[MacroActionResponse])
 async def get_macro_actions_handler(macro_id: str):
     """Get all actions for a macro."""
@@ -349,3 +340,20 @@ async def delete_schedule_handler(schedule_id: str):
     """Delete a schedule."""
     ok = delete_schedule(schedule_id)
     return ApiResponse(success=ok)
+
+
+# NOTE: `GET /{macro_id}` is declared LAST, after every literal sibling route.
+# Starlette matches routes in declaration order, so declaring it earlier made it
+# swallow `GET /action-types`, `GET /executions` and `GET /schedules` -- those
+# three returned the macro whose id was the literal string "action-types" etc.
+# Do not move this route above a literal GET sibling. The regression test is
+# Backend/tests/file_browser/test_macro_route_shadowing.py.
+
+
+@router.get("/{macro_id}", response_model=MacroResponse)
+async def get_macro_handler(macro_id: str):
+    """Get a macro by ID."""
+    result = get_macro(macro_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Macro not found")
+    return MacroResponse(**result)
