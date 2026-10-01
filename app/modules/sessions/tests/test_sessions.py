@@ -63,13 +63,23 @@ class TestSessionService:
         assert isinstance(result, dict)
         assert "message" in result
 
-    def test_get_current_session_returns_response(self):
-        from common_lib.modules.auth.sessions.service import session_service
-        from common_lib.modules.auth.sessions.schemas import SessionResponse
+    def test_get_current_session_rejects_an_unmatched_token(self):
+        """An unmatched token is not a session, so the lookup must refuse.
 
-        result = session_service.get_current_session("token-123")
-        assert isinstance(result, SessionResponse)
-        assert result.is_current == True
+        This test previously asserted the opposite: that
+        ``get_current_session("token-123")`` returned a ``SessionResponse`` with
+        ``is_current == True``. That is the fail-open defect itself — the service
+        invented ``SessionResponse(id="", is_current=True)`` for any token, and
+        ``is_current`` is exactly the field a caller trusts. Asserting it would
+        have asserted the vulnerability, so the test now asserts the corrected
+        behaviour: a token matching no active session is rejected.
+        """
+        import pytest
+
+        from common_lib.modules.auth.sessions.service import session_service
+
+        with pytest.raises(PermissionError):
+            session_service.get_current_session("token-123")
 
 
 class TestSessionSchemas:
