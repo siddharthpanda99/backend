@@ -10,10 +10,14 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from common_lib.modules.core_infrastructure.sandbox.sandbox_service import get_sandbox_service
+from common_lib.modules.core_infrastructure.sandbox.sandbox_service import (
+    SandboxIsolationError,
+    get_sandbox_service,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sandbox", tags=["Sandbox"])
@@ -69,6 +73,9 @@ class HealthResponse(BaseModel):
     healthy: bool
     provider: str = "unknown"
     sessions_active: int = 0
+    #: Why isolation could not be honoured, when it could not. Additive and
+    #: optional, so existing consumers of this response are unaffected.
+    detail: str | None = None
 
 
 # ─── Routes ─────────────────────────────────────────────────────────
@@ -206,10 +213,39 @@ async def get_session(session_id: str):
 
 @router.get("/health", response_model=HealthResponse)
 async def sandbox_health():
-    """Check sandbox provider health."""
+    """Check sandbox provider health.
+
+    Returns **503** when the requested isolation cannot be honoured, not 500 and
+    not 200. The distinction is operational, not cosmetic:
+
+    * 500 says "this service is broken", which restarts the whole app
+    * 200 + ``healthy=false`` says "ready", which keeps routing traffic to an
+      instance that cannot execute anything it was asked to execute
+    * 503 says "this subsystem is unavailable", which is the truth and is what a
+      readiness probe should act on
+
+    ``initialize()`` now raises ``SandboxIsolationError`` instead of silently
+    substituting a weaker provider, so without this the endpoint would 500 on any
+    host without a Docker daemon.
+    """
     svc = get_sandbox_service()
-    if not svc._initialized:
-        await svc.initialize()
+    isolation_error: str | None = None
+    try:
+        if not svc._initialized:
+            await svc.initialize()
+    except SandboxIsolationError as exc:
+        isolation_error = str(exc)
+
+    if isolation_error is not None:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=HealthResponse(
+                healthy=False,
+                provider="unavailable",
+                sessions_active=0,
+                detail=isolation_error,
+            ).model_dump(),
+        )
 
     healthy = await svc.health_check()
     sessions = await svc.list_sessions()
