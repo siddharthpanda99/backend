@@ -26,10 +26,34 @@ keeps this file free of business imports (importing a service here would drag it
 startup whether or not its module is enabled) and lets a source return an instance the
 platform already builds and owns.
 
+GROUP B — INJECTED DEPENDENCIES
+───────────────────────────────
+The largest group of *currently unreachable* nodes, and the cheapest win, because
+it needs no new mechanism. Measured by required-parameter shape, 2 105 nodes /
+425 owners need an instance, and they fall into three groups that must not be
+confused (``docs/duplication-audit/REQUEST-SCOPED-SESSIONS.md`` §"Three groups"):
+
+* **Group A — 1 109 nodes / 110 owners** take a live ``session``. Needs a
+  per-request session mechanism that does not exist. NOT here.
+* **Group B — ~1 000 nodes** take an **injected dependency**: a session
+  *factory*, a config object, a registry, or a store handle. A factory opens its
+  unit of work per call, so an instance holding one is stateless with respect to
+  any individual request and is a **safe singleton**. This is what the wiring
+  below exists for. 9 owners / 91 nodes are wired here.
+* **Group C — ~112 nodes** are true per-request data carriers (``APIExtractNode
+  (node_id, name)``, ``Chunk(content, index)``). Need a tool-signature change.
+  NOT here.
+
+The distinction between A and B is invisible from a constructor signature: both
+read ``store: SomeType``. It is visible on the resolved object, which is why
+:func:`live_session_attributes` runs at registration and **refuses** an instance
+that carries a live handle rather than merely logging it. A registered instance
+is pinned for the process lifetime, so an unsafe one is worse than an absent one.
+
 WHAT IS DELIBERATELY NOT HERE
 ─────────────────────────────
-425 owner classes with dotted ``@node`` methods take constructor arguments. 10
-are wired below — 49 of the 2 105 nodes, which is the honest number, not a
+425 owner classes with dotted ``@node`` methods take constructor arguments. 19
+are wired below — 140 of the 2 105 nodes, which is the honest number, not a
 target. The rest fall into shapes that a shared instance would turn into a
 correctness bug, and are refused on purpose. Measured by resolving each
 constructor parameter to the attribute it is stored under and then reading how
@@ -65,14 +89,14 @@ when the registry has no entry, with the constructed instance discarded after th
 rather than kept alive — which also retires the keep-alive problem, since a
 request-scoped session would be closed rather than pinned.
 
-Scope: **415 owners / 2 056 nodes** remain (the 425 minus the 10 wired here,
+Scope: **406 owners / 1 965 nodes** remain (the 425 minus the 19 wired here,
 adjusted for the report's alias double-counting). Until group A's mechanism exists
 the honest answer for them is that their nodes stay advertised-but-uncallable,
 which is a known, bounded, documented gap rather than a silent one.
 
 FOUND BUT NOT FIXED HERE
 ────────────────────────
-Three of the 49 nodes on the wired owners are ``@node`` stacked on a ``@property``
+Three of the 140 nodes on the wired owners are ``@node`` stacked on a ``@property``
 (``DatabaseConfig.database_url``, ``DatabaseConfig.connection_args``,
 ``DatabaseService.engine``). They are discovered, because the decorator metadata lands
 on the property's ``fget``, but ``_bind_instance`` is never reached: the bridge
@@ -83,7 +107,24 @@ help — the failure is upstream of the registry. Fixing it means changing how
 ``_resolve_func``/``_bind_instance`` treat descriptors, which lives in
 ``app/mcp/node_bridge.py`` and belongs to whoever owns that file. The ``nodes`` counts
 below include these three, because they are genuinely advertised; the runtime figure
-for *method-form* nodes bound clean is 46.
+for *method-form* nodes bound clean is 137.
+
+PRE-EXISTING BODY BUGS FOUND WHILE VERIFYING (not fixed here — module source is
+read-only for the wiring pass)
+──────────────────────────────────────────────────────────────────────────
+Reaching these nodes for the first time surfaced three defects that are *upstream*
+of the registry and would be reported as "broken nodes" by anyone invoking them.
+Both reproduce with no bridge, no registry and a directly-constructed
+instance, so they are not caused by the wiring:
+
+* ``common_lib/modules/plugins/plugin_service.py:288`` — ``delete_plugin`` calls
+  ``self._common_memory.delete_plugin_definition(plugin_id)``;
+  ``SQLAlchemyMemoryStore`` has no such method. 1 node raises
+  ``AttributeError`` on every call.
+* ``common_lib/modules/orchestration/infrastructure/sync/consistency.py:117``
+  writes ``report.files_without_entities``, but ``ConsistencyReport``
+  (``orchestration/schemas/artifact_schemas.py:276``) has no such field.
+  ``EntitySyncManager.verify_consistency`` raises ``AttributeError``.
 
 ORDER MATTERS
 ─────────────
@@ -98,6 +139,18 @@ Importing this module constructs nothing and opens no session. ``STARTUP_INSTANC
 is a plain tuple of frozen dataclasses, and ``register_startup_instances(table=...)``
 accepts a substitute, so the pass is testable with no database and no live infrastructure.
 
+NO LIVE DATABASE
+────────────────
+No source here opens a connection, and none of them can: the store-backed sources
+take ``session_factory=get_session``, which is *called* per use rather than being
+called now, so wiring is pure construction. The group-B store is cached on the
+module (``_MEMORY_STORE``) so the wrappers reach one store rather than N
+equivalent ones; a test needing a clean build resets that attribute.
+End-to-end verification uses a temp-file SQLite engine, never the platform's
+configured database.
+
+See ``tests/test_node_instance_wiring_group_b.py`` for the guard, its three
+neutering proofs, and the per-owner callability checks.
 """
 
 from __future__ import annotations
@@ -386,6 +439,76 @@ STARTUP_INSTANCE_WIRINGS: Tuple[InstanceWiring, ...] = (
         nodes=3,
     ),
     # ── group B: injected dependencies (factories / configs / registries) ──
+    InstanceWiring(
+        owner=(
+            "common_lib.modules.orchestration.agents.agent.tracing.service"
+            ".TraceRecorder"
+        ),
+        source="app.core.node_instances:_build_trace_recorder",
+        module="orchestration",
+        rationale=(
+            "Takes a memory STORE built on a session factory, not a session. Every "
+            "method delegates to store.<x>(), which opens and closes its own session "
+            "per call. The recorder holds no cursor, no session and no caller "
+            "identity; the trace ids it writes are supplied per call as arguments. "
+            "Largest single group-B owner."
+        ),
+        nodes=30,
+    ),
+    InstanceWiring(
+        owner=(
+            "common_lib.modules.orchestration.agents.agent.tracing.cost_service"
+            ".AgentCostService"
+        ),
+        source="app.core.node_instances:_build_agent_cost_service",
+        module="orchestration",
+        rationale=(
+            "Wraps a TraceRecorder over the same factory-backed store. Pure read-side "
+            "aggregation (cost summaries, timelines, budget alerts) keyed by an "
+            "agent_id argument passed per call, so no request state is retained."
+        ),
+        nodes=6,
+    ),
+    InstanceWiring(
+        owner=(
+            "common_lib.modules.orchestration.agents.agent.versioning.service"
+            ".AgentVersionService"
+        ),
+        source="app.core.node_instances:_build_agent_version_service",
+        module="orchestration",
+        rationale=(
+            "Snapshot/list/diff/restore of agent definitions through the same "
+            "factory-backed store. The agent_id and version number are per-call "
+            "arguments; the service holds only the store."
+        ),
+        nodes=5,
+    ),
+    InstanceWiring(
+        owner="common_lib.modules.orchestration.infrastructure.sync.manager.EntitySyncManager",
+        source="app.core.node_instances:_build_entity_sync_manager",
+        module="orchestration",
+        rationale=(
+            "templates_root is the platform's own template directory, a deployment "
+            "constant. It derives a RegistrySearchService from the store's "
+            "_session_factory -- a factory, which search opens per call -- so "
+            "filesystem<->DB sync runs per invocation rather than under a shared "
+            "transaction."
+        ),
+        nodes=9,
+    ),
+    InstanceWiring(
+        owner="common_lib.modules.orchestration.plugin.loader.PluginLoader",
+        source="app.core.node_instances:_build_plugin_loader",
+        module="orchestration",
+        rationale=(
+            "Built over the plugin system's own process-wide context "
+            "(get_context()), which is what orchestration/plugin/__init__.py itself "
+            "uses. A loaded plugin is by definition process state -- loaded once, "
+            "served to every caller -- so a shared loader is the intended shape, "
+            "not a leak."
+        ),
+        nodes=11,
+    ),
 )
 
 
@@ -554,6 +677,76 @@ def _shared_memory_store() -> Any:
 
         _MEMORY_STORE = SQLAlchemyMemoryStore(session_factory=get_session)
     return _MEMORY_STORE
+
+
+def _build_trace_recorder() -> Any:
+    """``TraceRecorder(memory_store)`` — the single biggest group-B owner (30 nodes).
+
+    ``TraceRecorder`` stores the store and calls ``store.<method>()``; the store
+    opens a session per call from its factory. It commits nothing on ``self`` and
+    holds no cursor. 30 of the ~1 000 group-B nodes are this one class.
+    """
+    from common_lib.modules.orchestration.agents.agent.tracing.service import (
+        TraceRecorder,
+    )
+
+    return TraceRecorder(_shared_memory_store())
+
+
+def _build_agent_cost_service() -> Any:
+    """``AgentCostService(memory_store)`` — 6 nodes; wraps a ``TraceRecorder``.
+
+    The inner recorder is built over the same shared store, so this adds no
+    session of its own: the guard's depth-1 walk sees
+    ``_recorder._memory`` and confirms it carries only a factory.
+    """
+    from common_lib.modules.orchestration.agents.agent.tracing.cost_service import (
+        AgentCostService,
+    )
+
+    return AgentCostService(_shared_memory_store())
+
+
+def _build_agent_version_service() -> Any:
+    """``AgentVersionService(memory_store)`` — 5 nodes; snapshot/diff over the store."""
+    from common_lib.modules.orchestration.agents.agent.versioning.service import (
+        AgentVersionService,
+    )
+
+    return AgentVersionService(_shared_memory_store())
+
+
+def _build_entity_sync_manager() -> Any:
+    """``EntitySyncManager(memory_store, templates_root)`` — 9 nodes.
+
+    ``templates_root`` is the platform's own template directory (a deployment
+    constant). The manager derives a ``RegistrySearchService`` from the store's
+    ``_session_factory`` — again a factory, not a session — so its search
+    methods open their own.
+    """
+    from common_lib.modules.orchestration.infrastructure.sync.manager import (
+        EntitySyncManager,
+    )
+    from common_lib.paths import COMMON_LIB_TEMPLATES
+
+    return EntitySyncManager(
+        memory_store=_shared_memory_store(),
+        templates_root=str(COMMON_LIB_TEMPLATES),
+    )
+
+
+def _build_plugin_loader() -> Any:
+    """``PluginLoader(ctx)`` — 11 nodes, over the platform's global plugin context.
+
+    ``get_context()`` is the plugin system's own process-wide context (the same
+    object ``orchestration/plugin/__init__.py`` builds). The loader holds loaded
+    plugin objects and a load order — process state by definition, since a
+    plugin is loaded once and served to everyone.
+    """
+    from common_lib.modules.orchestration.plugin.context import get_context
+    from common_lib.modules.orchestration.plugin.loader import PluginLoader
+
+    return PluginLoader(get_context())
 
 
 # ── the pass ───────────────────────────────────────────────────────────────
