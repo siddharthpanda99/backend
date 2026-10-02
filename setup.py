@@ -13,7 +13,12 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "nexus=cli.main:cli",
+            # Repointed 2026-10-03 (CLI retirement) from `cli.main:cli`, which lived in
+            # the retired Backend/cli/ package, to the canonical CLI's runner. This is
+            # the same target common_lib/pyproject.toml declares as `cli`.
+            "nexus=common_lib.modules.cli.runtime.runner:main",
+            # `tests.test_crud:cli` is this test module's OWN click group (defined at
+            # tests/test_crud.py:552) — it never referenced Backend/cli/ and is unchanged.
             "nexus-test=tests.test_crud:cli",
         ],
     },

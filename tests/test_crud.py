@@ -103,13 +103,21 @@ class EntityCRUDTester:
         test_id = self._generate_test_id("agent")
 
         try:
-            # Use CLI command to create
-            from cli.agents import _create_executable_agent
+            # Use CLI command to create.
+            # Repointed 2026-10-03 from the retired `cli.agents._create_executable_agent`
+            # (Backend/cli/) to the canonical CLI's `create_agent_pack`, which is the
+            # same operation (scaffold an executable agent pack under
+            # templates/agents/<name>/) plus the pack subdirs and policy files.
+            from common_lib.modules.cli.agent_pack import create_agent_pack
 
-            templates_dir = self._get_templates_dir() / "agents"
-            agent_dir = templates_dir / test_id
-
-            _create_executable_agent(agent_dir, test_id, "Test agent for CRUD")
+            # create_agent_pack writes to <root>/<name>, so root is templates/agents.
+            result = create_agent_pack(
+                test_id,
+                "Test agent for CRUD",
+                agent_type="executable",
+                root=self._get_templates_dir() / "agents",
+            )
+            agent_dir = Path(result["path"])
 
             # Verify created
             agent_file = agent_dir / "agent.yaml"
