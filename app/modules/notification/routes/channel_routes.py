@@ -10,9 +10,17 @@ router = APIRouter(prefix="/notification/providers", tags=["notification-provide
 
 
 def _get_session():
-    """Dependency: get DB session."""
-    from common_lib.database import get_session
-    session = next(get_session())
+    """Dependency: get DB session.
+
+    Was ``from common_lib.database import get_session`` — that module does not
+    exist (``common_lib/`` has no ``database`` package), so every endpoint in
+    this file raised ``ModuleNotFoundError`` and returned 500. This is the same
+    DB-port dependency the sibling notification route files use.
+    """
+    from common_lib.modules.integration.adapters.database_adapter import get_db_port
+
+    engine = get_db_port().get_engine()
+    session = Session(engine)
     try:
         yield session
     finally:
@@ -61,7 +69,9 @@ async def get_provider_config(config_id: str, session: Session = Depends(_get_se
 
 
 @router.get("/circuit/{config_id}")
-async def get_circuit_breaker_state(config_id: str, session: Session = Depends(_get_session)):
+async def get_circuit_breaker_state(
+    config_id: str, session: Session = Depends(_get_session)
+):
     """Get circuit breaker state for a provider."""
     svc = CircuitBreakerService(session)
     state = svc.get_state(config_id)
@@ -71,7 +81,9 @@ async def get_circuit_breaker_state(config_id: str, session: Session = Depends(_
 
 
 @router.post("/circuit/{config_id}/success")
-async def record_circuit_success(config_id: str, session: Session = Depends(_get_session)):
+async def record_circuit_success(
+    config_id: str, session: Session = Depends(_get_session)
+):
     """Record a delivery success for circuit breaker tracking."""
     svc = CircuitBreakerService(session)
     result = svc.record_success(config_id)
