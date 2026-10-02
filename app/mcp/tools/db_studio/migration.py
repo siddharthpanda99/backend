@@ -6,9 +6,12 @@ from typing import Any, Dict, List, Optional
 from common_lib.modules.db_studio.migration import (
     MigrationService,
     SchemaVersionCreate,
-    MigrationCreate, MigrationValidateRequest, MigrationApplyRequest,
+    MigrationCreate,
+    MigrationValidateRequest,
+    MigrationApplyRequest,
     DriftDetectRequest,
-    DeploymentCreate, DeploymentApproveRequest,
+    DeploymentCreate,
+    DeploymentApproveRequest,
     RollbackRequest,
 )
 
@@ -21,7 +24,9 @@ def register_migration_tools(mcp_server):
 
     # ── Schema Version Tools ─────────────────────────────────────────
 
-    @mcp_server.tool(description="Create a schema version snapshot marking a new schema version")
+    @mcp_server.tool(
+        description="Create a schema version snapshot marking a new schema version"
+    )
     async def create_schema_version(
         connection_id: str,
         version: str,
@@ -35,13 +40,19 @@ def register_migration_tools(mcp_server):
     ) -> str:
         """Create a schema version."""
         req = SchemaVersionCreate(
-            connection_id=connection_id, version=version, engine=engine,
-            database_name=database_name, previous_version=previous_version,
-            description=description, is_baseline=is_baseline,
-            branch=branch, tags=tags,
+            connection_id=connection_id,
+            version=version,
+            engine=engine,
+            database_name=database_name,
+            previous_version=previous_version,
+            description=description,
+            is_baseline=is_baseline,
+            branch=branch,
+            tags=tags,
         )
         result = service.create_version(req)
         import json
+
         return json.dumps(result.model_dump(), indent=2, default=str)
 
     @mcp_server.tool(description="List schema versions with optional filters")
@@ -53,6 +64,7 @@ def register_migration_tools(mcp_server):
         """List schema versions."""
         results = service.list_versions(connection_id, branch, limit)
         import json
+
         return json.dumps([r.model_dump() for r in results], indent=2, default=str)
 
     # ── Migration Tools ──────────────────────────────────────────────
@@ -72,13 +84,20 @@ def register_migration_tools(mcp_server):
     ) -> str:
         """Create a migration."""
         req = MigrationCreate(
-            connection_id=connection_id, name=name, version=version,
-            up_sql=up_sql, engine=engine, description=description,
-            migration_type=migration_type, down_sql=down_sql,
-            is_destructive=is_destructive, dependencies=dependencies,
+            connection_id=connection_id,
+            name=name,
+            version=version,
+            up_sql=up_sql,
+            engine=engine,
+            description=description,
+            migration_type=migration_type,
+            down_sql=down_sql,
+            is_destructive=is_destructive,
+            dependencies=dependencies,
         )
         result = service.create_migration(req)
         import json
+
         return json.dumps(result.model_dump(), indent=2, default=str)
 
     @mcp_server.tool(description="List migrations with optional filters")
@@ -91,6 +110,7 @@ def register_migration_tools(mcp_server):
         """List migrations."""
         results = service.list_migrations(connection_id, status, migration_type, limit)
         import json
+
         return json.dumps([r.model_dump() for r in results], indent=2, default=str)
 
     @mcp_server.tool(description="Get a specific migration by ID")
@@ -100,14 +120,18 @@ def register_migration_tools(mcp_server):
         if not result:
             return None
         import json
+
         return json.dumps(result.model_dump(), indent=2, default=str)
 
-    @mcp_server.tool(description="Validate a migration script for syntax, dependencies, and destructive changes")
+    @mcp_server.tool(
+        description="Validate a migration script for syntax, dependencies, and destructive changes"
+    )
     async def validate_migration(migration_id: str) -> str:
         """Validate a migration."""
         req = MigrationValidateRequest(migration_id=migration_id)
         result = service.validate_migration(req)
         import json
+
         return json.dumps(result.model_dump(), indent=2, default=str)
 
     @mcp_server.tool(description="Apply a migration (optionally as a dry run)")
@@ -116,6 +140,7 @@ def register_migration_tools(mcp_server):
         req = MigrationApplyRequest(migration_id=migration_id, dry_run=dry_run)
         result = service.apply_migration(req)
         import json
+
         return json.dumps(result.model_dump(), indent=2, default=str)
 
     @mcp_server.tool(description="List migration execution history")
@@ -127,11 +152,14 @@ def register_migration_tools(mcp_server):
         """List migration history."""
         results = service.list_migration_history(connection_id, migration_id, limit)
         import json
+
         return json.dumps([r.model_dump() for r in results], indent=2, default=str)
 
     # ── Drift Detection Tools ────────────────────────────────────────
 
-    @mcp_server.tool(description="Detect schema drift by comparing expected vs actual schema")
+    @mcp_server.tool(
+        description="Detect schema drift by comparing expected vs actual schema"
+    )
     async def detect_drift(
         connection_id: str,
         engine: str = "postgresql",
@@ -140,11 +168,14 @@ def register_migration_tools(mcp_server):
     ) -> str:
         """Detect schema drift."""
         req = DriftDetectRequest(
-            connection_id=connection_id, engine=engine,
-            environment=environment, baseline_version=baseline_version,
+            connection_id=connection_id,
+            engine=engine,
+            environment=environment,
+            baseline_version=baseline_version,
         )
         result = service.detect_drift(req)
         import json
+
         return json.dumps(result.model_dump(), indent=2, default=str)
 
     @mcp_server.tool(description="List drift detection reports with optional filters")
@@ -156,6 +187,7 @@ def register_migration_tools(mcp_server):
         """List drift reports."""
         results = service.list_drift_reports(connection_id, severity, limit)
         import json
+
         return json.dumps([r.model_dump() for r in results], indent=2, default=str)
 
     # ── Deployment Tools ─────────────────────────────────────────────
@@ -170,11 +202,15 @@ def register_migration_tools(mcp_server):
     ) -> str:
         """Create a deployment."""
         req = DeploymentCreate(
-            name=name, migration_ids=migration_ids, engine=engine,
-            environment=environment, approval_required=approval_required,
+            name=name,
+            migration_ids=migration_ids,
+            engine=engine,
+            environment=environment,
+            approval_required=approval_required,
         )
         result = service.create_deployment(req)
         import json
+
         return json.dumps(result.model_dump(), indent=2, default=str)
 
     @mcp_server.tool(description="Execute a pending deployment run")
@@ -182,16 +218,40 @@ def register_migration_tools(mcp_server):
         """Execute a deployment."""
         result = service.execute_deployment(deployment_id)
         import json
+
         return json.dumps(result.model_dump(), indent=2, default=str)
 
     @mcp_server.tool(description="Approve a deployment for execution")
-    async def approve_deployment(deployment_id: str, approved_by: str = "admin") -> Optional[str]:
-        """Approve a deployment."""
-        req = DeploymentApproveRequest(deployment_id=deployment_id, approved_by=approved_by)
+    async def approve_deployment(
+        deployment_id: str, approved_by: Optional[str] = None
+    ) -> Optional[str]:
+        """Approve a deployment.
+
+        ``approved_by`` records WHO approved this deployment in the audit
+        trail. It previously defaulted to the literal string ``"admin"``,
+        which fabricated an administrator attribution for any caller that
+        simply omitted the argument -- an unauthenticated MCP caller could
+        have a deployment approved in "admin"'s name.
+
+        It now defaults to the resolved caller identity. When no credential
+        was verified, the approval is attributed to ``"anonymous"``, which is
+        truthful, rather than to a privileged account that never acted. Pass
+        ``approved_by`` explicitly to override with a specific recorded actor.
+        """
+        if approved_by is None:
+            from app.mcp.identity import current_principal
+
+            principal = current_principal()
+            approved_by = principal.id if principal.is_authenticated else "anonymous"
+
+        req = DeploymentApproveRequest(
+            deployment_id=deployment_id, approved_by=approved_by
+        )
         result = service.approve_deployment(req)
         if not result:
             return None
         import json
+
         return json.dumps(result.model_dump(), indent=2, default=str)
 
     @mcp_server.tool(description="List deployment runs")
@@ -203,6 +263,7 @@ def register_migration_tools(mcp_server):
         """List deployments."""
         results = service.list_deployments(environment, status, limit)
         import json
+
         return json.dumps([r.model_dump() for r in results], indent=2, default=str)
 
     # ── Rollback Tools ───────────────────────────────────────────────
@@ -214,16 +275,22 @@ def register_migration_tools(mcp_server):
         rollback_type: str = "manual",
     ) -> str:
         """Rollback a migration."""
-        req = RollbackRequest(migration_id=migration_id, reason=reason, rollback_type=rollback_type)
+        req = RollbackRequest(
+            migration_id=migration_id, reason=reason, rollback_type=rollback_type
+        )
         result = service.rollback_migration(req)
         import json
+
         return json.dumps(result.model_dump(), indent=2, default=str)
 
     @mcp_server.tool(description="List rollback history")
-    async def list_rollbacks(migration_id: Optional[str] = None, limit: int = 50) -> str:
+    async def list_rollbacks(
+        migration_id: Optional[str] = None, limit: int = 50
+    ) -> str:
         """List rollback history."""
         results = service.list_rollbacks(migration_id, limit)
         import json
+
         return json.dumps([r.model_dump() for r in results], indent=2, default=str)
 
     # ── Dashboard & Audit Tools ──────────────────────────────────────
@@ -233,6 +300,7 @@ def register_migration_tools(mcp_server):
         """Get migration dashboard."""
         result = service.get_dashboard()
         import json
+
         return json.dumps(result.model_dump(), indent=2, default=str)
 
     @mcp_server.tool(description="List migration audit log entries")
@@ -245,4 +313,5 @@ def register_migration_tools(mcp_server):
         """List migration audit logs."""
         results = service.list_audit_logs(action, target_type, severity, limit)
         import json
+
         return json.dumps([r.model_dump() for r in results], indent=2, default=str)
