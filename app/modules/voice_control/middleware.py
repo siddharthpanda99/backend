@@ -34,10 +34,20 @@ from __future__ import annotations
 # HTTP date format (RFC 7231 §7.1.1.1).
 SUNSET_DATE: str = "Sun, 28 Feb 2027 00:00:00 GMT"
 
-# The path prefix that triggers the deprecation headers. Keep this in
-# sync with the URL prefix in ``app/modules/voice_control/routes/router.py``
-# (``APIRouter(prefix="/voice-control")``) and the mount in
-# ``app/core/routers.py`` ``ROUTER_DEFINITIONS`` (``prefix="/api/v1/voice-control"``).
+# The path prefix that triggers the deprecation headers. It is the prefix
+# declared by ``app/modules/voice_control/routes/router.py``
+# (``APIRouter(prefix="/voice-control")``) once that router is mounted under
+# ``/api/v1``.
+#
+# NOTE: that router is currently NOT mounted — ``app/core/routers.py`` has no
+# ``ROUTER_DEFINITIONS`` entry for ``voice_control``, and enumerating the built
+# app yields 0 served paths under this prefix. For that reason registration of
+# this middleware is gated behind the default-OFF flag
+# ``voice_control.deprecation_headers`` (see app/modules/voice_control/flags.py);
+# with the flag off, this class is never added to the ASGI stack. The constant
+# stays as the single definition of "what the deprecated URL space is" so the
+# middleware and its tests keep a single source of truth, and so re-enabling the
+# flag the day routes land is a one-word change.
 DEPRECATED_PREFIX: str = "/api/v1/voice-control"
 
 # The canonical URL prefix that replaces the deprecated one. Used to
@@ -55,13 +65,18 @@ class DeprecationHeadersMiddleware:
     circuits on the first non-matching path so it does not touch the
     canonical URL space at all.
 
-    Usage (registered in :mod:`app.main` after the Authz middleware so
-    the deprecation signal is the **last** thing added on the way out
-    — i.e. the headers survive any inner middleware that might strip
-    them)::
+    Usage (registered in :mod:`app.main` **only when** the default-OFF feature
+    flag ``voice_control.deprecation_headers`` is on — see
+    :mod:`app.modules.voice_control.flags`):
 
         from app.modules.voice_control.middleware import DeprecationHeadersMiddleware
         app.add_middleware(DeprecationHeadersMiddleware)
+
+    With the flag off (the default), no route is mounted under
+    ``DEPRECATED_PREFIX``, so registering this would only stamp
+    deprecation headers onto 404s — announcing a live, sunsetting resource for a
+    URL that does not exist, and (for paths with no canonical counterpart)
+    pointing clients at a successor URL that 404s too.
     """
 
     def __init__(self, app):

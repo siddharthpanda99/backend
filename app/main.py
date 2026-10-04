@@ -48,15 +48,24 @@ async def lifespan(app: FastAPI):
     #
     # Deferred here from `app.mcp.server` import time on purpose - it costs roughly
     # 100s, almost all of it the node discovery scan that imports ~3.7k modules,
-    # and it used to be paid by anything that merely imported `app.main`. Lifespan
-    # completes before the first request is served, and every MCP consumer reads
-    # the tool list lazily, so the served tool list is identical either way. Runs
-    # first so the tools are present even if a later startup step fails.
+    # and it used to be paid by anything that merely imported `app.main`.
+    #
+    # This used to run inline here, which kept the process from serving anything
+    # for the whole scan even though only MCP consumers need the result. It now
+    # runs on a background thread: the app binds and serves HTTP immediately, and
+    # the MCP routes that read the tool list gate on `wait_for_node_tools()`, so
+    # the served tool list is still complete. Set MCP_NODE_TOOLS_WARMUP=off to
+    # skip the scan, or =sync to restore the old blocking behaviour.
     try:
-        from app.mcp.server import register_dynamic_node_tools_once
+        from app.mcp.server import start_node_tool_warmup
 
-        registered = register_dynamic_node_tools_once()
-        print(f"Startup: registered {registered} @node wrappers as MCP tools.")
+        if start_node_tool_warmup():
+            print("Startup: warming @node -> MCP tool registry in background.")
+        else:
+            from app.mcp.server import node_tools_ready
+
+            state = "complete" if node_tools_ready() else "skipped"
+            print(f"Startup: @node -> MCP tool registration {state}.")
     except Exception as e:
         print(f"Startup: dynamic @node MCP registration skipped: {e}")
 
@@ -1067,7 +1076,7 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(15)
             while True:
                 try:
-                    from app.modules.memories.dependencies import get_memory_service
+                    from app.core.memory_service import get_memory_service
 
                     svc = get_memory_service()
                     logger.info(
@@ -1104,7 +1113,7 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(30)
             while True:
                 try:
-                    from app.modules.memories.dependencies import get_memory_service
+                    from app.core.memory_service import get_memory_service
 
                     svc = get_memory_service()
                     await svc.check_and_run_autocompaction(threshold=15)
@@ -1555,7 +1564,9 @@ def create_app() -> FastAPI:
     except Exception as cc_err:
         print(f"Warning: Control Center Activity Logging middleware failed: {cc_err}")
 
-    # voice_control BC deprecation headers (Phase 12 — PR 5).
+    # voice_control BC deprecation headers (Phase 12 — PR 5), now behind the
+    # default-OFF flag ``voice_control.deprecation_headers``.
+    #
     # Adds ``Deprecation: true`` + ``Sunset: <2027-02-28>`` +
     # ``Link: <canonical URL>; rel="successor-version"`` to every
     # ``/api/v1/voice-control/*`` response. The canonical
@@ -1564,16 +1575,62 @@ def create_app() -> FastAPI:
     # §6.4 for the middleware design and §11 for the deprecation
     # timeline. Wrapped in try/except so a missing voice_control
     # package (pre-Phase 12) never breaks startup.
+    #
+    # WHY THE FLAG (S8-T6): the middleware matches on the path prefix alone and
+    # never checks that a route exists behind it. Nothing is mounted at
+    # ``/api/v1/voice-control`` — there is no ROUTER_DEFINITIONS entry, and
+    # enumerating the built app yields 0 served paths under that prefix (the
+    # canonical side is a Phase-0 skeleton serving only ``/health``). So with the
+    # middleware on, every 404 under the deprecated prefix advertised a live
+    # deprecation, and a 404 with no canonical counterpart advertised a
+    # successor URL that itself 404s:
+    #
+    #   GET /api/v1/voice-control/does-not-exist -> 404
+    #       deprecation: true
+    #       link: </api/v1/platform-controls/does-not-exist>; rel="successor-version"
+    #
+    # Defaulting OFF stops that lie while keeping the BC signal one flag-flip away
+    # for the day routes actually land under the prefix. Mounting the shim instead
+    # was rejected: it would re-open a sunsetting URL (Sunset 2027-02-28) whose
+    # canonical side has nothing worth aliasing and zero existing consumers.
+    # See app/modules/voice_control/flags.py for the full rationale, including why
+    # the flag must be registered AND asserted (is_enabled() resolves an
+    # unregistered name to True, so an unregistered "default OFF" flag is ON).
     try:
-        from app.modules.voice_control.middleware import DeprecationHeadersMiddleware
-
-        app.add_middleware(DeprecationHeadersMiddleware)
-        print(
-            "Startup: voice_control deprecation headers middleware enabled "
-            "(Sunset: 2027-02-28)"
+        from app.modules.voice_control.flags import (
+            deprecation_headers_enabled,
+            register_deprecation_headers_flag,
         )
+
+        # Registration is asserted, not assumed — see flags.py.
+        register_deprecation_headers_flag()
+
+        if deprecation_headers_enabled():
+            from app.modules.voice_control.middleware import (
+                DeprecationHeadersMiddleware,
+            )
+
+            app.add_middleware(DeprecationHeadersMiddleware)
+            print(
+                "Startup: voice_control deprecation headers middleware enabled "
+                "(Sunset: 2027-02-28)"
+            )
+        else:
+            # Logged, not silent: the flag defaults OFF and the only reason to
+            # flip it is a route landing under the deprecated prefix.
+            print(
+                "Startup: voice_control deprecation headers middleware DISABLED "
+                "(flag 'voice_control.deprecation_headers' is off — no routes are "
+                "mounted under /api/v1/voice-control, so the middleware would only "
+                "tag 404s as deprecated-but-alive)"
+            )
     except Exception as vc_err:
-        print(f"Warning: voice_control deprecation headers middleware failed: {vc_err}")
+        # Fail closed: a broken flag module must not silently switch the
+        # middleware back on, and must not break startup either.
+        print(
+            "Warning: voice_control deprecation headers not registered "
+            f"(treated as disabled): {vc_err}"
+        )
 
     # Register Custom OpenAPI
     app.openapi = lambda: custom_openapi(app)
@@ -1590,11 +1647,36 @@ def create_app() -> FastAPI:
     register_routers(app, settings.API_V1_STR, global_deps)
 
     # FastMCP SSE transport — enables opencode / MCP clients to connect directly
-    from app.mcp.server import mcp_server
+    from app.mcp.server import mcp_server, wait_for_node_tools
+
+    sse_app = mcp_server.sse_app()
+
+    async def _sse_gated(scope, receive, send):
+        """Hold SSE connections until the background @node scan has finished.
+
+        FastMCP enumerates tools per connection, so a client connecting inside
+        the warmup window would otherwise see a partial tool list. The wait runs
+        in a thread executor so the event loop keeps serving other requests, and
+        is bounded by MCP_NODE_TOOLS_WAIT_SECONDS.
+        """
+        import asyncio
+
+        from app.mcp.routes import _NODE_TOOLS_WAIT_SECONDS
+
+        # wait_for_node_tools returns immediately when the scan has already
+        # finished, so no ready-check is needed here.
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None, wait_for_node_tools, _NODE_TOOLS_WAIT_SECONDS
+            )
+        except Exception:
+            pass
+        await sse_app(scope, receive, send)
 
     app.mount(
         "/mcp/transport",
-        mcp_server.sse_app(),
+        _sse_gated,
         name="mcp_sse",
     )
 
