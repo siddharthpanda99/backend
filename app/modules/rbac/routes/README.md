@@ -69,11 +69,34 @@ Only this directory is dark.
 
 Two viable paths, per the audit — pick one deliberately:
 
-1. **Mount only the 61 handlers whose services exist**, under `/api/v1/rbac`. Makes
-   the `RBACAdminPage` Roles panel genuinely work. The 46 broken handlers stay
+1. **Mount only the 43 handlers whose services exist**, under `/api/v1/rbac`. Makes
+   the `RBACAdminPage` Roles panel genuinely work. The 64 broken handlers stay
    unmounted. Requires splitting `routes/router.py`, which is an aggregate that
    `include_router`s all 16 sub-routers.
-2. **Write the 15 missing services first**, then mount all 107.
+
+   > **CORRECTED 2026-10-04 — this section originally said 61 working / 46 broken. The
+   > measured split is 43 working / 64 broken.** `routes/router.py` imports its services
+   > inside lazy loader helpers that the handler bodies only *call*, so a top-level-import
+   > scan reports **zero** breakage in that file and the aggregate looked entirely healthy.
+   > Measured by resolving each handler's imports transitively through those helpers.
+   > Ground truth: **19 of the 26 rbac subpackages contain only `__init__.py`** (`api`,
+   > `audit`, `authorization`, `cache`, `delegation`, `field_security`, `guest`,
+   > `hardening`, `integrations`, `machine_auth`, `ownership`, `plugins`, `policies`,
+   > `roles`, `sessions`, `tenancy`, `testing`, …); their `__pycache__` holds only
+   > `__init__`, so they provably never existed. The working code lives in flat
+   > `*_service.py` files at the package root, not in the subpackages the router imports.
+   > The original error was in the **unsafe** direction — it overstated how much works.
+   > **Also note:** every handler wraps its import in `try/except → HTTPException(500)`, so
+   > mounting the aggregate produces **request-time 500s, not a startup error** — strictly
+   > worse than the current 404.
+   >
+   > **Viable flag name (found 2026-10-04, absent from the original audit):** gate this
+   > behind a **sibling single-segment** flag such as `rbac_http`, default OFF, asserting
+   > registration. Do **not** name it `rbac` — `is_enabled` resolves an unregistered flag
+   > to `True`, so a `rbac` flag would prune all 264 live `@node`s on boot and move the
+   > 25 961 baseline. A single-segment name cannot be an ancestor of `rbac.*`, so
+   > `resolve_flag_path` can never select it for a node.
+2. **Write the missing services first**, then mount all 107.
 
 `platform-demo/libs/ui/common/src/services/rbacApi.ts` and
 `pages/RBACAdminPage/` already target `/api/v1/rbac/*` and document in-code that
