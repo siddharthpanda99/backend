@@ -13,6 +13,7 @@ from app.modules.audio.routes.tts_stream import router as tts_stream_router
 from app.modules.audio.routes.system import router as system_router
 from app.modules.audio.routes.voice_gallery import router as voice_gallery_router
 from app.modules.audio.routes.capabilities import router as capabilities_router
+from app.modules.audio.routes.asr_engines import router as asr_engines_router
 from app.modules.audio.routes.stories import router as stories_router
 
 # Merge takes routes into the main audio router under the same prefix
@@ -162,6 +163,13 @@ for route in capabilities_router.routes:
 # (declared, never mounted) because this merge step was missing; see
 # docs/duplication-audit/DEAD-ROUTES.md.
 for route in stories_router.routes:
+    main_router.routes.append(route)
+
+# Merge ASR engine-registry routes under /asr prefix. asr_engines_router declares
+# absolute paths (/asr/engines, /asr/engines/default,
+# /asr/engines/{engine_id}/install-state), so they are appended verbatim and surface
+# as /api/v1/audio/asr/engines/*.
+for route in asr_engines_router.routes:
     main_router.routes.append(route)
 
 __all__ = ["router"]
