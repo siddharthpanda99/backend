@@ -38,6 +38,7 @@ class RecurringCreateRequest(BaseModel):
 async def list_pending(session=Depends(get_pm_session)):
     try:
         from common_lib.modules.notification.scheduling.service import SchedulingService
+
         svc = SchedulingService(session=session)
         return {"scheduled": svc.list_pending()}
     except Exception as e:
@@ -45,19 +46,24 @@ async def list_pending(session=Depends(get_pm_session)):
 
 
 @router.post("/")
-async def schedule_notification(request: ScheduleCreateRequest,
-                                 session=Depends(get_pm_session)):
+async def schedule_notification(
+    request: ScheduleCreateRequest, session=Depends(get_pm_session)
+):
     from datetime import datetime
+
     try:
         from common_lib.modules.notification.scheduling.service import SchedulingService
+
         svc = SchedulingService(session=session)
         dt = datetime.fromisoformat(request.scheduled_for)
         return svc.schedule_notification(
             notification_type=request.notification_type,
             recipient_id=request.recipient_id,
             template_id=request.template_id,
-            scheduled_for=dt, channel=request.channel,
-            timezone=request.timezone, priority=request.priority,
+            scheduled_for=dt,
+            channel=request.channel,
+            timezone=request.timezone,
+            priority=request.priority,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -67,8 +73,19 @@ async def schedule_notification(request: ScheduleCreateRequest,
 async def dispatch_due(limit: int = 100, session=Depends(get_pm_session)):
     try:
         from common_lib.modules.notification.scheduling.service import SchedulingService
+
         svc = SchedulingService(session=session)
-        return {"dispatched": svc.dispatch_due(limit=limit), "count": limit}
+        # `dispatch_due` returns the records it actually marked. `count` was the
+        # request LIMIT, so a batch that marked 3 of a possible 100 answered
+        # `count: 100` — a number nothing in this handler could back up. Count
+        # what came back instead, and report the limit separately under its own
+        # name so a caller can still see the batch ceiling that was applied.
+        dispatched = svc.dispatch_due(limit=limit)
+        return {
+            "dispatched": dispatched,
+            "count": len(dispatched),
+            "limit": limit,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -77,10 +94,13 @@ async def dispatch_due(limit: int = 100, session=Depends(get_pm_session)):
 async def cancel_scheduled(schedule_id: str, session=Depends(get_pm_session)):
     try:
         from common_lib.modules.notification.scheduling.service import SchedulingService
+
         svc = SchedulingService(session=session)
         result = svc.cancel_scheduled(schedule_id=schedule_id)
         if not result:
-            raise HTTPException(status_code=404, detail="Schedule not found or already dispatched")
+            raise HTTPException(
+                status_code=404, detail="Schedule not found or already dispatched"
+            )
         return {"success": True}
     except HTTPException:
         raise
@@ -89,28 +109,34 @@ async def cancel_scheduled(schedule_id: str, session=Depends(get_pm_session)):
 
 
 @router.post("/recurring")
-async def create_recurring(request: RecurringCreateRequest,
-                            session=Depends(get_pm_session)):
+async def create_recurring(
+    request: RecurringCreateRequest, session=Depends(get_pm_session)
+):
     try:
         from common_lib.modules.notification.scheduling.service import SchedulingService
+
         svc = SchedulingService(session=session)
         return svc.create_recurring(
-            name=request.name, notification_type=request.notification_type,
-            template_id=request.template_id, schedule_type=request.schedule_type,
+            name=request.name,
+            notification_type=request.notification_type,
+            template_id=request.template_id,
+            schedule_type=request.schedule_type,
             cron_expression=request.cron_expression,
             interval_seconds=request.interval_seconds,
-            channel=request.channel, timezone=request.timezone,
-            recipient_ids=request.recipient_ids, variables=request.variables,
+            channel=request.channel,
+            timezone=request.timezone,
+            recipient_ids=request.recipient_ids,
+            variables=request.variables,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/recurring")
-async def list_recurring(active_only: bool = True,
-                          session=Depends(get_pm_session)):
+async def list_recurring(active_only: bool = True, session=Depends(get_pm_session)):
     try:
         from common_lib.modules.notification.scheduling.service import SchedulingService
+
         svc = SchedulingService(session=session)
         return {"schedules": svc.list_recurring(active_only=active_only)}
     except Exception as e:
@@ -121,6 +147,7 @@ async def list_recurring(active_only: bool = True,
 async def pause_recurring(schedule_id: str, session=Depends(get_pm_session)):
     try:
         from common_lib.modules.notification.scheduling.service import SchedulingService
+
         svc = SchedulingService(session=session)
         result = svc.pause_recurring(schedule_id=schedule_id)
         if not result:
@@ -136,6 +163,7 @@ async def pause_recurring(schedule_id: str, session=Depends(get_pm_session)):
 async def resume_recurring(schedule_id: str, session=Depends(get_pm_session)):
     try:
         from common_lib.modules.notification.scheduling.service import SchedulingService
+
         svc = SchedulingService(session=session)
         result = svc.resume_recurring(schedule_id=schedule_id)
         if not result:
