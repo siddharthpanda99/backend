@@ -114,6 +114,24 @@ if [[ -z "$FEATURE_CONFIG_RESOLVED" ]]; then
 fi
 export PLATFORM_FEATURE_CONFIG="$FEATURE_CONFIG_RESOLVED"
 
+# ── Moondream Photon ASR engine (moondream/parakeet-redux) ──────────────────
+# Opt-in per request, not a change of default: PREFERENCE_ORDER still puts
+# faster-whisper first, so ASR_BACKEND=auto is unaffected and only a request that
+# explicitly asks for `parakeet-redux` is routed to Photon. Defaulted ON here so
+# the model is usable from the UI and the CLI; override either value from the
+# environment (e.g. `AUDIO_FLAG_PARAKEET_REDUX_ENABLED=0 ./clean_start.sh`) to
+# turn it back off without editing this file.
+#
+# Note the env layer namespaces overrides as AUDIO_FLAG_<NAME>: setting a bare
+# PARAKEET_REDUX_ENABLED variable is silently ignored.
+#
+# ASR_PHOTON_DEVICE=cpu is deliberate. Photon's CUDA kernel-bundle path fails in
+# this environment with "Bundle companion metadata does not match", while the CPU
+# path is proven; parakeet-redux is CPU-fast enough (113x real time on 8 cores)
+# that pinning CPU avoids a hard failure. Unset it to let Photon auto-detect.
+export AUDIO_FLAG_PARAKEET_REDUX_ENABLED="${AUDIO_FLAG_PARAKEET_REDUX_ENABLED:-1}"
+export ASR_PHOTON_DEVICE="${ASR_PHOTON_DEVICE:-cpu}"
+
 if [[ ! -f "$FEATURE_CONFIG_RESOLVED" ]]; then
     echo "ERROR: feature config not found: $FEATURE_CONFIG_RESOLVED" >&2
     echo "       create it by copying resources/feature_flags.reference.json," >&2
