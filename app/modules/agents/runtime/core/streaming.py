@@ -230,6 +230,8 @@ async def stream_agent_generator(
                 parameters = decision.get("parameters") or {}
                 if workflow_id:
                     logger.info(f"[Streaming] Executing workflow: {workflow_id} with params: {list(parameters.keys())}")
+                    # Trace event for workflow start
+                    yield trace("workflow", f"▶ Workflow Started: {workflow_id}", f"Parameters: {list(parameters.keys())}")
                     yield _enc({
                         "event_type": "workflow_start",
                         "workflow_id": workflow_id,
@@ -244,6 +246,8 @@ async def stream_agent_generator(
                             output_files = result.get("output_files", [])
                             output_text = result.get("output_text", "")
                             
+                            # Trace event for workflow completion
+                            yield trace("workflow", f"✅ Workflow Completed: {workflow_id}", f"Generated {len(output_files)} file(s)")
                             # Yield workflow completion event
                             yield _enc({
                                 "event_type": "workflow_complete",
@@ -261,6 +265,7 @@ async def stream_agent_generator(
                                     "content": output_text,
                                 })
                         else:
+                            yield trace("error", f"❌ Workflow Failed: {workflow_id}", result.get("error", "Unknown error"))
                             yield _enc({
                                 "event_type": "workflow_error",
                                 "workflow_id": workflow_id,
@@ -269,6 +274,7 @@ async def stream_agent_generator(
                             })
                     except Exception as e:
                         logger.error(f"[Streaming] Workflow execution failed: {e}")
+                        yield trace("error", f"❌ Workflow Error: {workflow_id}", str(e))
                         yield _enc({
                             "event_type": "workflow_error",
                             "workflow_id": workflow_id,
