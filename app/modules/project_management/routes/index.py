@@ -126,6 +126,16 @@ from app.modules.project_management.routes.program_routes import (
 from app.modules.project_management.routes.form_routes import router as form_router
 
 router.include_router(custom_data_router, prefix="", tags=["PM Custom Data"])
+# Finance is mounted twice, additively:
+#   "" -> /api/v1/pm/budgets            (canonical, served since the module landed)
+#   "/finance" -> /api/v1/pm/finance/budgets  (compat alias)
+# The frontend (platform-demo hooks/api/usePmFinance.ts and
+# configs/api.ts) requests the /finance/* shape. Note this is NOT a
+# backend "flattening the frontend missed": `git log -S'prefix="/finance"'`
+# over this file is empty, so /finance/* was never registered. The
+# frontend invented the path shape. Aliasing is therefore additive
+# repair, not a contract rollback. Both spellings stay registered.
+router.include_router(finance_router, prefix="/finance", tags=["PM Finance"])
 router.include_router(finance_router, prefix="", tags=["PM Finance"])
 router.include_router(goal_router, prefix="", tags=["PM Goals & OKRs"])
 router.include_router(pmo_router, prefix="", tags=["PM PMO & Strategy"])
