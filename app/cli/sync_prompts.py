@@ -1,7 +1,41 @@
 import os
 import sqlite3
-import ijson
 import traceback
+
+try:
+    import ijson
+except ImportError:  # pragma: no cover - exercised only without the extra
+    ijson = None
+
+
+class MissingSyncPromptsDependency(RuntimeError):
+    """Raised when ``sync-prompts`` runs without its declared optional extra.
+
+    ``ijson`` is required for this command's only code path -- there is no
+    stdlib fallback, because incremental parsing of a multi-megabyte
+    ``chat-messages.json`` is the point of the tool. It is therefore declared
+    in ``Backend/pyproject.toml`` under the ``prompts-sync`` extra rather than
+    as a hard dependency, so the platform's default install is unchanged.
+
+    The error is named rather than left as a bare ``ModuleNotFoundError`` from
+    a module-scope import: the previous module-level ``import ijson`` made this
+    whole module unimportable, so the declared console script died before
+    ``main()`` ran and the failure was indistinguishable from a missing-module
+    packaging bug.
+    """
+
+
+def _require_ijson():
+    """Return the ``ijson`` module, or raise a named, actionable error."""
+    if ijson is None:
+        raise MissingSyncPromptsDependency(
+            "sync-prompts requires the optional dependency 'ijson', which is not "
+            "installed. Install it with:\n"
+            "    uv pip install 'ijson'\n"
+            "or install the declared extra:\n"
+            "    uv pip install -e 'Backend[prompts-sync]'"
+        )
+    return ijson
 
 def get_db_path():
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
@@ -10,6 +44,9 @@ def get_db_path():
 chats_dir = os.path.expanduser(r"~/.config/manicode/projects/Monorepo/chats")
 
 def main():
+    # Fail fast, before touching the database, so a missing extra cannot leave
+    # a half-synced prompts.db behind.
+    json_items = _require_ijson().items
     db_path = get_db_path()
     print(f"Connecting to DB: {db_path}")
     conn = sqlite3.connect(db_path)
@@ -51,7 +88,7 @@ def main():
         
         try:
             with open(chat_file, 'rb') as f:
-                for msg in ijson.items(f, 'item'):
+                for msg in json_items(f, 'item'):
                     if isinstance(msg, dict) and msg.get('variant') == 'user':
                         message_id = msg.get('id', '')
                         text = ""
