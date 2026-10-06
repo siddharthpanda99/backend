@@ -224,6 +224,58 @@ async def stream_agent_generator(
                     }
                 )
                 return
+            elif action == "workflow_execute":
+                # Handle workflow form submission - execute workflow with parameters
+                workflow_id = decision.get("workflow_id")
+                parameters = decision.get("parameters") or {}
+                if workflow_id:
+                    logger.info(f"[Streaming] Executing workflow: {workflow_id} with params: {list(parameters.keys())}")
+                    yield _enc({
+                        "event_type": "workflow_start",
+                        "workflow_id": workflow_id,
+                        "content": f"Starting workflow: {workflow_id}",
+                    })
+                    
+                    try:
+                        # Execute workflow via workflow service
+                        result = await _execute_workflow_async(workflow_id, parameters, session_id)
+                        
+                        if result.get("status") == "success":
+                            output_files = result.get("output_files", [])
+                            output_text = result.get("output_text", "")
+                            
+                            # Yield workflow completion event
+                            yield _enc({
+                                "event_type": "workflow_complete",
+                                "workflow_id": workflow_id,
+                                "output_files": output_files,
+                                "output_text": output_text,
+                                "metadata": result.get("metadata", {}),
+                                "content": output_text or f"Workflow completed. Generated {len(output_files)} file(s).",
+                            })
+                            
+                            # Also yield as final answer for chat
+                            if output_text:
+                                yield _enc({
+                                    "event_type": "final_answer",
+                                    "content": output_text,
+                                })
+                        else:
+                            yield _enc({
+                                "event_type": "workflow_error",
+                                "workflow_id": workflow_id,
+                                "error": result.get("error", "Unknown error"),
+                                "content": f"Workflow failed: {result.get('error', 'Unknown error')}",
+                            })
+                    except Exception as e:
+                        logger.error(f"[Streaming] Workflow execution failed: {e}")
+                        yield _enc({
+                            "event_type": "workflow_error",
+                            "workflow_id": workflow_id,
+                            "error": str(e),
+                            "content": f"Workflow execution failed: {e}",
+                        })
+                    return
 
         # Inject operational metadata on the very first turn of this thread
         current = agent.graph.get_state({"configurable": {"thread_id": session_id}})
@@ -1254,3 +1306,208 @@ def _prompt_preview(ev: dict) -> str:
 
     # Return preview for SSE trace (truncate at 2000 chars for trace)
     return full_prompt[:2000] + ("..." if len(full_prompt) > 2000 else "")
+
+
+# ---------------------------------------------------------------------------
+# Workflow Execution Helper
+# ---------------------------------------------------------------------------
+
+async def _execute_workflow_async(
+    workflow_id: str,
+    parameters: dict[str, Any],
+    session_id: str,
+) -> dict[str, Any]:
+    """
+    Execute a workflow with the given parameters.
+    
+    Returns:
+        dict with status, output_files, output_text, metadata, execution_time
+    """
+    import time
+    import uuid
+    start_time = time.time()
+    
+    try:
+        from common_lib.core.di_container import bridge
+        memory_store = bridge.memory_store
+        if not memory_store:
+            return {"status": "failed", "error": "Memory store not available", "output_files": [], "output_text": "", "metadata": {}, "execution_time": 0}
+
+        # Get workflow definition
+        wf = memory_store.get_workflow_definition(workflow_id)
+        if not wf:
+            return {"status": "failed", "error": f"Workflow {workflow_id} not found", "output_files": [], "output_text": "", "metadata": {}, "execution_time": 0}
+
+        wf_def = wf.get("definition", {})
+        engine = wf.get("engine", "standard")
+
+        if engine == "agentic" or wf_def.get("workflow_type") == "executable_graph":
+            return await _execute_agentic_workflow(wf_def, parameters, session_id, start_time)
+        else:
+            return await _execute_standard_workflow(wf_def, parameters, session_id, start_time)
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"_execute_workflow_async failed: {e}")
+        return {
+            "status": "failed",
+            "error": str(e),
+            "output_files": [],
+            "output_text": "",
+            "metadata": {},
+            "execution_time": time.time() - start_time,
+        }
+
+
+async def _execute_standard_workflow(
+    wf_def: dict,
+    parameters: dict[str, Any],
+    session_id: str,
+    start_time: float,
+) -> dict[str, Any]:
+    """Execute a standard (DAG) workflow."""
+    try:
+        from common_lib.modules.workflows.standard.builder import WorkflowBuilder
+        from common_lib.modules.workflows.standard.executor import WorkflowExecutor
+
+        # Build workflow from definition
+        builder = WorkflowBuilder()
+        builder.load_from_dict(wf_def)
+        workflow = builder.build()
+
+        # Execute
+        executor = WorkflowExecutor()
+        result = executor.execute(workflow, inputs=parameters)
+
+        execution_time = time.time() - start_time
+
+        # Extract output files from result
+        output_files = []
+        output_text = ""
+        if hasattr(result, "outputs") and isinstance(result.outputs, dict):
+            for key, value in result.outputs.items():
+                if isinstance(value, str) and (value.endswith(".png") or value.endswith(".jpg") or value.endswith(".webp")):
+                    output_files.append(value)
+                    output_text = value
+                elif isinstance(value, list):
+                    for v in value:
+                        if isinstance(v, str) and (v.endswith(".png") or v.endswith(".jpg") or v.endswith(".webp")):
+                            output_files.append(v)
+                            if not output_text:
+                                output_text = v
+
+        return {
+            "status": "success" if getattr(result, "success", True) else "failed",
+            "output_files": output_files,
+            "output_text": output_text,
+            "metadata": {
+                "workflow_id": wf_def.get("id"),
+                "parameters": parameters,
+                "session_id": session_id,
+            },
+            "execution_time": execution_time,
+        }
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Standard workflow execution failed: {e}")
+        return {
+            "status": "failed",
+            "error": str(e),
+            "output_files": [],
+            "output_text": "",
+            "metadata": {"workflow_id": wf_def.get("id"), "parameters": parameters},
+            "execution_time": time.time() - start_time,
+        }
+
+
+async def _execute_agentic_workflow(
+    wf_def: dict,
+    parameters: dict[str, Any],
+    session_id: str,
+    start_time: float,
+) -> dict[str, Any]:
+    """Execute an agentic (ReAct loop) workflow."""
+    try:
+        from common_lib.modules.workflows.agentic.declarative_builder import DeclarativeAgenticBuilder
+        from common_lib.modules.workflows.agentic.schemas import AgenticWorkflowSchema
+        from langgraph.checkpoint.memory import MemorySaver
+        from langchain_core.agents import AgentFinish
+
+        # Load schema
+        schema = AgenticWorkflowSchema(**wf_def)
+
+        # Build graph
+        builder = DeclarativeAgenticBuilder()
+        builder.load(schema, service=None, tools=[])
+        graph = builder.build()
+
+        # Compile with checkpointer for session persistence
+        checkpointer = MemorySaver()
+        compiled = graph.compile(checkpointer=checkpointer)
+
+        # Prepare initial state
+        from common_lib.modules.workflows.agentic.state import ReActState
+
+        initial_state: ReActState = {
+            "input": parameters.get("prompt", parameters.get("input", "")),
+            "session_id": session_id,
+            "conversation_history": "",
+            "intermediate_steps": [],
+            "agent_outcome": None,
+            "structured_state": parameters,
+            "hints": [],
+            "operational_metadata": {},
+            "context_metrics": {},
+            "execution_constraints": {"max_steps": 10},
+            "approved_actions": [],
+            "reflection_count": 0,
+        }
+
+        # Execute
+        config = {"configurable": {"thread_id": session_id}}
+        result = compiled.invoke(initial_state, config)
+
+        execution_time = time.time() - start_time
+
+        # Extract output
+        output_files = []
+        outcome = result.get("agent_outcome")
+        output_text = ""
+        if outcome and isinstance(outcome, AgentFinish):
+            output_text = outcome.return_values.get("output", "")
+
+        # Check structured_state for output files
+        structured = result.get("structured_state", {})
+        if "output_files" in structured:
+            output_files = structured["output_files"]
+        elif "output_file" in structured:
+            output_files = [structured["output_file"]]
+
+        return {
+            "status": "success",
+            "output_files": output_files,
+            "output_text": output_text,
+            "metadata": {
+                "workflow_id": wf_def.get("id"),
+                "parameters": parameters,
+                "session_id": session_id,
+                "final_state_keys": list(result.keys()),
+            },
+            "execution_time": execution_time,
+        }
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Agentic workflow execution failed: {e}")
+        return {
+            "status": "failed",
+            "error": str(e),
+            "output_files": [],
+            "output_text": "",
+            "metadata": {"workflow_id": wf_def.get("id"), "parameters": parameters},
+            "execution_time": time.time() - start_time,
+        }
