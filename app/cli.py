@@ -84,18 +84,23 @@ def main():
         alembic_main(["-c", str(ini), "upgrade", "head"])
         print("Migrations complete.")
     elif args.command == "seed":
-        from app.modules.database.service.seed_runner import register_seeder, run_seeds
-        from app.modules.authorization.seeds.role_seeder import AuthorizationSeeder
-        from app.modules.users.seeds.user_seeder import UserSeeder
-        from app.modules.projects.seeds.project_seeder import ProjectSeeder
-
-        # Register and run
-        register_seeder(AuthorizationSeeder)
-        register_seeder(UserSeeder)
-        register_seeder(ProjectSeeder)
-
-        target = args.modules if args.modules else None
-        run_seeds(target)
+        # The seeder registry this command was written against no longer exists:
+        #   app/modules/database/service/seed_runner.py  (missing)
+        #   app/modules/authorization/seeds/role_seeder.py (missing)
+        #   app/modules/users/seeds/user_seeder.py         (missing)
+        #   app/modules/projects/seeds/project_seeder.py   (missing)
+        # All four raise ModuleNotFoundError, so this branch could only ever
+        # crash. It is left explicit rather than importing dead paths, so the
+        # breakage is discoverable instead of looking like a transient fault.
+        # TODO(platform): reimplement seeding against the entity sync path
+        # (`uv run sync init`) or restore a seeder registry.
+        # Not a bare print(): golden rule 11 forbids them in app/ code, and this
+        # message is a diagnostic rather than command output, so it goes to
+        # stderr — which is also what a CLI diagnostic should do.
+        sys.stderr.write(
+            "seed: unavailable — the seeder registry was removed. "
+            "Use `uv run sync init` to sync entities from the filesystem.\n"
+        )
     else:
         parser.print_help()
 

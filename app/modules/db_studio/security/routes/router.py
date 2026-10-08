@@ -14,7 +14,7 @@ from common_lib.modules.db_studio.security import (
     SecurityDashboardOut,
 )
 
-router = APIRouter(prefix="/api/v1/security", tags=["Security"])
+router = APIRouter(tags=["Security"])
 svc = SecurityService()
 
 

@@ -1,4 +1,6 @@
 import logging
+import os
+import threading
 
 try:
     from app.mcp.fastmcp_compat import FastMCP
@@ -25,7 +27,6 @@ from app.mcp.tools.plugins import register_plugin_tools
 from app.mcp.tools.notifications import register_notification_tools
 from app.mcp.tools.music import register_music_tools
 from app.mcp.tools.messaging import register_messaging_tools
-from app.mcp.tools.data_pipeline import register_data_pipeline_tools
 from app.mcp.tools.users import register_user_tools
 from app.mcp.tools.sessions import register_session_tools
 from app.mcp.tools.system import register_system_tools
@@ -51,11 +52,8 @@ from app.mcp.tools.db_provisioning import register_db_provisioning_tools
 from app.mcp.tools.doc_processing import register_doc_processing_tools
 from app.mcp.tools.excel import register_excel_tools
 from app.mcp.tools.events import register_events_tools
-from app.mcp.tools.external_platforms import register_external_platforms_tools
 from app.mcp.tools.ferment import register_ferment_tools
 from app.mcp.tools.file_system import register_file_system_tools
-from app.mcp.tools.rules_engine import register_rules_engine_tools
-from app.mcp.tools.core_infrastructure import register_core_infrastructure_tools
 from app.mcp.tools.image_runtime import register_image_runtime_tools
 from app.mcp.tools.data_storage import register_data_storage_tools
 from app.mcp.tools.nodes_registry import register_nodes_registry_tools
@@ -161,7 +159,6 @@ register_plugin_tools(mcp_server)
 register_notification_tools(mcp_server)
 register_music_tools(mcp_server)
 register_messaging_tools(mcp_server)
-register_data_pipeline_tools(mcp_server)
 register_project_management_tools(mcp_server)
 register_user_tools(mcp_server)
 register_session_tools(mcp_server)
@@ -188,11 +185,8 @@ register_db_provisioning_tools(mcp_server)
 register_doc_processing_tools(mcp_server)
 register_excel_tools(mcp_server)
 register_events_tools(mcp_server)
-register_external_platforms_tools(mcp_server)
 register_ferment_tools(mcp_server)
 register_file_system_tools(mcp_server)
-register_rules_engine_tools(mcp_server)
-register_core_infrastructure_tools(mcp_server)
 register_image_runtime_tools(mcp_server)
 register_data_storage_tools(mcp_server)
 register_nodes_registry_tools(mcp_server)
@@ -234,7 +228,21 @@ register_memory_feature_tools(mcp_server)
 register_autoresearch_tools(mcp_server)
 register_autoresearch_observability_tools(mcp_server)
 register_response_template_tools(mcp_server)
-register_platform_tools(mcp_server)
+# register_platform_tools(mcp_server) is deliberately NOT called at module scope.
+#
+# It delegated to platform_mcp.node_tools.register_node_tools, a bulk
+# `@node` -> MCP registration: it discovered ~24.7k nodes, registered ~25.5k
+# tools, and measured ~140-230s. At module scope that ran inside
+# `import app.mcp.server`, i.e. inside `import app.main`, so every consumer of
+# the app (tests, scripts, CLI tooling, and the HTTP server itself) paid for it
+# before anything could be served. It now runs on the background warmup thread
+# (see `start_node_tool_warmup`), which the FastAPI lifespan starts.
+#
+# The deferred `register_dynamic_node_tools` (app.mcp node_bridge) discovers
+# from a DIFFERENT registry and is NOT a substitute: measured against this call
+# it covers 20,652 tools versus 21,893, missing 1,241 that only this path
+# contributes ("A/B Analyze", "Add Policy", "Agent Create", ...). The warmup
+# therefore runs both, in this order.
 register_tool_catalog_tools(mcp_server)
 register_prompt_template_tools(mcp_server)
 register_canvas_validation_tools(mcp_server)
@@ -276,6 +284,11 @@ logger.info("Cognitive MCP Server fully industrialized with total platform parit
 mcp = mcp_server
 
 _dynamic_nodes_registered = False
+# Completion signal for the background @node warmup. Distinct from
+# `_dynamic_nodes_registered`, which flips to True *before* the scan starts.
+_node_tools_ready = threading.Event()
+_node_tools_warmup_lock = threading.Lock()
+_node_tools_warmup_thread: threading.Thread | None = None
 
 
 def register_dynamic_node_tools_once() -> int:
@@ -294,12 +307,100 @@ def register_dynamic_node_tools_once() -> int:
     # Set before registering: a partial failure must not leave us retrying into
     # a half-populated server on every subsequent startup.
     _dynamic_nodes_registered = True
+    total = 0
     try:
-        from app.mcp.node_bridge import register_dynamic_node_tools
+        # Superset first. platform_mcp.node_tools.register_node_tools covers
+        # 1,241 tools the node_bridge discovery below does not, so running it
+        # alone would silently shrink the MCP tool surface.
+        try:
+            from common_lib.modules.platform_mcp.mcp import register_platform_tools
 
-        count = register_dynamic_node_tools(mcp_server)
-        logger.info("Dynamic @node -> MCP: %s tools registered", count)
-        return count
-    except Exception as e:
-        logger.warning("Dynamic @node registration skipped: %s", e)
-        return 0
+            added = register_platform_tools(mcp_server)
+            logger.info("Bulk @node -> MCP (platform nodes): %s registered", added)
+            total += added
+        except Exception as e:
+            logger.warning("Bulk @node registration (platform nodes) failed: %s", e)
+
+        try:
+            from app.mcp.node_bridge import register_dynamic_node_tools
+
+            added = register_dynamic_node_tools(mcp_server)
+            logger.info("Dynamic @node -> MCP: %s tools registered", added)
+            total += added
+        except Exception as e:
+            logger.warning("Dynamic @node registration skipped: %s", e)
+
+        return total
+    finally:
+        # Release anyone blocked in wait_for_node_tools(), including on the
+        # error path, so a failure can never wedge a tool request.
+        _node_tools_ready.set()
+
+
+def start_node_tool_warmup() -> bool:
+    """Begin bulk @node registration on a background thread.
+
+    The scan imports ~3.7k modules and measures ~140s. Running it inline in the
+    FastAPI lifespan keeps the process from serving anything for that whole
+    window, which is dead time for every HTTP client even though only MCP
+    consumers need the result. A daemon thread lets the app bind and serve
+    immediately; `wait_for_node_tools()` is the gate that keeps the tool list
+    from being observed half-populated.
+
+    Set `MCP_NODE_TOOLS_WARMUP=0` to fall back to inline registration, and
+    `MCP_NODE_TOOLS_WARMUP=off` to skip the scan entirely.
+
+    Returns:
+        True if a warmup thread was started, False if inline/skipped/already
+        running.
+    """
+    global _node_tools_warmup_thread
+    if _node_tools_ready.is_set():
+        return False
+    mode = os.getenv("MCP_NODE_TOOLS_WARMUP", "thread").strip().lower()
+    if mode in ("0", "off", "false", "no", "disabled"):
+        logger.info("MCP node-tool warmup disabled; registering inline")
+        register_dynamic_node_tools_once()
+        return False
+    if mode in ("sync", "inline", "blocking"):
+        logger.info("MCP node-tool warmup set to inline")
+        register_dynamic_node_tools_once()
+        return False
+    with _node_tools_warmup_lock:
+        if _node_tools_warmup_thread is not None and _node_tools_warmup_thread.is_alive():
+            return False
+        thread = threading.Thread(
+            target=register_dynamic_node_tools_once,
+            name="mcp-node-tool-warmup",
+            daemon=True,
+        )
+        _node_tools_warmup_thread = thread
+        thread.start()
+    logger.info("MCP node-tool warmup started in background")
+    return True
+
+
+def wait_for_node_tools(timeout: float | None = None) -> bool:
+    """Block until bulk @node registration has finished.
+
+    Call this before serving a request that reads the tool list, so no client
+    can observe a partially registered server. Returns True if registration
+    completed (or had already), False if the wait timed out.
+
+    The readiness event, not `_dynamic_nodes_registered`, is the thing to wait
+    on: that flag is set *before* the scan begins so concurrent callers do not
+    start a second scan, which means it is true while the server is still empty.
+    """
+    if _node_tools_ready.is_set():
+        return True
+    if _node_tools_warmup_thread is None and not _dynamic_nodes_registered:
+        # Nothing has kicked off registration: do it inline rather than return
+        # early with an empty tool list.
+        register_dynamic_node_tools_once()
+        return _node_tools_ready.is_set()
+    return _node_tools_ready.wait(timeout)
+
+
+def node_tools_ready() -> bool:
+    """True once bulk @node registration has finished."""
+    return _node_tools_ready.is_set()

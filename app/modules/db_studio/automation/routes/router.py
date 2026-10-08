@@ -15,7 +15,7 @@ from common_lib.modules.db_studio.automation import (
     AutomationDashboardOut,
 )
 
-router = APIRouter(prefix="/api/v1/automation", tags=["Scheduler, Jobs & Automation"])
+router = APIRouter(tags=["Scheduler, Jobs & Automation"])
 svc = AutomationService()
 
 

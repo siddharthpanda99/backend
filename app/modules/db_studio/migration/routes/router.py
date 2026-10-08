@@ -17,7 +17,7 @@ service = MigrationService()
 
 
 def get_router() -> APIRouter:
-    router = APIRouter(prefix="/api/v1/migrations", tags=["Migration & Schema Versioning"])
+    router = APIRouter(tags=["Migration & Schema Versioning"])
 
     # ── Dashboard ────────────────────────────────────────────────────
 

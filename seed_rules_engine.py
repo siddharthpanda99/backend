@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Python Libs', 'common_lib', 'src')))
 
 from common_lib.modules.data_storage.database.connection import get_session
-from common_lib.modules.rules_engine.models import RuleSetModel, RuleModel, RuleSetRuleLink
+from common_lib.modules.governance.rules_engine.db_models import RuleSetModel, RuleModel, RuleSetRuleLink
 
 def get_db_session():
     # Use context manager

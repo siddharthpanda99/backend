@@ -19,7 +19,7 @@ from common_lib.modules.db_studio.visual_designers import (
     CompareSessionOut,
 )
 
-router = APIRouter(prefix="/api/v1/designers", tags=["Visual Database Designers"])
+router = APIRouter(tags=["Visual Database Designers"])
 svc = VisualDesignerService()
 
 

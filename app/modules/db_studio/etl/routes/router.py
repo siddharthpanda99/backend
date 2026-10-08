@@ -18,7 +18,7 @@ service = ETLService()
 
 
 def get_router() -> APIRouter:
-    router = APIRouter(prefix="/api/v1/etl", tags=["ETL/ELT/Reverse ETL Platform"])
+    router = APIRouter(tags=["ETL/ELT/Reverse ETL Platform"])
 
     # ── Dashboard ────────────────────────────────────────────────────
 

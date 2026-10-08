@@ -1,7 +1,13 @@
 """Deprecated router — kept for the 6-month BC window (Phase 12 — PR 2).
 
 .. deprecated::
-    Mounted at ``/api/v1/voice-control/``. Use
+    **Not currently mounted.** This router is built, but no entry in
+    ``app/core/routers.py`` ``ROUTER_DEFINITIONS`` mounts it, so nothing is
+    served under ``/api/v1/voice-control/`` — verified by enumerating the built
+    app (0 served paths under that prefix). Kept unmounted deliberately: it is a
+    sunsetting alias (Sunset 2027-02-28) with zero consumers — no frontend
+    service client, no MCP tool, no test — and the canonical
+    ``/api/v1/platform-controls/`` space is already mounted. Use
     ``/api/v1/platform-controls/`` instead. See
     ``common_lib/modules/platform_controls/docs/11_migration_from_voice_control.md``
     §6 for the router-level shim contract.
@@ -19,10 +25,14 @@ This module emits a :class:`DeprecationWarning` at import time so the
 deprecation surfaces in uvicorn's startup logs (every deploy). The HTTP
 response headers (``Deprecation: true`` + ``Sunset: <date>``) are added
 by :class:`app.modules.voice_control.middleware.DeprecationHeadersMiddleware`,
-which is registered in :mod:`app.main`. Keeping the headers in a
-middleware (rather than on every handler) ensures the BC signal is
-applied to every old-URL response uniformly, including ones that land on
-handlers defined in sub-routers.
+which :mod:`app.main` registers only when the default-OFF feature flag
+``voice_control.deprecation_headers`` is on — because with nothing mounted
+here that middleware would only tag 404s. Because it is a pure
+``include_router`` re-export this module also declares no decorated routes of
+its own, which is why the dead-handler guard in
+``tests/test_dead_routes_guard.py`` never examines it: its handlers are
+identity-equal to the already-mounted canonical ones. See
+:mod:`app.modules.voice_control.flags`.
 """
 
 from __future__ import annotations

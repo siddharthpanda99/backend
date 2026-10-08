@@ -17,7 +17,7 @@ service = DataExchangeService()
 
 
 def get_router() -> APIRouter:
-    router = APIRouter(prefix="/api/v1/data-exchange", tags=["Import, Export & Data Exchange"])
+    router = APIRouter(tags=["Import, Export & Data Exchange"])
 
     @router.get("/dashboard", response_model=ExchangeDashboardOut)
     async def get_dashboard():

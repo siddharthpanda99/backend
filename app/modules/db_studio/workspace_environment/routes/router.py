@@ -16,7 +16,7 @@ from common_lib.modules.db_studio.workspace_environment import (
     WorkspaceDashboardOut,
 )
 
-router = APIRouter(prefix="/api/v1/workspaces", tags=["Workspace, Projects & Environment Management"])
+router = APIRouter(tags=["Workspace, Projects & Environment Management"])
 svc = WorkspaceEnvironmentService()
 
 

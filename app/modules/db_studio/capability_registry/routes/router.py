@@ -18,7 +18,7 @@ svc = CapabilityRegistryService()
 
 
 def get_router() -> APIRouter:
-    router = APIRouter(prefix="/api/v1/capabilities", tags=["Capability Registry"])
+    router = APIRouter(tags=["Capability Registry"])
 
     # ── Canonical Capabilities ──────────────────────────────────────
 

@@ -5,7 +5,6 @@
     "policies": [
         {
             "id": 1,
-            "approval_policy_id": "apv_7ecfdb225694",
             "description": "Production deployment approval policy",
             "approvers": "{}",
             "escalation": "{}",

@@ -13,7 +13,7 @@ from common_lib.modules.db_studio.notebook import (
     NotebookDashboardOut,
 )
 
-router = APIRouter(prefix="/api/v1/notebooks", tags=["Notebook & Interactive Workspace"])
+router = APIRouter(tags=["Notebook & Interactive Workspace"])
 svc = NotebookService()
 
 

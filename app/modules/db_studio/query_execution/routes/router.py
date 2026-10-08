@@ -15,7 +15,7 @@ from common_lib.modules.db_studio.query_execution import (
     ExecutionHistoryOut, ExecutionErrorOut, QueryStatisticsOut, TransactionHistoryOut,
 )
 
-router = APIRouter(prefix="/api/v1/execution", tags=["Universal Query Execution Engine"])
+router = APIRouter(tags=["Universal Query Execution Engine"])
 svc = QueryExecutionService()
 
 

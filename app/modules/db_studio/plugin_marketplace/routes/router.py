@@ -14,7 +14,7 @@ from common_lib.modules.db_studio.plugin_marketplace import (
     PluginMarketplaceDashboardOut,
 )
 
-router = APIRouter(prefix="/api/v1/plugins", tags=["Plugin Marketplace & Extension SDK"])
+router = APIRouter(tags=["Plugin Marketplace & Extension SDK"])
 svc = PluginMarketplaceService()
 
 
@@ -136,7 +136,11 @@ def update_marketplace(plugin_id: str, req: MarketplaceCatalogUpdate):
     return c
 
 
-@router.get("/marketplace", response_model=List[MarketplaceCatalogOut])
+# The mount already supplies "/plugins/marketplace" (ROUTER_DEFINITIONS), so this
+# endpoint used to land on /api/v1/plugins/marketplace/marketplace. Siblings
+# (dashboard, installations, versions) declare no leading segment, so neither
+# should this one — it is the catalog list.
+@router.get("", response_model=List[MarketplaceCatalogOut])
 def list_marketplace(
     category: Optional[str] = None,
     is_featured: Optional[bool] = None,

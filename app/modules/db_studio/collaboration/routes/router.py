@@ -16,7 +16,7 @@ from common_lib.modules.db_studio.collaboration import (
     CollaborationDashboardOut,
 )
 
-router = APIRouter(prefix="/api/v1/collaboration", tags=["Collaboration"])
+router = APIRouter(tags=["Collaboration"])
 svc = CollaborationService()
 
 

@@ -459,6 +459,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.models.routes import router as models_router
     from app.modules.models.external_routes import router as external_models_router
     from app.modules.ai_models.routes import router as ai_models_catalog_router
+    from app.modules.runtime import router as runtime_router
     from app.modules.data_forge.routes import router as data_forge_router
     from app.modules.grid.routes import router as grid_router
     from app.modules.plugins.routes.router import router as plugins_router
@@ -794,6 +795,11 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
 
     def _scaffolder_router():
         from app.modules.scaffolder.routes import router
+
+        return router
+
+    def _life_cycle_assessment_router():
+        from app.modules.life_cycle_assessment.routes import router
 
         return router
 
@@ -1357,6 +1363,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["Model Catalog"],
             "auth": True,
             "module": "ai_models",
+        },
+        {
+            "router": runtime_router,
+            "prefix": "/runtime",
+            "tags": ["AI Runtime Layer"],
+            "auth": True,
+            "module": "runtime",
         },
         {
             "router": sd_models_router,
@@ -2457,6 +2470,14 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["Internet Intelligence Layer"],
             "auth": True,
             "module": "iil",
+        },
+        # ── Life Cycle Assessment ────────────────────────────────────
+        {
+            "router": _life_cycle_assessment_router(),
+            "prefix": "/life-cycle-assessment",
+            "tags": ["Life Cycle Assessment"],
+            "auth": True,
+            "module": "life_cycle_assessment",
         },
         # ── Nexus Studio (Custom GPT Builder) ───────────────────────────
         {

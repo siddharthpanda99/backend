@@ -21,7 +21,7 @@ from app.modules.common.types.index import APIResponse
 
 router = APIRouter()
 
-from app.modules.memories.dependencies import get_memory_service
+from app.core.memory_service import get_memory_service
 
 
 @router.get("/", response_model=APIResponse[List[Dict[str, Any]]])

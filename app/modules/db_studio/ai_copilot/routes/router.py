@@ -20,7 +20,7 @@ from common_lib.modules.db_studio.ai_copilot import (
     ArtifactOut,
 )
 
-router = APIRouter(prefix="/api/v1/ai", tags=["AI Database Copilot"])
+router = APIRouter(tags=["AI Database Copilot"])
 svc = AICopilotService()
 
 

@@ -17,7 +17,7 @@ service = BackupRestoreService()
 
 
 def get_router() -> APIRouter:
-    router = APIRouter(prefix="/api/v1/backup", tags=["Backup, Restore & Snapshot"])
+    router = APIRouter(tags=["Backup, Restore & Snapshot"])
 
     # ── Dashboard ────────────────────────────────────────────────────
 

@@ -14,7 +14,7 @@ from common_lib.modules.db_studio.observability import (
     ObservabilityDashboardOut,
 )
 
-router = APIRouter(prefix="/api/v1/observability", tags=["Observability"])
+router = APIRouter(tags=["Observability"])
 svc = ObservabilityService()
 
 

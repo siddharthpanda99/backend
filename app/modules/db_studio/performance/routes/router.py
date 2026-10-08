@@ -18,7 +18,7 @@ service = PerformanceProfilerService()
 
 
 def get_router() -> APIRouter:
-    router = APIRouter(prefix="/api/v1/performance", tags=["Performance Profiler"])
+    router = APIRouter(tags=["Performance Profiler"])
 
     @router.get("/dashboard", response_model=DashboardOut)
     async def get_dashboard(connection_id: str = None):

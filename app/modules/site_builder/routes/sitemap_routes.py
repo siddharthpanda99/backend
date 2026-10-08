@@ -135,10 +135,14 @@ def add_page(
 def remove_page(
     project_id: str, page_id: str, session: Session = Depends(get_db_session)
 ):
-    deleted = sitemap_service.remove_page(session, page_id)
-    if not deleted:
+    result = sitemap_service.remove_page(session, page_id)
+    if not result:
         raise HTTPException(status_code=404, detail="Page not found")
-    return SuccessResponse(success=True, data={}, message="Page removed")
+    return SuccessResponse(
+        success=True,
+        data={"sections_deleted": result["sections_deleted"]},
+        message=f"Page removed along with {result['sections_deleted']} section(s)",
+    )
 
 
 @router.put(

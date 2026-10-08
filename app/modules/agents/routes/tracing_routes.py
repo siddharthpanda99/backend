@@ -21,7 +21,12 @@ from common_lib.modules.orchestration.agents.agent.tracing.cost_service import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/traces", tags=["Agent Tracing"])
+# The "/traces" prefix is supplied by the include in
+# app/modules/agents/routes/index.py:28 (`prefix="/traces"`) plus the
+# "/agents" mount in ROUTER_DEFINITIONS. Declaring it here as well
+# produced /api/v1/agents/traces/traces/... and left the real
+# /api/v1/agents/traces/... paths unserved.
+router = APIRouter(tags=["Agent Tracing"])
 
 
 def _get_recorder() -> TraceRecorder:

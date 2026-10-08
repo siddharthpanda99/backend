@@ -571,9 +571,16 @@ async def coordination_artefacts(payload: Dict[str, Any]) -> Dict[str, Any]:
 async def coordination_checkpoints(payload: Dict[str, Any]) -> Dict[str, Any]:
     """POST /coordination/checkpoints — aggregate task results (merge)."""
     _require_coordination()
-    from common_lib.modules.decision_engine.coordination.aggregator import (
-        aggregate_results,
+    from common_lib.modules.integration.ports.coordination.coordination import (
+        get_aggregate_results,
     )
+
+    aggregate_results = get_aggregate_results()
+    if aggregate_results is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Coordination port unavailable: aggregate_results",
+        )
 
     return aggregate_results(
         bundle=dict(payload.get("bundle") or {}),

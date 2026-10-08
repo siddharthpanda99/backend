@@ -1,4 +1,4 @@
-from app.modules.memories.dependencies import get_memory_service
+from app.core.memory_service import get_memory_service
 from common_lib.modules.agents.crud.service import agent_service
 from common_lib.modules.memory.service import MemoryService
 from common_lib.modules.system.service import SystemService

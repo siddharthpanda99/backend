@@ -132,13 +132,21 @@ DARK_URL_SPACE_EXEMPT = {
     #   - voice_control/routes/router.py:3 "Mounted at /api/v1/voice-control/"
     #   - voice_control/middleware.py:41-43 "the mount in app/core/routers.py
     #     ROUTER_DEFINITIONS (prefix=\"/api/v1/voice-control\")"
+    # Both docstrings were corrected in S8-T6 — they now state plainly that the
+    # router is NOT mounted.
     # Kept unmounted deliberately: it is a sunsetting alias (Sunset 2027-02-28,
     # per middleware.py SUNSET_DATE) with zero consumers — no frontend service
     # client, no MCP tool, no test. Exposing it would re-open a URL the platform
-    # is actively retiring. NOTE for the owner: DeprecationHeadersMiddleware IS
-    # registered unconditionally at app/main.py:1577-1579, so 404s on the
-    # deprecated prefix currently carry Deprecation/Sunset/Link headers.
-    "app.modules.voice_control.routes.router": "deprecation shim, deliberately not exposed — pure re-export of the mounted platform_controls router; no consumers; Sunset 2027-02-28 (see the class docstring for the orphaned-middleware finding)",
+    # is actively retiring.
+    # RESOLVED IN S8-T6: the orphaned-middleware finding below is closed.
+    # DeprecationHeadersMiddleware is no longer registered unconditionally; it is
+    # gated behind the default-OFF flag `voice_control.deprecation_headers`
+    # (app/modules/voice_control/flags.py). Measured over the real app: 404s on
+    # the deprecated prefix no longer carry Deprecation/Sunset/Link. Registering
+    # the middleware instead of mounting the shim was the option taken, because
+    # the shim's canonical side is a Phase-0 skeleton with nothing to alias.
+    # Gate: tests/test_s8t6_deprecation_middleware_orphan.py.
+    "app.modules.voice_control.routes.router": "deprecation shim, deliberately not exposed — pure re-export of the mounted platform_controls router; no consumers; Sunset 2027-02-28; orphaned deprecation middleware resolved in S8-T6 (now behind default-OFF flag voice_control.deprecation_headers)",
     # ---- connectors: duplicate alias of a mounted endpoint ---------------
     # connection_routes.py declares TWO routers. `router` (prefix /connections)
     # IS mounted and serves 9 endpoints. `_execute_router` adds one extra
@@ -165,11 +173,12 @@ DARK_URL_SPACE_EXEMPT = {
     # client, no MCP tool, no test — and platform_controls already serves the
     # replacement. Two docstrings nevertheless assert a mount that does not
     # exist (voice_control/routes/router.py:3 and voice_control/middleware.py:41).
-    # ORPHANED-MIDDLEWARE FINDING for the owner: DeprecationHeadersMiddleware IS
-    # registered unconditionally at app/main.py:1577-1579, so 404s on the
-    # deprecated prefix currently carry Deprecation/Sunset/Link headers. Either
-    # mount the shim or deregister the middleware — not this guard's call.
-    "app.modules.voice_control.routes.router": "deprecation shim, deliberately not exposed — pure re-export of the mounted platform_controls router, prefix never applied, zero consumers, Sunset 2027-02-28; see comment above for the orphaned DeprecationHeadersMiddleware at app/main.py:1577",
+    # ORPHANED-MIDDLEWARE FINDING — CLOSED IN S8-T6: DeprecationHeadersMiddleware
+    # is no longer registered unconditionally at app/main.py; it is gated behind
+    # the default-OFF flag `voice_control.deprecation_headers`. So 404s on the
+    # deprecated prefix no longer carry Deprecation/Sunset/Link headers, and a
+    # 404 no longer advertises a successor URL that itself 404s.
+    "app.modules.voice_control.routes.router": "deprecation shim, deliberately not exposed — pure re-export of the mounted platform_controls router; prefix never applied, zero consumers, Sunset 2027-02-28; orphaned DeprecationHeadersMiddleware closed in S8-T6 (default-OFF flag voice_control.deprecation_headers) — see tests/test_s8t6_deprecation_middleware_orphan.py",
 }
 
 

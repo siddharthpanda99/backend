@@ -55,7 +55,7 @@ def _handle(fn):
 
 
 def get_router() -> APIRouter:
-    router = APIRouter(prefix="/api/v1/admin", tags=["Database Administration"])
+    router = APIRouter(tags=["Database Administration"])
 
     # ── Databases (real provisioning) ───────────────────────────────────
 

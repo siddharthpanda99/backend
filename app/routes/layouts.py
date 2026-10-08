@@ -62,7 +62,11 @@ from common_lib.modules.layout.versioning import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/v1/layouts", tags=["layouts"])
+# The mount prefix ("/layouts") is supplied by ROUTER_DEFINITIONS in
+# app/core/routers.py. Do not hardcode "/api/v1" here — the API version prefix
+# is already applied by register_routers, so a self-prefix produced paths like
+# /api/v1/layouts/api/v1/layouts/... and left the real paths unserved.
+router = APIRouter(tags=["layouts"])
 
 
 # ── Auth stub ──────────────────────────────────────────────────

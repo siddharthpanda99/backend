@@ -14,7 +14,7 @@ from common_lib.modules.db_studio.data_quality import (
     QualityDashboardOut,
 )
 
-router = APIRouter(prefix="/api/v1/data-quality", tags=["Data Quality"])
+router = APIRouter(tags=["Data Quality"])
 svc = DataQualityService()
 
 

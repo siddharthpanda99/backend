@@ -61,12 +61,59 @@ markers = [
     "integration: Integration tests that require external services or models",
 ]
 
+# `ijson` is required by the declared `sync-prompts` console script but was
+# declared NOWHERE in the repo -- the only occurrences were comments. Because
+# `app/cli/sync_prompts.py` imported it at module scope, the whole module was
+# unimportable, so the console script could not run at all.
+#
+# It is an EXTRA, not a hard dependency, for two reasons:
+#   1. `ijson` ships a C extension; adding it to the default install would
+#      change resolution for every platform install, and this repo's `uv`
+#      resolution is already broken (torch/moondream), so a hard dep could not
+#      be verified here.
+#   2. Exactly one module consumes it. Nothing else in the repo imports ijson,
+#      so paying for it on every install buys nothing.
+# With the extra absent, `sync-prompts` now raises MissingSyncPromptsDependency
+# naming the package and the install command, instead of a bare ModuleNotFoundError.
+[project.optional-dependencies]
+prompts-sync = ["ijson>=3.2"]
+
 [project.scripts]
-nexus = "app.cli:main"
+# Repointed 2026-10-03 (CLI retirement). `app.cli:main` was BROKEN before this
+# change: `app/cli.py` (a module) is shadowed by the `app/cli/` package, so
+# `app.cli` resolved to the empty `app/cli/__init__.py` and every `app.cli:*`
+# attribute below raised AttributeError. Verified empirically:
+#   >>> import app.cli; app.cli.__file__
+#   .../Backend/app/cli/__init__.py
+#   >>> app.cli.main        -> MISSING ATTR main
+# `nexus` now launches the canonical CLI (same target as the `cli` script in
+# common_lib/pyproject.toml) and matches setup.py, which also no longer
+# disagreed with this file.
+nexus = "common_lib.modules.cli.runtime.runner:main"
+# FIXED (declared-but-dead lane). These still target `app/cli.py` — the uvicorn
+# launcher for `app.main:app` and the docker-compose wrappers — because rule 07
+# forbids common_lib from hosting a FastAPI launcher, so they cannot be
+# repointed into common_lib.modules.cli. They were unreachable because the
+# `app/cli/` PACKAGE shadows the `app/cli.py` module: FileFinder tries the
+# directory `cli` before the file `cli.py`, so `import app.cli` bound the
+# package and `dev_server` / `db_up` raised AttributeError.
+# `app/cli/__init__.py` now loads `app/cli.py` by path and re-exports its
+# callables. Nothing was deleted from app/cli.py.
 dev = "app.cli:dev_server"
 db-up = "app.cli:db_up"
 node-server = "app.mcp.standalone_node_server:main"
+# FIXED: `platform_mcp.agent_mesh` did not exist (never tracked in git), so
+# server.py's module-scope import made this script dead. `agent_mesh.py` is
+# implemented against the spec in AGENT_MESH_README.md and the persisted
+# AGENT_MANIFEST.json (92 agents).
 platform-mcp = "common_lib.modules.platform_mcp.server:main"
+# FIXED: `app/cli/sync_prompts.py` imported `ijson` at module scope and `ijson`
+# was declared nowhere in the repo, so the module was unimportable and this
+# script could never run. `ijson` is now declared under the `prompts-sync`
+# extra above, and the import is lazy with a named MissingSyncPromptsDependency
+# naming the package and install command. The capability still has no canonical
+# equivalent elsewhere: it syncs Manicode chat transcripts into
+# resources/prompts.db.
 sync-prompts = "app.cli.sync_prompts:main"
 
 [build-system]
