@@ -452,6 +452,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     )
     from app.modules.workflows.routes.compiler import router as workflow_compiler_router
     from app.modules.tools.routes.index import router as tools_router
+    from app.modules.capabilities.routes import router as capabilities_router
     from app.modules.memory.routes import router as cognitive_memory_router
     from app.modules.memories.routes.index import router as memories_router
     from app.modules.decision.routes import router as decision_router
@@ -1322,6 +1323,13 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "module": "workflows",
         },
         # ── Tools & Models ─────────────────────────────────────────
+        {
+            "router": capabilities_router,
+            "prefix": "/capabilities",
+            "tags": ["Capabilities"],
+            "auth": True,
+            "module": "capabilities",
+        },
         {
             "router": tools_router,
             "prefix": "/tools",
