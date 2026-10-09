@@ -706,3 +706,74 @@ async def get_all_integrations_status():
     except Exception as e:
         logger.error(f"Failed to get integrations status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Cost Summary Endpoints (NEX-P1-003) ──────────────────────────────────────
+# Thin routes (G1): logic lives in common_lib.modules.observability.cost_tracker
+
+@router.get("/cost/summary")
+async def get_cost_summary(
+    tenant_id: str | None = None,
+    group_by: str = "skill",
+):
+    """Get cost aggregation grouped by skill/model/workflow/agent (NEX-P1-003)."""
+    try:
+        from common_lib.modules.observability.cost_tracker import get_cost_aggregation_service
+
+        svc = get_cost_aggregation_service()
+        if not svc.is_enabled():
+            return {
+                "enabled": False,
+                "message": "Cost ledger disabled. Set OBSERVABILITY_COST_LEDGER=1 to enable.",
+                "data": [],
+            }
+        data = svc.get_cost_summary(tenant_id=tenant_id, group_by=group_by)
+        return {"enabled": True, "group_by": group_by, "data": data}
+    except Exception as e:
+        logger.error(f"Failed to get cost summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/cost/per-outcome")
+async def get_cost_per_outcome(
+    tenant_id: str | None = None,
+):
+    """Get cost per successful outcome grouped by outcome class (NEX-P1-003)."""
+    try:
+        from common_lib.modules.observability.cost_tracker import get_cost_aggregation_service
+
+        svc = get_cost_aggregation_service()
+        if not svc.is_enabled():
+            return {
+                "enabled": False,
+                "message": "Cost ledger disabled. Set OBSERVABILITY_COST_LEDGER=1 to enable.",
+                "data": [],
+            }
+        data = svc.get_cost_per_outcome(tenant_id=tenant_id)
+        return {"enabled": True, "data": data}
+    except Exception as e:
+        logger.error(f"Failed to get cost per outcome: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Stable IDs Endpoint (NEX-P1-001) ───────────────────────────────────────
+# Thin route (G1): all logic lives in
+# common_lib.modules.observability.stable_ids. Returns the stable IDs bound
+# to the current request context (populated from inbound x-*-id headers when
+# the stable_id_propagation flag is ON; {} when OFF). Additive: new route,
+# no existing route touched.
+
+@router.get("/stable-ids")
+async def get_stable_ids():
+    """Return the stable IDs for the current request context (NEX-P1-001)."""
+    try:
+        from common_lib.modules.observability import stable_ids as _stable_ids
+
+        return {
+            "enabled": _stable_ids._flag_on(),
+            "fields": list(_stable_ids.STABLE_ID_FIELDS),
+            "ids": _stable_ids.snapshot(),
+        }
+    except Exception as e:
+        logger.error(f"Failed to read stable IDs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
