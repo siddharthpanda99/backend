@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.modules.cognitive_runtime.routes import evaluate, execute, infer, plan, runs
+from app.modules.cognitive_runtime.routes import golden as golden_routes
 
 # No prefix here: app/core/routers.py registers this router with
 # prefix="/cognitive", and FastAPI concatenates the two. Declaring "/cognitive"
@@ -14,5 +15,6 @@ router.include_router(plan.router)
 router.include_router(execute.router)
 router.include_router(runs.router)
 router.include_router(evaluate.router)
+router.include_router(golden_routes.router)
 
 __all__ = ["router"]

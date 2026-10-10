@@ -500,6 +500,7 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
     from app.modules.proxy_routing import router as proxy_router
     from app.modules.collage.routes import router as collage_router
     from app.modules.experiments.routes import router as experiments_router
+    from app.modules.evaluations.routes.router import router as evaluations_router
     from app.modules.ext_apps import router as ext_apps_router
     from app.modules.connectors.routes import connector_router, connection_router
     from app.modules.connectors.mcp.server import router as connectors_mcp_router
@@ -1862,6 +1863,14 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["Experiments"],
             "auth": True,
             "module": "experiments",
+        },
+        # ── Offline Evaluations (NEX-P7-002: flag-gated, 404 while OFF) ──
+        {
+            "router": evaluations_router,
+            "prefix": "",
+            "tags": ["Evaluations"],
+            "auth": True,
+            "module": "evaluations",
         },
         # ── SOTA Memory Systems ────────────────────────────────
         {

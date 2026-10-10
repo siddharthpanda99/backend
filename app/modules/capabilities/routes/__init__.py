@@ -132,6 +132,30 @@ class BatchRequest(BaseModel):
 _BATCH_FLAG = "capabilities.batch.enabled"
 
 
+def _pep_enforce_or_403(action: str, resource_id: str, resource_type: str) -> None:
+    """NEX-PX-001 gateway middleware (thin route layer, G1).
+
+    Flag OFF → returns immediately (legacy behaviour byte-identical).
+    Flag ON + denied → 403. Principal derivation is still TODO (auth
+    context); until then the route-level default principal applies.
+    G2: enforced through the integration port.
+    """
+    from common_lib.modules.integration.ports.governance import (
+        pep_port as _pep_route_port,
+    )
+
+    if not _pep_route_port.pep_enforcement_enabled():
+        return
+    checks = {
+        "capability.discover": _pep_route_port.check_capability_discovery,
+        "capability.invoke": _pep_route_port.check_capability_invoke,
+        "artifact.read": _pep_route_port.check_artifact_read,
+    }
+    verdict = checks[action]("api-user", resource_id)
+    if not verdict.allowed:
+        raise HTTPException(status_code=403, detail=f"PEP denied {action}: {verdict.reason}")
+
+
 def _require_batch_feature() -> None:
     """Refuse the batch route with 404 + a pointer while the flag is OFF.
 
@@ -163,6 +187,7 @@ async def search_capabilities(request: CapabilitySearchRequest):
     Returns ranked short summaries; full schemas fetched on demand.
     Authorization filtering applied before ranking.
     """
+    _pep_enforce_or_403("capability.discover", request.query or "*", "capability")
     try:
         from common_lib.modules.capabilities import get_capability_registry
 
@@ -191,7 +216,7 @@ async def search_capabilities(request: CapabilitySearchRequest):
             include_full_schemas=request.include_full_schemas,
         )
 
-        response = svc.search(internal)
+        response = svc.search(internal, principal_id="api-user")
         return {
             "results": [r.model_dump() for r in response.results],
             "next_cursor": response.next_cursor,
@@ -210,8 +235,11 @@ async def batch_capabilities(request: BatchRequest):
     turns. Read-only: only search/get/get_schema/list_versions accepted.
     Gated behind ``capabilities.batch.enabled`` (default OFF) — flag-off
     answers 404 with identical behaviour to "route does not exist".
+    NEX-PX-001: PEP enforcement ON additionally requires a
+    ``capability.discover`` grant (batch is read-only discovery/exec).
     """
     _require_batch_feature()
+    _pep_enforce_or_403("capability.discover", "*", "capability")
     try:
         from common_lib.modules.capabilities.batch import get_batch_service
 
@@ -402,6 +430,7 @@ async def invoke_capability(capability_id: str, request: InvocationRequest):
     Returns structured response with result_ref for large outputs.
     Idempotency-Key prevents duplicate side effects.
     """
+    _pep_enforce_or_403("capability.invoke", capability_id, "capability")
     try:
         from common_lib.modules.capabilities import get_capability_registry
         from common_lib.modules.observability import stable_ids as stable_ids_port
@@ -526,6 +555,7 @@ async def mcp_list_capabilities(
     kind: str | None = None,
 ):
     """MCP-compatible tool list from unified registry (NEX-P2-003)."""
+    _pep_enforce_or_403("capability.discover", search or "*", "capability")
     try:
         from common_lib.modules.capabilities import get_capability_registry
         from common_lib.modules.capabilities.models import CapabilitySearchRequest, CapabilityStatus, CapabilityKind
@@ -540,7 +570,7 @@ async def mcp_list_capabilities(
             max_results=100,
         )
 
-        response = svc.search(request)
+        response = svc.search(request, principal_id="api-user")
         return {
             "tools": [
                 {
@@ -610,6 +640,7 @@ async def read_result_artifact(request: ResultArtifactReadRequest):
     Returns 404 for unknown, expired, or foreign refs alike, so callers
     cannot probe for other tenants' artifacts.
     """
+    _pep_enforce_or_403("artifact.read", request.result_ref, "artifact")
     try:
         from common_lib.modules.capabilities import get_capability_registry
 

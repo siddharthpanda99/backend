@@ -29,6 +29,27 @@ TERMINAL_STATUSES = ("completed", "failed", "cancelled")
 GRAPH_RUN_TIMEOUT = 600
 
 
+def _pep_enforce_or_403(action: str, workflow_id: str) -> None:
+    """NEX-PX-001 gateway middleware (thin route layer, G1).
+
+    Flag OFF → returns immediately (legacy behaviour byte-identical).
+    Flag ON + denied → 403. G2: enforced through the integration port.
+    """
+    from common_lib.modules.integration.ports.governance import (
+        pep_port as _pep_wf_port,
+    )
+
+    if not _pep_wf_port.pep_enforcement_enabled():
+        return
+    checks = {
+        "workflow.start": _pep_wf_port.check_workflow_start,
+        "workflow.resume": _pep_wf_port.check_workflow_resume,
+    }
+    verdict = checks[action]("api-user", workflow_id)
+    if not verdict.allowed:
+        raise HTTPException(status_code=403, detail=f"PEP denied {action}: {verdict.reason}")
+
+
 class WorkflowCreateRequest(BaseModel):
     name: str
     description: str = ""
@@ -128,6 +149,7 @@ async def run_workflow(workflow_id: str, inputs: Dict[str, Any] = {}):
     channel carries coarse ``progress`` events backed by job progress plus a
     terminal ``workflow.completed``/``workflow.failed`` event with outputs.
     """
+    _pep_enforce_or_403("workflow.start", workflow_id)
     workflow = workflow_service.get_workflow(workflow_id)
     if not workflow:
         raise HTTPException(
@@ -153,6 +175,7 @@ def submit_graph_run(
     inputs: Dict[str, Any] = {},
 ) -> Dict[str, Any]:
     """Submit a node/edge graph run as a background job; 202 {job_id}."""
+    _pep_enforce_or_403("workflow.start", "*")
     record: JobRecord = _submit_graph_run(
         nodes=nodes, edges=edges or [], inputs=inputs or {}
     )
@@ -258,6 +281,7 @@ async def run_workflow_stream(
     inputs: Dict[str, Any] = {},
 ):
     """Submit an ad-hoc graph run as a background job; stream job-backed SSE."""
+    _pep_enforce_or_403("workflow.resume", "*")
     record: JobRecord = _submit_graph_run(
         nodes=nodes, edges=edges or [], inputs=inputs or {}
     )
