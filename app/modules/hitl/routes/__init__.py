@@ -6,6 +6,7 @@ from app.modules.hitl.routes.assignments import router as assignments_router
 from app.modules.hitl.routes.audit_logs import router as audit_logs_router
 from app.modules.hitl.routes.review_queue import router as review_queue_router
 from app.modules.hitl.routes.sdk_approvals import router as sdk_approvals_router
+from app.modules.hitl.routes.approval_gates import router as approval_gates_router
 
 router = APIRouter()
 router.include_router(hitl_policies_router)
@@ -15,5 +16,6 @@ router.include_router(assignments_router)
 router.include_router(audit_logs_router)
 router.include_router(review_queue_router)
 router.include_router(sdk_approvals_router)
+router.include_router(approval_gates_router)
 
 __all__ = ["router"]

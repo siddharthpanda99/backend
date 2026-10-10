@@ -21,6 +21,7 @@ from app.modules.agents.routes.tool_artifact_routes import (
 from app.modules.agents.routes.checkpoint_routes import router as checkpoint_router
 from app.modules.agents.routes.playbook_routes import router as playbook_router
 from app.modules.agents.routes.snapshots_routes import router as snapshots_router
+from app.modules.agents.routes.durable_run_routes import router as durable_run_router
 
 router = APIRouter()
 router.include_router(registry_router, prefix="/registry", tags=["Registry"])
@@ -52,6 +53,9 @@ router.include_router(playbook_router, prefix="/playbooks", tags=["Playbooks"])
 # was unreachable. Mounted here under a `/snapshots` prefix so the paths do not
 # collide with the `/{id}` CRUD routes declared below.
 router.include_router(snapshots_router, prefix="/snapshots", tags=["Snapshots"])
+# Durable runs (NEX-P5-002) — sub-prefixed so `/{id}` CRUD below cannot swallow
+# it. Flag-off (agents.durable_runs.enabled OFF) every endpoint answers 404.
+router.include_router(durable_run_router, prefix="/runs", tags=["Durable Runs"])
 
 
 @router.get("/", response_model=APIResponse[List[AgentRead]])
