@@ -113,6 +113,47 @@ class EnableRequest(BaseModel):
     enabled_by: str
 
 
+class BatchSubRequest(BaseModel):
+    op: str
+    query: str = ""
+    capability_id: str = ""
+    version: str = ""
+    filter: dict[str, Any] | list[dict[str, Any]] | None = None
+    projection: list[str] | None = None
+    cursor: str | None = None
+    limit: int = 20
+
+
+class BatchRequest(BaseModel):
+    subrequests: list[BatchSubRequest]
+    deadline_ms: int = 30000
+
+
+_BATCH_FLAG = "capabilities.batch.enabled"
+
+
+def _require_batch_feature() -> None:
+    """Refuse the batch route with 404 + a pointer while the flag is OFF.
+
+    404 (not 403) because the route does not exist from the client's point
+    of view until the feature is enabled. Mirrors the tools module pattern.
+    """
+    try:
+        from common_lib.modules.capabilities.flags import is_enabled as _batch_enabled
+    except ImportError:
+        raise HTTPException(status_code=404, detail="Safe batch endpoint unavailable")
+    if _batch_enabled(_BATCH_FLAG):
+        return
+    raise HTTPException(
+        status_code=404,
+        detail=(
+            "Safe batch endpoint is gated behind the feature flag "
+            f"'{_BATCH_FLAG}', which is currently OFF. Enable "
+            "CAPABILITIES_BATCH_ENABLED=true and restart."
+        ),
+    )
+
+
 # ── Control Plane ────────────────────────────────────────────────────────────
 
 @router.post("/search")
@@ -157,6 +198,41 @@ async def search_capabilities(request: CapabilitySearchRequest):
         }
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/batch")
+async def batch_capabilities(request: BatchRequest):
+    """Safe read-only batch endpoint (NEX-P3-002).
+
+    Runs paginate + filter + project server-side in one call instead of N
+    turns. Read-only: only search/get/get_schema/list_versions accepted.
+    Gated behind ``capabilities.batch.enabled`` (default OFF) — flag-off
+    answers 404 with identical behaviour to "route does not exist".
+    """
+    _require_batch_feature()
+    try:
+        from common_lib.modules.capabilities.batch import get_batch_service
+
+        svc = get_batch_service()
+        return svc.execute_batch(
+            [s.model_dump(exclude_none=False) for s in request.subrequests],
+            deadline_ms=request.deadline_ms,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/batch/flags")
+async def batch_flags():
+    """Capabilities feature-flag state. Ungated by design (diagnostics)."""
+    try:
+        from common_lib.modules.capabilities.flags import describe_flags
+
+        return {"flags": describe_flags()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -512,3 +588,40 @@ async def mcp_call_capability(capability_id: str, arguments: dict[str, Any]):
         capability_version="1.0.0",
         arguments=arguments,
     ))
+
+
+# ── Bounded outputs: artifact read (NEX-P3-001) ───────────────────────────
+# Thin route (G1): bounding + ACL live in common_lib. Additive (G4): no
+# existing route touched. No flag gate here by design — the endpoint only
+# serves artifacts that the flag-gated write path created; unknown refs
+# read as 404 either way, so flag-off deployments observe no change.
+
+
+class ResultArtifactReadRequest(BaseModel):
+    result_ref: str
+    tenant_id: str  # TODO: derive from auth context instead of request body
+    principal_id: str  # TODO: derive from auth context instead of request body
+
+
+@router.post("/results/read")
+async def read_result_artifact(request: ResultArtifactReadRequest):
+    """Read a bounded result artifact with tenant/principal re-authorization.
+
+    Returns 404 for unknown, expired, or foreign refs alike, so callers
+    cannot probe for other tenants' artifacts.
+    """
+    try:
+        from common_lib.modules.capabilities import get_capability_registry
+
+        svc = get_capability_registry()
+        return svc.read_bounded_result(
+            request.result_ref, request.tenant_id, request.principal_id
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        if type(e).__name__ == "ResultArtifactDenied":
+            raise HTTPException(status_code=404, detail="Result artifact not available")
+        if isinstance(e, RuntimeError):
+            raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
