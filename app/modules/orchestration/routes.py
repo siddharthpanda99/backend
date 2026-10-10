@@ -193,6 +193,106 @@ async def route_task(req: RouteRequest) -> Dict[str, Any]:
 
 
 # =========================================================================
+# ── Single Scorer (NEX-P4-002) ─────────────────────────────────────────
+# =========================================================================
+
+
+class ScorerResolveRequest(BaseModel):
+    capability: str
+    candidates: Optional[List[Dict[str, Any]]] = None
+    workload: Optional[str] = None
+    data_class: str = "public"
+    constraints: Optional[Dict[str, Any]] = None
+    context: Optional[Dict[str, Any]] = None
+    availability: Optional[Dict[str, bool]] = None
+    capacity: Optional[Dict[str, Any]] = None
+    use_live_sources: bool = True
+
+
+class ScorerFeedbackRequest(BaseModel):
+    model_id: str
+    capability: str
+    success: bool
+    latency_ms: Optional[float] = None
+    cost: Optional[float] = None
+    error: Optional[str] = None
+
+
+@router.post("/routing/resolve")
+async def resolve_model_route(req: ScorerResolveRequest) -> Dict[str, Any]:
+    """Run the single routing scorer (NEX-P4-002).
+
+    Thin wrapper over ``orchestration.routing.scorer.resolve_route``:
+    ordered pipeline (policy → privacy → capability → quality floor →
+    availability/capacity → Pareto rank → score) with a per-stage decision
+    log. Flag-off the scorer flag falls back to the legacy COGR route.
+    """
+    try:
+        from common_lib.modules.orchestration.routing import flags as routing_flags
+        from common_lib.modules.orchestration.routing import scorer as routing_scorer
+
+        if not routing_flags.scorer_enabled():
+            from common_lib.modules.orchestration.routing.decision_function import (
+                route as legacy_route,
+            )
+
+            legacy = legacy_route(
+                req.capability,
+                {"candidates": req.candidates or []},
+                dict(req.constraints or {}),
+            )
+            return {
+                "capability": legacy.capability,
+                "selected_id": legacy.selected.id if legacy.selected else None,
+                "runner_up_id": legacy.runner_up.id if legacy.runner_up else None,
+                "scores": dict(legacy.scores),
+                "pareto_ranks": {},
+                "trace": [],
+                "reasons": list(legacy.reasons),
+                "denied": legacy.denied,
+                "denial_reason": "" if not legacy.denied else "; ".join(legacy.reasons),
+                "via": "legacy",
+            }
+        decision = routing_scorer.resolve_route(
+            capability=req.capability,
+            candidates=req.candidates,
+            workload=req.workload,
+            data_class=req.data_class,
+            constraints=req.constraints,
+            context=req.context,
+            availability=req.availability,
+            capacity=req.capacity,
+            use_live_sources=req.use_live_sources,
+        )
+        decision["via"] = "scorer"
+        return decision
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Scorer resolve failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/routing/feedback")
+async def record_route_feedback(req: ScorerFeedbackRequest) -> Dict[str, Any]:
+    """Record a routing outcome for future quality priors (NEX-P4-002)."""
+    try:
+        from common_lib.modules.orchestration.routing import scorer as routing_scorer
+
+        return routing_scorer.record_feedback(
+            model_id=req.model_id,
+            capability=req.capability,
+            success=req.success,
+            latency_ms=req.latency_ms,
+            cost=req.cost,
+            error=req.error,
+        )
+    except Exception as exc:
+        logger.error("Scorer feedback failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# =========================================================================
 # ── Health / Status ─────────────────────────────────────────────────
 # =========================================================================
 

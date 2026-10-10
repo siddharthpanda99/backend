@@ -385,3 +385,15 @@ async def scan_directory_endpoint(path: str = Query(...), extension: str = Query
     except Exception as e:
         logger.error(f"Failed to scan directory {path}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── NEX-P4-003: Pareto + fallback + canary routes (additive mount) ────────────
+# Imported lazily so a failure here can never break the existing model routes.
+try:
+    from app.modules.models.routes.routing_frontier import (  # noqa: E402
+        frontier_router as _frontier_router,
+    )
+
+    router.include_router(_frontier_router)
+except Exception as _frontier_mount_error:  # noqa: BLE001
+    logger.warning(f"Model routing frontier routes unavailable: {_frontier_mount_error}")
