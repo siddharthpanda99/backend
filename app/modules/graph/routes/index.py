@@ -101,3 +101,102 @@ async def get_communities():
 @router.get("/export", response_model=Dict[str, Any])
 async def export_graph(fmt: str = Query("json")):
     return await _svc.export_graph(fmt)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Provenance + ACL (NEX-P6-001) — thin routes, logic in common_lib.
+# Mutations 404 while knowledge_engine.graph.provenance.enabled is OFF.
+# ═══════════════════════════════════════════════════════════════════
+
+_provenance_svc = None
+
+
+def _provenance_service():
+    global _provenance_svc
+    if _provenance_svc is None:
+        from common_lib.modules.knowledge_engine.graph.provenance.service import (
+            ProvenanceGraphService,
+        )
+
+        _provenance_svc = ProvenanceGraphService()
+    return _provenance_svc
+
+
+def _provenance_principal(tenant: str):
+    from common_lib.modules.knowledge_engine.graph.provenance.authz import Principal
+
+    return Principal(tenant=tenant)
+
+
+def _require_provenance_enabled():
+    from fastapi import HTTPException
+
+    from common_lib.modules.knowledge_engine.graph.provenance.flags import is_enabled
+
+    if not is_enabled():
+        raise HTTPException(status_code=404, detail="Provenance store disabled")
+
+
+@router.post("/provenance/nodes", response_model=Dict[str, Any], status_code=201)
+async def provenance_upsert_node(record: Dict[str, Any]):
+    _require_provenance_enabled()
+    from common_lib.modules.knowledge_engine.graph.provenance.models import (
+        ProvenanceNode,
+    )
+
+    stored = _provenance_service().upsert_node(ProvenanceNode(**record))
+    return stored.model_dump()
+
+
+@router.post("/provenance/edges", response_model=Dict[str, Any], status_code=201)
+async def provenance_upsert_edge(record: Dict[str, Any]):
+    _require_provenance_enabled()
+    from common_lib.modules.knowledge_engine.graph.provenance.models import (
+        ProvenanceEdge,
+    )
+
+    stored = _provenance_service().upsert_edge(ProvenanceEdge(**record))
+    return stored.model_dump()
+
+
+@router.post("/provenance/reconcile", response_model=Dict[str, Any])
+async def provenance_reconcile(payload: Dict[str, Any]):
+    _require_provenance_enabled()
+    from common_lib.modules.knowledge_engine.graph.provenance.models import (
+        ProvenanceEdge,
+        ProvenanceNode,
+    )
+
+    return _provenance_service().reconcile(
+        tenant=payload.get("tenant", ""),
+        source_system=payload.get("source_system", ""),
+        nodes=[ProvenanceNode(**n) for n in payload.get("nodes", [])],
+        edges=[ProvenanceEdge(**e) for e in payload.get("edges", [])],
+        watermark=payload.get("watermark", ""),
+    )
+
+
+@router.get("/provenance/query", response_model=Dict[str, Any])
+async def provenance_query(
+    tenant: str = Query(...),
+    mode: str = Query("nodes"),
+    stable_id: str = Query(""),
+    max_depth: int = Query(2),
+):
+    svc = _provenance_service()
+    principal = _provenance_principal(tenant)
+    if mode == "neighbourhood":
+        return svc.neighbourhood(principal, stable_id, max_depth=max_depth)
+    if mode == "edges":
+        return {"edges": [e.model_dump() for e in svc.visible_edges(principal)]}
+    return {"nodes": [n.model_dump() for n in svc.visible_nodes(principal)]}
+
+
+@router.get("/provenance/completeness", response_model=Dict[str, Any])
+async def provenance_completeness(tenant: str = Query("")):
+    return _provenance_service().provenance_completeness(tenant or None)
+
+
+@router.get("/provenance/staleness", response_model=Dict[str, Any])
+async def provenance_staleness(tenant: str = Query("")):
+    return _provenance_service().staleness_metrics(tenant or None)
