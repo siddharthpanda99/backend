@@ -41,398 +41,87 @@ import time
 from sqlalchemy import text
 from common_lib.modules.data_storage.database.connection import engine
 
+# Startup logging helper with color codes - only critical messages go to console, rest to debug
+import sys
+
+# ANSI color codes
+class _StartupColors:
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    BLUE = '\033[94m'
+    MAGENTA = '\033[95m'
+    CYAN = '\033[96m'
+    WHITE = '\033[97m'
+
+# Only enable colors if stdout is a TTY
+if sys.stdout.isatty():
+    _colors = _StartupColors()
+else:
+    # Disable colors if not a TTY
+    for attr in dir(_StartupColors):
+        if not attr.startswith('_'):
+            setattr(_StartupColors, attr, '')
+
+def _startup_info(msg: str):
+    """Log critical startup info to console (green)."""
+    print(f"{_StartupColors.GREEN}[STARTUP]{_StartupColors.RESET} {msg}", flush=True)
+
+def _startup_warn(msg: str):
+    """Log startup warnings to console (yellow)."""
+    print(f"{_StartupColors.YELLOW}[STARTUP WARN]{_StartupColors.RESET} {msg}", flush=True)
+
+def _startup_error(msg: str):
+    """Log startup errors to console (red)."""
+    print(f"{_StartupColors.RED}[STARTUP ERROR]{_StartupColors.RESET} {msg}", flush=True)
+
+def _startup_debug(msg: str):
+    """Log startup debug info (only visible with DEBUG log level)."""
+    logger.debug(f"[STARTUP] {msg}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: register every @node wrapper as an MCP tool.
-    #
-    # Deferred here from `app.mcp.server` import time on purpose - it costs roughly
-    # 100s, almost all of it the node discovery scan that imports ~3.7k modules,
-    # and it used to be paid by anything that merely imported `app.main`.
-    #
-    # This used to run inline here, which kept the process from serving anything
-    # for the whole scan even though only MCP consumers need the result. It now
-    # runs on a background thread: the app binds and serves HTTP immediately, and
-    # the MCP routes that read the tool list gate on `wait_for_node_tools()`, so
-    # the served tool list is still complete. Set MCP_NODE_TOOLS_WARMUP=off to
-    # skip the scan, or =sync to restore the old blocking behaviour.
-    try:
-        from app.mcp.server import start_node_tool_warmup
+    """
+    Minimal synchronous startup - only critical operations.
+    All non-critical operations run in background tasks.
+    """
+    # ─── Critical: MCP tool warmup, deferred routers, seeding ───
+    # All handled by the single post-bind orchestrator thread (spawned below
+    # via _spawn_background_tasks): Phase A mounts deferred routers, Phase B
+    # triggers the MCP @node scan, Phase C seeds sequentially. Nothing heavy
+    # runs inline here so the server binds immediately.
 
-        if start_node_tool_warmup():
-            print("Startup: warming @node -> MCP tool registry in background.")
-        else:
-            from app.mcp.server import node_tools_ready
-
-            state = "complete" if node_tools_ready() else "skipped"
-            print(f"Startup: @node -> MCP tool registration {state}.")
-    except Exception as e:
-        print(f"Startup: dynamic @node MCP registration skipped: {e}")
-
-    # Startup: Verify Database Connection
+    # ─── Critical: Database connection & init_db ───
     max_retries = 4
     retry_interval = 2
 
     for attempt in range(max_retries):
         try:
-            print(
-                f"Startup: Verifying database connection (Attempt {attempt + 1}/{max_retries})..."
-            )
+            _startup_info(f"Verifying database connection (Attempt {attempt + 1}/{max_retries})...")
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
-            print("Database connection established successfully.")
+            _startup_info("Database connection established successfully.")
 
             from common_lib.modules.data_storage.database.connection import init_db
 
-            # Register all PM models (Project, ProductIdea, RoadmapItem, etc.)
-            # Must happen BEFORE init_db() so tables are created in the right order
-            from common_lib.modules.project_management.init_db import (
-                get_pm_metadata,
-            )
-
-            get_pm_metadata()
-
-            # Register all Secrets Manager models (Secret, Policy, etc.)
-            from common_lib.modules.secrets_manager.init_db import (
-                get_sm_metadata,
-            )
-
-            get_sm_metadata()
-
-            # Register Open Code Review models (must happen BEFORE init_db() so tables are created)
+            # Register metadata BEFORE init_db()
+            from common_lib.modules.project_management.init_db import get_pm_metadata
+            from common_lib.modules.secrets_manager.init_db import get_sm_metadata
             import common_lib.modules.open_code_review.models  # noqa: F401
 
+            get_pm_metadata()
+            get_sm_metadata()
+
             init_db()
-            print("Database initialized and models registered.")
-
-            # Seed RBAC roles and permissions
-            try:
-                from common_lib.modules.rbac.service import seed_roles
-                from sqlmodel import Session as SQLSession
-
-                with SQLSession(engine) as rbac_session:
-                    result = seed_roles(rbac_session)
-                    print(
-                        f"RBAC seeded: {result['permissions']} permissions, {result['roles']} roles"
-                    )
-            except Exception as se:
-                import traceback
-
-                print(f"Warning: RBAC seeding failed: {se}")
-                traceback.print_exc()
-
-            # Seed built-in themes from themes.json into DB
-            try:
-                from common_lib.modules.settings.service import theme_service
-                from sqlmodel import Session as SQLSession
-
-                with SQLSession(engine) as seed_session:
-                    result = theme_service.seed_from_json(seed_session)
-                    print(f"Startup: {result.get('message', 'Themes seeded')}")
-            except Exception as se:
-                import traceback
-
-                print(f"Warning: Theme seeding failed: {se}")
-                traceback.print_exc()
-
-            try:
-                from common_lib.modules.secrets_manager.keys_management.service import (
-                    KeyManagementService,
-                )
-
-                seeded_m, seeded_f = KeyManagementService().seed_proxy_catalog()
-                print(f"Proxy catalog seeded: {seeded_m} models, {seeded_f} fallbacks.")
-
-                seeded_k = KeyManagementService().seed_from_config()
-                if seeded_k:
-                    print(f"Auto-seeded {seeded_k} API keys from config.ini.")
-
-                # Seed Human-in-the-Loop (HITL) seed data
-                from common_lib.modules.governance.hitl.approval_service import (
-                    get_hitl_service,
-                )
-
-                get_hitl_service()._load_seed_data()
-                print("HITL Governance seed data loaded.")
-            except Exception as se:
-                print(f"Warning: Proxy catalog, key, or HITL seeding failed: {se}")
-
-            # Seed 20 popular connector definitions
-            try:
-                from app.modules.connectors.seed import get_connector_seeds
-                from common_lib.modules.plugins.connectors.models.db import (
-                    ConnectorRecord,
-                )
-                from sqlmodel import Session as SQLSession
-
-                with SQLSession(engine) as seed_session:
-                    new_count = 0
-                    updated_count = 0
-                    for connector_data in get_connector_seeds():
-                        existing = seed_session.get(
-                            ConnectorRecord, connector_data["id"]
-                        )
-                        if existing:
-                            # Update existing record — keeps seed.py as single source of truth
-                            for field, value in connector_data.items():
-                                setattr(existing, field, value)
-                            updated_count += 1
-                        else:
-                            record = ConnectorRecord(**connector_data)
-                            seed_session.add(record)
-                            new_count += 1
-                    if new_count or updated_count:
-                        seed_session.commit()
-                        print(
-                            f"Connectors seeded: {new_count} new, {updated_count} updated"
-                        )
-                    else:
-                        print("Connectors: all already up to date")
-            except Exception as se:
-                print(f"Warning: Connector seeding failed: {se}")
-
-            # Seed default dev connection for Atlassian (DEV_MODE only)
-            if settings.DEV_MODE:
-                try:
-                    from common_lib.modules.plugins.connectors.models.db import (
-                        ConnectionRecord,
-                    )
-                    from common_lib.modules.secrets_manager.keys_management.service import (
-                        KeyManagementService,
-                    )
-                    from common_lib.modules.secrets_manager.keys_management.schemas import (
-                        ApiKeyCreate,
-                        KeyProvider,
-                    )
-                    from sqlmodel import Session as SQLSession
-                    from sqlmodel import select
-
-                    with SQLSession(engine) as dev_session:
-                        existing_dev = dev_session.exec(
-                            select(ConnectionRecord).where(
-                                ConnectionRecord.connector_id == "atlassian",
-                                ConnectionRecord.label == "Atlassian Dev Default",
-                            )
-                        ).first()
-
-                        if not existing_dev:
-                            # Create a placeholder API key
-                            import uuid
-
-                            kms = KeyManagementService()
-                            key_result = kms.create_key(
-                                ApiKeyCreate(
-                                    provider=KeyProvider.ATLASSIAN,
-                                    label="Atlassian Dev Default Key",
-                                    key_value="dev-placeholder-api-key",
-                                    enabled=True,
-                                )
-                            )
-                            key_id = key_result.id
-
-                            dev_conn = ConnectionRecord(
-                                id=None,
-                                connector_id="atlassian",
-                                user_id="default",
-                                auth_scheme="api_key",
-                                key_id=key_id,
-                                status="active",
-                                label="Atlassian Dev Default",
-                                form_data={
-                                    "atlassian_instance_url": "https://your-domain.atlassian.net",
-                                    "atlassian_email": "dev@example.com",
-                                },
-                                metadata_json={
-                                    "seeded": True,
-                                    "source": "startup",
-                                },
-                            )
-                            dev_session.add(dev_conn)
-                            dev_session.commit()
-                            print(
-                                f"Seeded default Atlassian dev connection (key_id={key_id})"
-                            )
-                        else:
-                            print("Atlassian dev connection already exists")
-                except Exception as se:
-                    print(f"Warning: Default connection seeding failed: {se}")
-
-            # --- SEED: Connections YAML Data ---
-            try:
-                from common_lib.modules.plugins.connectors.bootstrap import (
-                    seed_connections_from_yaml,
-                )
-                from sqlmodel import Session as SQLSession
-
-                with SQLSession(engine) as seed_session:
-                    seed_connections_from_yaml(seed_session)
-            except Exception as conn_se:
-                print(f"Warning: Connections seeding from YAML failed: {conn_se}")
-
-            # --- SEED: Node registry (all @node functions) -> node_definitions ---
-            try:
-                from common_lib.modules.image_processing.nodes_registry.startup import (
-                    sync_nodes_on_startup,
-                )
-
-                synced = sync_nodes_on_startup()
-                print(f"Node registry synced: {synced} nodes discovered")
-            except Exception as se:
-                print(f"Warning: Node registry sync failed: {se}")
-
-            # --- SEED: Knowledge Hub initial data ---
-            try:
-                from common_lib.modules.knowledge_engine.knowledge_hub.seed_data import (
-                    seed_all,
-                )
-                from sqlmodel import Session as KHSession
-
-                with KHSession(engine) as kh_seed:
-                    counts = seed_all(kh_seed)
-                    print(
-                        f"Startup: Knowledge Hub seeded: "
-                        f"{counts['source_types']} source types, "
-                        f"{counts['source_configs']} configs, "
-                        f"{counts['pipelines']} pipelines, "
-                        f"{counts['packets']} packets, "
-                        f"{counts['projects']} projects"
-                    )
-            except Exception as kh_se:
-                print(f"Warning: Knowledge Hub seeding failed: {kh_se}")
-
-            # --- SEED: Rules Engine default rules ---
-            try:
-                from common_lib.modules.governance.rules_engine.definition.registry import (
-                    seed_default_rules,
-                )
-
-                seeded_rules = seed_default_rules()
-                if seeded_rules:
-                    print(
-                        f"Startup: Seeded {seeded_rules} default rules into the rules engine"
-                    )
-                else:
-                    print("Startup: Default rules already seeded")
-
-                # --- SYNC: DB-persisted rules into in-memory engine ---
-                from common_lib.modules.integration.services.governance_rules_service import (
-                    GovernanceRulesService as RuleEngineService,
-                )
-                from sqlmodel import Session as _RE_Session
-
-                with _RE_Session(engine) as _re_session:
-                    service = RuleEngineService()
-                    synced = service.sync_to_engine(_re_session)
-                    if synced:
-                        print(
-                            f"Startup: Synced {synced} DB rules into the rules engine"
-                        )
-                    else:
-                        print("Startup: No new DB rules to sync into the rules engine")
-            except Exception as re_err:
-                print(f"Warning: Rules engine seed/sync failed: {re_err}")
-
-            # --- SEED: Integration module configs ---
-            try:
-                from common_lib.modules.integration.services.config_service import (
-                    get_integration_config_service,
-                )
-                from sqlmodel import Session as SQLSession
-
-                with SQLSession(engine) as seed_ic_session:
-                    svc = get_integration_config_service()
-                    count = svc.seed_default_modules(session=seed_ic_session)
-                    if count:
-                        print(f"Startup: Seeded {count} integration module configs")
-                    else:
-                        print("Startup: Integration module configs already seeded")
-
-                    # --- SEED: Integration sample pipelines ---
-                    pipeline_count = svc.seed_default_pipelines(session=seed_ic_session)
-                    if pipeline_count:
-                        print(
-                            f"Startup: Seeded {pipeline_count} integration sample pipelines"
-                        )
-                    else:
-                        print("Startup: Integration sample pipelines already seeded")
-
-                    # --- AUTO-ACTIVATE: Minimal Pipeline ---
-                    # Only activate if no pipeline is currently active
-                    active_pipeline = svc.get_active_pipeline(session=seed_ic_session)
-                    if active_pipeline is None:
-                        minimal = svc.list_pipelines(session=seed_ic_session)
-                        if minimal:
-                            # Find the Minimal Pipeline (first seeded)
-                            minimal_pipeline = next(
-                                (p for p in minimal if p.name == "Minimal Pipeline"),
-                                None,
-                            )
-                            if minimal_pipeline:
-                                result = svc.apply_pipeline(
-                                    minimal_pipeline.id,
-                                    session=seed_ic_session,
-                                )
-                                if result.get("success"):
-                                    print(
-                                        "Startup: Auto-activated Minimal Pipeline "
-                                        f"({result.get('modules_updated', 0)} modules updated)"
-                                    )
-                                else:
-                                    print(
-                                        "Startup: Failed to auto-activate Minimal "
-                                        f"Pipeline: {result.get('error')}"
-                                    )
-            except Exception as ic_se:
-                print(f"Warning: Integration module config seeding failed: {ic_se}")
-
-            # --- REGISTER: RIP Tools ---
-            try:
-                from common_lib.modules.integration.adapters.tools import (
-                    RIPToolsAdapter,
-                )
-
-                adapter = RIPToolsAdapter()
-                registered = await adapter.register_rip_tools()
-                if registered:
-                    print(
-                        f"Startup: Registered {len(registered)} RIP tools: "
-                        f"{[t['name'] for t in registered]}"
-                    )
-                else:
-                    print("Startup: RIP tools already registered")
-            except Exception as rip_se:
-                print(f"Warning: RIP tool registration failed: {rip_se}")
-
-            # --- WIRE: Integration bridges (RIP + Memory + data-pipeline events) ---
-            # Connects rip.*/memory.*/tools.call/data_pipeline.* event handlers and
-            # routing rules into the EventRouter (RIP integration Phases 1-5).
-            try:
-                from common_lib.modules.integration.loader import wire_all_bridges
-
-                wire_all_bridges()
-                print("Startup: Integration bridges wired (RIP, memory, data pipeline)")
-            except Exception as bridge_we:
-                print(f"Warning: Integration bridge wiring failed: {bridge_we}")
-
-            # --- SEED: Observability YAML Data ---
-            try:
-                from common_lib.modules.observability.bootstrap import (
-                    seed_observability_from_yaml,
-                )
-                from sqlmodel import Session as SQLSession
-
-                with SQLSession(engine) as seed_session:
-                    seed_observability_from_yaml(seed_session)
-            except Exception as obs_se:
-                print(f"Warning: Observability seeding from YAML failed: {obs_se}")
-
+            _startup_info("Database initialized and models registered.")
             break
         except Exception as e:
             if attempt < max_retries - 1:
-                print(
-                    f"Warning: Database connection failed. Retrying in {retry_interval} seconds..."
-                )
-                print(f"Error: {e}")
+                _startup_warn(f"Database connection failed. Retrying in {retry_interval}s...")
+                _startup_debug(f"Error: {e}")
                 time.sleep(retry_interval)
             else:
                 print("=" * 60)
@@ -446,358 +135,749 @@ async def lifespan(app: FastAPI):
                 print("=" * 60)
                 sys.exit(1)
 
-    # --- SEED: Self-learning sample configs ---
-    try:
-        from app.modules.knowledge.models import ComponentConfigRecord
-        from common_lib.modules.data_storage.database.connection import (
-            engine as _sl_engine,
-        )
-        from sqlmodel import Session as _SLSession, select as _sl_select
+    # ─── Post-bind orchestrator (single thread, delayed, sequential) ───
+    # Sync router mounting already ran in create_app(); deferred entries were
+    # stashed on app.state there. The orchestrator mounts them (Phase A),
+    # triggers the MCP scan (Phase B), then seeds sequentially (Phase C).
+    # Do NOT re-mount or spawn extra import threads here — duplicate import
+    # races are what made startup slow.
+    _spawn_background_tasks(app)
 
-        with _SLSession(_sl_engine) as _sl_seed:
-            existing = _sl_seed.exec(
-                _sl_select(ComponentConfigRecord).where(
-                    ComponentConfigRecord.instance_id == "sl_sample_simple"
-                )
-            ).first()
-            if not existing:
-                now = (
-                    __import__("datetime")
-                    .datetime.now(__import__("datetime").timezone.utc)
-                    .replace(tzinfo=None)
-                )
-                _rows: list[ComponentConfigRecord] = []
+    # ─── Critical: Exception handlers & OpenAPI ───
+    app.openapi = lambda: custom_openapi(app)
+    from fastapi.exceptions import RequestValidationError
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+    from sqlalchemy.exc import SQLAlchemyError
+    from app.core.exceptions import (
+        NexusException,
+        nexus_exception_handler,
+        validation_exception_handler,
+        pydantic_exception_handler,
+        sqlalchemy_exception_handler,
+        generic_exception_handler,
+        http_exception_handler,
+        service_error_handler,
+    )
 
-                # ── Simple: Quick Starter ──
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_simple",
-                        category="full",
-                        config_data={
-                            "name": "Quick Starter",
-                            "description": "Minimal config with core quality logging and scorer.",
-                            "tags": ["beginner", "minimal"],
-                            "variant": "v1",
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_simple",
-                        category="qualityLog",
-                        config_data={
-                            "enabled": True,
-                            "log_dir": "",
-                            "enabled_fields": [
-                                "query",
-                                "result_count",
-                                "latency_ms",
-                                "precision",
-                                "recall",
-                            ],
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_simple",
-                        category="scorer",
-                        config_data={"decay_rate": 0.1, "min_samples": 1},
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_simple",
-                        category="failure",
-                        config_data={
-                            "latency_threshold_ms": 500,
-                            "min_severity": "low",
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
+    app.add_exception_handler(NexusException, nexus_exception_handler)
+    from common_lib.modules.ai_models.domain.exceptions import ModelNotFoundError
+    from app.core.exceptions import model_not_found_exception_handler
+    from common_lib.modules.exceptions import ServiceError
 
-                # ── Medium: Balanced Learner ──
-                _full_cfg = {
-                    "name": "Balanced Learner",
-                    "description": "Mid-tier config with meta-reasoning, belief revision, and conflict resolution.",
-                    "tags": ["intermediate", "adaptive"],
-                    "variant": "v1",
-                }
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_medium",
-                        category="full",
-                        config_data=_full_cfg,
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_medium",
-                        category="qualityLog",
-                        config_data={
-                            "enabled": True,
-                            "log_dir": "",
-                            "enabled_fields": [
-                                "query",
-                                "retrieval_plan",
-                                "result_count",
-                                "latency_ms",
-                                "precision",
-                                "recall",
-                                "user_feedback",
-                                "user_rating",
-                                "methods_used",
-                                "error",
-                            ],
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_medium",
-                        category="autoEvolve",
-                        config_data={"enabled": True, "interval": 100},
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_medium",
-                        category="scorer",
-                        config_data={"decay_rate": 0.15, "min_samples": 3},
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_medium",
-                        category="failure",
-                        config_data={
-                            "latency_threshold_ms": 300,
-                            "min_severity": "medium",
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_medium",
-                        category="reasoner",
-                        config_data={
-                            "short_query_threshold": 5,
-                            "enable_hyde_suggestion": True,
-                            "latency_weight": 0.8,
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_medium",
-                        category="belief",
-                        config_data={
-                            "confidence_threshold": 0.6,
-                            "use_moving_average": True,
-                            "constant_learning_rate": 0.1,
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_medium",
-                        category="conflict",
-                        config_data={
-                            "strategy": "auto",
-                            "min_confidence_gap": 0.2,
-                            "min_source_trust_gap": 0.15,
-                            "enable_auto_resolution": True,
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
+    app.add_exception_handler(ModelNotFoundError, model_not_found_exception_handler)
+    app.add_exception_handler(ServiceError, service_error_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    from pydantic import ValidationError
 
-                # ── Complex: Full Autopilot ──
-                _full_cfg2 = {
-                    "name": "Full Autopilot",
-                    "description": "All 9 subsystems enabled with evolution branching and pruning.",
-                    "tags": ["advanced", "production", "autopilot"],
-                    "variant": "v4",
-                }
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_complex",
-                        category="full",
-                        config_data=_full_cfg2,
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_complex",
-                        category="qualityLog",
-                        config_data={
-                            "enabled": True,
-                            "log_dir": "/var/log/retrieval",
-                            "enabled_fields": [
-                                "query",
-                                "retrieval_plan",
-                                "result_count",
-                                "latency_ms",
-                                "precision",
-                                "recall",
-                                "user_feedback",
-                                "user_rating",
-                                "methods_used",
-                                "error",
-                            ],
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_complex",
-                        category="autoEvolve",
-                        config_data={"enabled": True, "interval": 50},
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_complex",
-                        category="scorer",
-                        config_data={"decay_rate": 0.2, "min_samples": 5},
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_complex",
-                        category="failure",
-                        config_data={
-                            "latency_threshold_ms": 200,
-                            "min_severity": "high",
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_complex",
-                        category="reasoner",
-                        config_data={
-                            "short_query_threshold": 3,
-                            "enable_hyde_suggestion": True,
-                            "latency_weight": 1.5,
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_complex",
-                        category="belief",
-                        config_data={
-                            "confidence_threshold": 0.7,
-                            "use_moving_average": True,
-                            "constant_learning_rate": 0.05,
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_complex",
-                        category="conflict",
-                        config_data={
-                            "strategy": "auto",
-                            "min_confidence_gap": 0.15,
-                            "min_source_trust_gap": 0.1,
-                            "enable_auto_resolution": True,
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_complex",
-                        category="branching",
-                        config_data={
-                            "enable_branching": True,
-                            "diversity_weight": 0.6,
-                            "max_branches": 5,
-                            "specialization_threshold": 0.8,
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                _rows.append(
-                    ComponentConfigRecord(
-                        instance_id="sl_sample_complex",
-                        category="pruner",
-                        config_data={
-                            "min_importance": 0.3,
-                            "max_age_hours": 48,
-                            "enable_user_review": False,
-                            "auto_prune_threshold": 0.5,
-                        },
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
+    app.add_exception_handler(ValidationError, pydantic_exception_handler)
+    app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+    app.add_exception_handler(Exception, generic_exception_handler)
 
-                for _r in _rows:
-                    _sl_seed.add(_r)
-                _sl_seed.commit()
-                print(
-                    f"Startup: Seeded {len(_rows)} self-learning config rows across 3 sample instances"
+    # Health endpoints are registered in create_app — do NOT duplicate them
+    # here (duplicate routes bloat the route table and confuse /openapi.json).
+
+    # Yield control - app is now ready to serve requests!
+    yield
+
+    # ─── Shutdown: cleanup background tasks ───
+    pass
+
+
+def _spawn_background_tasks(app: FastAPI):
+    """Spawn the single post-bind orchestrator thread (see run_sync_background)."""
+    import asyncio
+    import threading
+
+    def run_sync_background():
+        """Single-threaded post-bind orchestrator (sequential by design).
+
+        Parallel import-heavy threads thrash the GIL and the DB pool, which
+        made startup 5-10x slower AND slowed the first API calls. Everything
+        here is sequential in one daemon thread:
+
+        Phase A: mount deferred routers (API completeness first).
+        Phase B: trigger MCP @node warmup (the ~100s import scan).
+        Phase C: seeding / sync / wiring, one step at a time.
+
+        Env knobs:
+          NEXUS_BG_DELAY_SECONDS (default "20"): quiet period after bind so
+            the server answers health + first requests uncontended.
+          NEXUS_SKIP_STARTUP_SEEDING="1": skip Phase C entirely (dev iteration).
+            Router mounting (Phase A) and MCP warmup (Phase B) still run.
+        """
+        import time
+
+        try:
+            delay = float(os.getenv("NEXUS_BG_DELAY_SECONDS", "20"))
+        except ValueError:
+            delay = 20.0
+        if delay > 0:
+            time.sleep(delay)
+
+        # ── Phase A: deferred routers (API completeness first) ──
+        try:
+            from app.core.routers import register_routers_background
+            from app.core.router_hot_mount import mount_context
+
+            deferred = getattr(app.state, "_deferred_router_entries", None) or []
+            ctx = mount_context(app)
+            if deferred and ctx:
+                api_prefix, global_deps = ctx
+                register_routers_background(app, api_prefix, global_deps, deferred)
+                _startup_info(f"Mounted {len(deferred)} deferred routers (API complete)")
+            else:
+                _startup_debug("No deferred routers to mount")
+        except Exception as e:
+            _startup_warn(f"Deferred router mount failed: {e}")
+        finally:
+            app.state.deferred_mount_complete = True
+
+        # ── Phase A.5: pre-warm OpenAPI cache ──
+        # First /openapi.json generation over ~6k routes takes 30s+; warming
+        # the cache here (background) makes the first real /docs call instant.
+        # Mounting already invalidated the cache per-router, and nothing below
+        # mutates routes, so the warmed document stays valid.
+        try:
+            t0 = time.time()
+            app.openapi()
+            _startup_info(f"OpenAPI cache warmed in {time.time() - t0:.1f}s")
+        except Exception as e:
+            _startup_warn(f"OpenAPI pre-warm failed (first /docs call will be slow): {e}")
+
+        # ── Phase B: MCP @node warmup (the big import scan, runs in its own thread) ──
+        try:
+            from app.mcp.server import start_node_tool_warmup
+
+            if start_node_tool_warmup():
+                _startup_info("warming @node -> MCP tool registry in background")
+            else:
+                _startup_debug("@node MCP tool registration skipped/complete")
+        except Exception as e:
+            _startup_warn(f"dynamic @node MCP registration skipped: {e}")
+
+        # ── Phase C: seeding / sync / wiring (sequential, no thread pools) ──
+        if os.getenv("NEXUS_SKIP_STARTUP_SEEDING", "0") == "1":
+            _startup_info("Skipping startup seeding (NEXUS_SKIP_STARTUP_SEEDING=1)")
+            return
+
+        _seed_rbac_and_themes()
+        _seed_keys_and_hitl()
+        _seed_connectors()
+        _seed_connections_yaml()
+        _sync_nodes_registry()
+        _seed_knowledge_hub()
+        _seed_rules_engine()
+        _seed_integration_configs()
+        _register_rip_tools()
+        _wire_integration_bridges()
+        _seed_observability_yaml()
+        _seed_self_learning_configs()
+        _sync_registry_from_files()
+        _seed_ui_nodes()
+        _resume_model_downloads()
+        _start_scheduler()
+        _create_pm_tables()
+        _create_sm_tables()
+        _start_memory_tasks()
+        _init_turbovec()
+        _load_plugins()
+
+        _startup_debug("Background startup tasks completed")
+
+    def run_async_background():
+        """Run all async background operations."""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_async_background_tasks())
+        finally:
+            loop.close()
+
+    def _seed_rbac_and_themes():
+        # Seed RBAC
+        try:
+            from common_lib.modules.rbac.service import seed_roles
+            from sqlmodel import Session as SQLSession
+
+            with SQLSession(engine) as rbac_session:
+                result = seed_roles(rbac_session)
+                _startup_debug(f"RBAC seeded: {result['permissions']} permissions, {result['roles']} roles")
+        except Exception as se:
+            _startup_warn(f"RBAC seeding failed: {se}")
+
+        # Seed themes
+        try:
+            from common_lib.modules.settings.service import theme_service
+            from sqlmodel import Session as SQLSession
+
+            with SQLSession(engine) as seed_session:
+                result = theme_service.seed_from_json(seed_session)
+                _startup_debug(f"Startup: {result.get('message', 'Themes seeded')}")
+        except Exception as se:
+            _startup_warn(f"Theme seeding failed: {se}")
+
+    def _seed_keys_and_hitl():
+        try:
+            from common_lib.modules.secrets_manager.keys_management.service import (
+                KeyManagementService,
+            )
+
+            seeded_m, seeded_f = KeyManagementService().seed_proxy_catalog()
+            _startup_debug(f"Proxy catalog seeded: {seeded_m} models, {seeded_f} fallbacks.")
+
+            seeded_k = KeyManagementService().seed_from_config()
+            if seeded_k:
+                _startup_debug(f"Auto-seeded {seeded_k} API keys from config.ini.")
+
+            from common_lib.modules.governance.hitl.approval_service import (
+                get_hitl_service,
+            )
+
+            get_hitl_service()._load_seed_data()
+            _startup_debug("HITL Governance seed data loaded.")
+        except Exception as se:
+            _startup_warn(f"Proxy catalog, key, or HITL seeding failed: {se}")
+
+    def _seed_connectors():
+        try:
+            from app.modules.connectors.seed import get_connector_seeds
+            from common_lib.modules.plugins.connectors.models.db import (
+                ConnectorRecord,
+            )
+            from sqlmodel import Session as SQLSession
+
+            with SQLSession(engine) as seed_session:
+                new_count = 0
+                updated_count = 0
+                for connector_data in get_connector_seeds():
+                    existing = seed_session.get(
+                        ConnectorRecord, connector_data["id"]
+                    )
+                    if existing:
+                        for field, value in connector_data.items():
+                            setattr(existing, field, value)
+                        updated_count += 1
+                    else:
+                        record = ConnectorRecord(**connector_data)
+                        seed_session.add(record)
+                        new_count += 1
+                if new_count or updated_count:
+                    seed_session.commit()
+                    _startup_debug(f"Connectors seeded: {new_count} new, {updated_count} updated")
+                else:
+                    _startup_debug("Connectors: all already up to date")
+        except Exception as se:
+            _startup_warn(f"Connector seeding failed: {se}")
+
+    def _seed_connections_yaml():
+        try:
+            from common_lib.modules.plugins.connectors.bootstrap import (
+                seed_connections_from_yaml,
+            )
+            from sqlmodel import Session as SQLSession
+
+            with SQLSession(engine) as seed_session:
+                seed_connections_from_yaml(seed_session)
+        except Exception as conn_se:
+            _startup_warn(f"Connections seeding from YAML failed: {conn_se}")
+
+    def _sync_nodes_registry():
+        try:
+            from common_lib.modules.image_processing.nodes_registry.startup import (
+                sync_nodes_on_startup,
+            )
+
+            synced = sync_nodes_on_startup()
+            _startup_debug(f"Node registry synced: {synced} nodes discovered")
+        except Exception as se:
+            _startup_warn(f"Node registry sync failed: {se}")
+
+    def _seed_knowledge_hub():
+        try:
+            from common_lib.modules.knowledge_engine.knowledge_hub.seed_data import (
+                seed_all,
+            )
+            from sqlmodel import Session as KHSession
+
+            with KHSession(engine) as kh_seed:
+                counts = seed_all(kh_seed)
+                _startup_info(
+                    f"Knowledge Hub seeded: "
+                    f"{counts['source_types']} source types, "
+                    f"{counts['source_configs']} configs, "
+                    f"{counts['pipelines']} pipelines, "
+                    f"{counts['packets']} packets, "
+                    f"{counts['projects']} projects"
+                )
+        except Exception as kh_se:
+            _startup_warn(f"Knowledge Hub seeding failed: {kh_se}")
+
+    def _seed_rules_engine():
+        try:
+            from common_lib.modules.governance.rules_engine.definition.registry import (
+                seed_default_rules,
+            )
+
+            seeded_rules = seed_default_rules()
+            if seeded_rules:
+                _startup_debug(f"Seeded {seeded_rules} default rules into the rules engine")
+            else:
+                _startup_debug("Default rules already seeded")
+
+            from common_lib.modules.integration.services.governance_rules_service import (
+                GovernanceRulesService as RuleEngineService,
+            )
+            from sqlmodel import Session as _RE_Session
+
+            with _RE_Session(engine) as _re_session:
+                service = RuleEngineService()
+                synced = service.sync_to_engine(_re_session)
+                if synced:
+                    _startup_debug(f"Synced {synced} DB rules into the rules engine")
+                else:
+                    _startup_debug("No new DB rules to sync into the rules engine")
+        except Exception as re_err:
+            _startup_warn(f"Rules engine seed/sync failed: {re_err}")
+
+    def _seed_integration_configs():
+        try:
+            from common_lib.modules.integration.services.config_service import (
+                get_integration_config_service,
+            )
+            from sqlmodel import Session as SQLSession
+
+            with SQLSession(engine) as seed_ic_session:
+                svc = get_integration_config_service()
+                count = svc.seed_default_modules(session=seed_ic_session)
+                if count:
+                    _startup_debug(f"Seeded {count} integration module configs")
+                else:
+                    _startup_debug("Integration module configs already seeded")
+
+                pipeline_count = svc.seed_default_pipelines(session=seed_ic_session)
+                if pipeline_count:
+                    _startup_debug(f"Seeded {pipeline_count} integration sample pipelines")
+                else:
+                    _startup_debug("Integration sample pipelines already seeded")
+
+                active_pipeline = svc.get_active_pipeline(session=seed_ic_session)
+                if active_pipeline is None:
+                    minimal = svc.list_pipelines(session=seed_ic_session)
+                    if minimal:
+                        minimal_pipeline = next(
+                            (p for p in minimal if p.name == "Minimal Pipeline"),
+                            None,
+                        )
+                        if minimal_pipeline:
+                            result = svc.apply_pipeline(
+                                minimal_pipeline.id,
+                                session=seed_ic_session,
+                            )
+                            if result.get("success"):
+                                _startup_info(
+                                    "Auto-activated Minimal Pipeline "
+                                    f"({result.get('modules_updated', 0)} modules updated)"
+                                )
+                            else:
+                                _startup_warn(
+                                    f"Failed to auto-activate Minimal Pipeline: {result.get('error')}"
+                                )
+        except Exception as ic_se:
+            _startup_warn(f"Integration module config seeding failed: {ic_se}")
+
+    def _register_rip_tools():
+        try:
+            from common_lib.modules.integration.adapters.tools import (
+                RIPToolsAdapter,
+            )
+
+            adapter = RIPToolsAdapter()
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            registered = loop.run_until_complete(adapter.register_rip_tools())
+            if registered:
+                _startup_debug(
+                    f"Registered {len(registered)} RIP tools: "
+                    f"{[t['name'] for t in registered]}"
                 )
             else:
-                print("Startup: Self-learning sample configs already seeded")
-    except Exception as se:
-        print(f"Warning: Self-learning config seeding failed: {se}")
+                _startup_debug("RIP tools already registered")
+            loop.close()
+        except Exception as rip_se:
+            _startup_warn(f"RIP tool registration failed: {rip_se}")
 
-    # --- SYNC: Import all entities from file system to database ---
-    if not settings.SKIP_REGISTRY_SYNC:
+    def _wire_integration_bridges():
+        try:
+            from common_lib.modules.integration.loader import wire_all_bridges
+
+            wire_all_bridges()
+            _startup_debug("Integration bridges wired (RIP, memory, data pipeline)")
+        except Exception as bridge_we:
+            _startup_warn(f"Integration bridge wiring failed: {bridge_we}")
+
+    def _seed_observability_yaml():
+        try:
+            from common_lib.modules.observability.bootstrap import (
+                seed_observability_from_yaml,
+            )
+            from sqlmodel import Session as SQLSession
+
+            with SQLSession(engine) as seed_session:
+                seed_observability_from_yaml(seed_session)
+        except Exception as obs_se:
+            _startup_warn(f"Observability seeding from YAML failed: {obs_se}")
+
+    def _seed_self_learning_configs():
+        try:
+            from app.modules.knowledge.models import ComponentConfigRecord
+            from common_lib.modules.data_storage.database.connection import (
+                engine as _sl_engine,
+            )
+            from sqlmodel import Session as _SLSession, select as _sl_select
+
+            with _SLSession(_sl_engine) as _sl_seed:
+                existing = _sl_seed.exec(
+                    _sl_select(ComponentConfigRecord).where(
+                        ComponentConfigRecord.instance_id == "sl_sample_simple"
+                    )
+                ).first()
+                if not existing:
+                    from datetime import datetime
+                    now = datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                    _rows = []
+
+                    # Simple: Quick Starter
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_simple",
+                            category="full",
+                            config_data={
+                                "name": "Quick Starter",
+                                "description": "Minimal config with core quality logging and scorer.",
+                                "tags": ["beginner", "minimal"],
+                                "variant": "v1",
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_simple",
+                            category="qualityLog",
+                            config_data={
+                                "enabled": True,
+                                "log_dir": "",
+                                "enabled_fields": [
+                                    "query",
+                                    "result_count",
+                                    "latency_ms",
+                                    "precision",
+                                    "recall",
+                                ],
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_simple",
+                            category="scorer",
+                            config_data={"decay_rate": 0.1, "min_samples": 1},
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_simple",
+                            category="failure",
+                            config_data={
+                                "latency_threshold_ms": 500,
+                                "min_severity": "low",
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+
+                    # Medium: Balanced Learner
+                    _full_cfg = {
+                        "name": "Balanced Learner",
+                        "description": "Mid-tier config with meta-reasoning, belief revision, and conflict resolution.",
+                        "tags": ["intermediate", "adaptive"],
+                        "variant": "v1",
+                    }
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_medium",
+                            category="full",
+                            config_data=_full_cfg,
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_medium",
+                            category="qualityLog",
+                            config_data={
+                                "enabled": True,
+                                "log_dir": "",
+                                "enabled_fields": [
+                                    "query",
+                                    "retrieval_plan",
+                                    "result_count",
+                                    "latency_ms",
+                                    "precision",
+                                    "recall",
+                                    "user_feedback",
+                                    "user_rating",
+                                    "methods_used",
+                                    "error",
+                                ],
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_medium",
+                            category="autoEvolve",
+                            config_data={"enabled": True, "interval": 100},
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_medium",
+                            category="scorer",
+                            config_data={"decay_rate": 0.15, "min_samples": 3},
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_medium",
+                            category="failure",
+                            config_data={
+                                "latency_threshold_ms": 300,
+                                "min_severity": "medium",
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_medium",
+                            category="reasoner",
+                            config_data={
+                                "short_query_threshold": 5,
+                                "enable_hyde_suggestion": True,
+                                "latency_weight": 0.8,
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_medium",
+                            category="belief",
+                            config_data={
+                                "confidence_threshold": 0.6,
+                                "use_moving_average": True,
+                                "constant_learning_rate": 0.1,
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_medium",
+                            category="conflict",
+                            config_data={
+                                "strategy": "auto",
+                                "min_confidence_gap": 0.2,
+                                "min_source_trust_gap": 0.15,
+                                "enable_auto_resolution": True,
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+
+                    # Complex: Full Autopilot
+                    _full_cfg2 = {
+                        "name": "Full Autopilot",
+                        "description": "All 9 subsystems enabled with evolution branching and pruning.",
+                        "tags": ["advanced", "production", "autopilot"],
+                        "variant": "v4",
+                    }
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_complex",
+                            category="full",
+                            config_data=_full_cfg2,
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_complex",
+                            category="qualityLog",
+                            config_data={
+                                "enabled": True,
+                                "log_dir": "/var/log/retrieval",
+                                "enabled_fields": [
+                                    "query",
+                                    "retrieval_plan",
+                                    "result_count",
+                                    "latency_ms",
+                                    "precision",
+                                    "recall",
+                                    "user_feedback",
+                                    "user_rating",
+                                    "methods_used",
+                                    "error",
+                                ],
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_complex",
+                            category="autoEvolve",
+                            config_data={"enabled": True, "interval": 50},
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_complex",
+                            category="scorer",
+                            config_data={"decay_rate": 0.2, "min_samples": 5},
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_complex",
+                            category="failure",
+                            config_data={
+                                "latency_threshold_ms": 200,
+                                "min_severity": "high",
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_complex",
+                            category="reasoner",
+                            config_data={
+                                "short_query_threshold": 3,
+                                "enable_hyde_suggestion": True,
+                                "latency_weight": 1.5,
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_complex",
+                            category="belief",
+                            config_data={
+                                "confidence_threshold": 0.7,
+                                "use_moving_average": True,
+                                "constant_learning_rate": 0.05,
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_complex",
+                            category="conflict",
+                            config_data={
+                                "strategy": "auto",
+                                "min_confidence_gap": 0.15,
+                                "min_source_trust_gap": 0.1,
+                                "enable_auto_resolution": True,
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_complex",
+                            category="branching",
+                            config_data={
+                                "enable_branching": True,
+                                "diversity_weight": 0.6,
+                                "max_branches": 5,
+                                "specialization_threshold": 0.8,
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    _rows.append(
+                        ComponentConfigRecord(
+                            instance_id="sl_sample_complex",
+                            category="pruner",
+                            config_data={
+                                "min_importance": 0.3,
+                                "max_age_hours": 48,
+                                "enable_user_review": False,
+                                "auto_prune_threshold": 0.5,
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+
+                    for _r in _rows:
+                        _sl_seed.add(_r)
+                    _sl_seed.commit()
+                    print(
+                        )
+                else:
+                    print("Startup: Self-learning sample configs already seeded")
+        except Exception as se:
+            print(f"Warning: Self-learning config seeding failed: {se}")
+
+    def _sync_registry_from_files():
+        if settings.SKIP_REGISTRY_SYNC:
+            print("Startup: Skipping registry sync (SKIP_REGISTRY_SYNC=True)")
+            return
+
         print("Startup: Synchronizing file system entities to database...")
         try:
             from app.core.common_lib_integration import sync_manager, common_memory
 
-            # --- SYNC: AI Models Registry ---
             from common_lib.modules.ai_models.container import AIModelsContainer
 
             AIModelsContainer().seed_defaults()
             print("AI Model Registry synchronized.")
 
-            # --- SYNC: Embedding Model Registry ---
             try:
                 from sqlmodel import create_engine, Session
                 from common_lib.modules.data_storage.database.constants import (
@@ -814,10 +894,8 @@ async def lifespan(app: FastAPI):
             except Exception as ei:
                 print(f"Warning: Embedding registry sync failed: {ei}")
 
-            # Perform sync
             report = sync_manager.sync_all_from_files()
 
-            # Fetch counts for verification
             t_count = len(common_memory.list_tool_definitions())
             w_count = len(common_memory.list_workflow_definitions())
             a_count = len(common_memory.list_agent_definitions())
@@ -843,11 +921,10 @@ async def lifespan(app: FastAPI):
             print("=" * 60)
         except Exception as e:
             print(f"Warning: Initial sync failed: {e}")
-    else:
-        print("Startup: Skipping registry sync (SKIP_REGISTRY_SYNC=True)")
 
-    # --- SEED: UI-only node definitions into DB ---
-    if not settings.SKIP_REGISTRY_SYNC:
+    def _seed_ui_nodes():
+        if settings.SKIP_REGISTRY_SYNC:
+            return
         try:
             from common_lib.templates.node_definitions.loader import seed_ui_nodes_to_db
 
@@ -857,514 +934,318 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Warning: UI node seed failed: {e}")
 
-    # --- RESUME: Pending model downloads ---
-    try:
-        import json
-        from pathlib import Path
-        from common_lib.modules.ai_models.container import AIModelsContainer
+    def _resume_model_downloads():
+        try:
+            import json
+            from pathlib import Path
+            from common_lib.modules.ai_models.container import AIModelsContainer
 
-        queue_dir = Path(os.environ.get("MODEL_QUEUE_DIR", "/tmp/model_downloads"))
-        if queue_dir.exists():
-            pending_tasks = list(queue_dir.glob("*.json"))
-            if pending_tasks:
-                print(
-                    f"Startup: Found {len(pending_tasks)} pending downloads to resume..."
-                )
+            queue_dir = Path(os.environ.get("MODEL_QUEUE_DIR", "/tmp/model_downloads"))
+            if queue_dir.exists():
+                pending_tasks = list(queue_dir.glob("*.json"))
+                if pending_tasks:
+                    print(
+                        f"Startup: Found {len(pending_tasks)} pending downloads to resume..."
+                    )
 
-                container = AIModelsContainer()
-                event_bus = container.downloader.event_bus
-                downloader_factory = CivitAIDownloader
+                    container = AIModelsContainer()
+                    event_bus = container.downloader.event_bus
+                    downloader_factory = CivitAIDownloader
 
-                for task_file in pending_tasks:
-                    try:
-                        with open(task_file) as f:
-                            task_data = json.load(f)
+                    for task_file in pending_tasks:
+                        try:
+                            with open(task_file) as f:
+                                task_data = json.load(f)
 
-                        task_id = task_data.get("task_id")
-                        model_id = task_data.get("model_id")
-                        version_id = task_data.get("version_id")
-                        file_id = task_data.get("file_id")
-                        dest_folder = task_data.get("destination_subfolder")
-                        model_type = task_data.get("model_type", "Checkpoint")
-                        expected_size = task_data.get("expected_size")
+                            task_id = task_data.get("task_id")
+                            model_id = task_data.get("model_id")
+                            version_id = task_data.get("version_id")
+                            file_id = task_data.get("file_id")
+                            dest_folder = task_data.get("destination_subfolder")
+                            model_type = task_data.get("model_type", "Checkpoint")
+                            expected_size = task_data.get("expected_size")
 
-                        logger.info(f"Resuming download: {task_id}")
+                            logger.info(f"Resuming download: {task_id}")
 
-                        # Determine target path for disk progress checking
-                        from common_lib.paths import IMAGE_MODELS_ROOT
+                            from common_lib.paths import IMAGE_MODELS_ROOT
 
-                        target_path = IMAGE_MODELS_ROOT / dest_folder
+                            target_path = IMAGE_MODELS_ROOT / dest_folder
 
-                        # Resume in background
-                        def resume_download():
-                            try:
-                                import time
+                            def resume_download():
+                                try:
+                                    import time
 
-                                event_bus.publish(
-                                    task_id,
-                                    {
-                                        "task_id": task_id,
-                                        "status": "resuming",
-                                        "progress": 0,
-                                        "model_id": model_id,
-                                        "version_id": version_id,
-                                        "expected_size": expected_size,
-                                    },
-                                )
-
-                                # Start disk progress checker
-                                last_disk_size = 0
-
-                                def disk_progress_check():
-                                    nonlocal last_disk_size
-                                    while True:
-                                        # Find the downloaded file in target directory
-                                        if target_path.exists():
-                                            files = list(target_path.glob("*"))
-                                            for f in files:
-                                                if (
-                                                    f.is_file()
-                                                    and f.stat().st_size > 1024
-                                                ):
-                                                    current_size = f.stat().st_size
-                                                    if current_size != last_disk_size:
-                                                        last_disk_size = current_size
-                                                        if (
-                                                            expected_size
-                                                            and expected_size > 0
-                                                        ):
-                                                            disk_progress = int(
-                                                                (
-                                                                    current_size
-                                                                    / expected_size
-                                                                )
-                                                                * 100
-                                                            )
-                                                            event_bus.publish(
-                                                                task_id,
-                                                                {
-                                                                    "task_id": task_id,
-                                                                    "status": "downloading",
-                                                                    "progress": disk_progress,
-                                                                    "downloaded": current_size,
-                                                                    "total": expected_size,
-                                                                    "expected_size": expected_size,
-                                                                    "source": "disk",
-                                                                },
-                                                            )
-                                        time.sleep(2)
-
-                                disk_thread = threading.Thread(
-                                    target=disk_progress_check, daemon=True
-                                )
-                                disk_thread.start()
-
-                                dler = downloader_factory(
-                                    mirror_service=container.mirror_service
-                                )
-                                target_path = dler.download_model(
-                                    model_id=model_id,
-                                    version_id=version_id,
-                                    file_id=file_id,
-                                    destination_subfolder=dest_folder,
-                                    model_type=model_type,
-                                    progress_callback=lambda d, t: event_bus.publish(
+                                    event_bus.publish(
                                         task_id,
                                         {
                                             "task_id": task_id,
-                                            "status": "downloading",
-                                            "progress": int((d / t * 100))
-                                            if t > 0
-                                            else 0,
-                                            "downloaded": d,
-                                            "total": t,
+                                            "status": "resuming",
+                                            "progress": 0,
+                                            "model_id": model_id,
+                                            "version_id": version_id,
+                                            "expected_size": expected_size,
                                         },
-                                    ),
-                                )
+                                    )
 
-                                event_bus.publish(
-                                    task_id,
-                                    {
-                                        "task_id": task_id,
-                                        "status": "completed",
-                                        "progress": 100,
-                                        "file_path": str(target_path),
-                                    },
-                                )
-                                event_bus.publish(
-                                    "__global__",
-                                    {
-                                        "task_id": task_id,
-                                        "status": "completed",
-                                        "progress": 100,
-                                    },
-                                )
-                            except Exception as dl_err:
-                                logger.error(f"Failed to resume {task_id}: {dl_err}")
-                                event_bus.publish(
-                                    task_id,
-                                    {
-                                        "task_id": task_id,
-                                        "status": "failed",
-                                        "error": str(dl_err),
-                                    },
-                                )
-                            finally:
-                                try:
-                                    task_file.unlink(missing_ok=True)
-                                except:
-                                    pass
+                                    last_disk_size = 0
 
-                        import threading
+                                    def disk_progress_check():
+                                        nonlocal last_disk_size
+                                        while True:
+                                            if target_path.exists():
+                                                files = list(target_path.glob("*"))
+                                                for f in files:
+                                                    if (
+                                                        f.is_file()
+                                                        and f.stat().st_size > 1024
+                                                    ):
+                                                        current_size = f.stat().st_size
+                                                        if current_size != last_disk_size:
+                                                            last_disk_size = current_size
+                                                            if (
+                                                                expected_size
+                                                                and expected_size > 0
+                                                            ):
+                                                                disk_progress = int(
+                                                                    (
+                                                                        current_size
+                                                                        / expected_size
+                                                                    )
+                                                                    * 100
+                                                                )
+                                                                event_bus.publish(
+                                                                    task_id,
+                                                                    {
+                                                                        "task_id": task_id,
+                                                                        "status": "downloading",
+                                                                        "progress": disk_progress,
+                                                                        "downloaded": current_size,
+                                                                        "total": expected_size,
+                                                                        "expected_size": expected_size,
+                                                                        "source": "disk",
+                                                                    },
+                                                                )
+                                            time.sleep(2)
 
-                        threading.Thread(target=resume_download, daemon=True).start()
+                                    disk_thread = threading.Thread(
+                                        target=disk_progress_check, daemon=True
+                                    )
+                                    disk_thread.start()
 
+                                    dler = downloader_factory(
+                                        mirror_service=container.mirror_service
+                                    )
+                                    target_path = dler.download_model(
+                                        model_id=model_id,
+                                        version_id=version_id,
+                                        file_id=file_id,
+                                        destination_subfolder=dest_folder,
+                                        model_type=model_type,
+                                        progress_callback=lambda d, t: event_bus.publish(
+                                            task_id,
+                                            {
+                                                "task_id": task_id,
+                                                "status": "downloading",
+                                                "progress": int((d / t * 100))
+                                                if t > 0
+                                                else 0,
+                                                "downloaded": d,
+                                                "total": t,
+                                            },
+                                        ),
+                                    )
+
+                                    event_bus.publish(
+                                        task_id,
+                                        {
+                                            "task_id": task_id,
+                                            "status": "completed",
+                                            "progress": 100,
+                                            "file_path": str(target_path),
+                                        },
+                                    )
+                                    event_bus.publish(
+                                        "__global__",
+                                        {
+                                            "task_id": task_id,
+                                            "status": "completed",
+                                            "progress": 100,
+                                        },
+                                    )
+                                except Exception as dl_err:
+                                    logger.error(f"Failed to resume {task_id}: {dl_err}")
+                                    event_bus.publish(
+                                        task_id,
+                                        {
+                                            "task_id": task_id,
+                                            "status": "failed",
+                                            "error": str(dl_err),
+                                        },
+                                    )
+                                finally:
+                                    try:
+                                        task_file.unlink(missing_ok=True)
+                                    except:
+                                        pass
+
+                            import threading
+
+                            threading.Thread(target=resume_download, daemon=True).start()
+
+                        except Exception as e:
+                            logger.error(f"Failed to load task {task_file}: {e}")
+
+                    print(f"Startup: Resumed {len(pending_tasks)} downloads in background")
+        except Exception as e:
+            print(f"Warning: Could not resume downloads: {e}")
+
+    def _start_scheduler():
+        try:
+            from common_lib.modules.core_infrastructure.scheduler.service import (
+                get_scheduler_service,
+            )
+
+            scheduler = get_scheduler_service()
+            scheduler.load_from_disk()
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(scheduler.start_all())
+            loop.close()
+            print("Startup: Scheduler loaded jobs and started active cron loops")
+        except Exception as e:
+            print(f"Warning: Could not start scheduler: {e}")
+
+    def _create_pm_tables():
+        try:
+            from common_lib.modules.project_management.init_db import create_pm_tables
+
+            create_pm_tables(engine)
+            print("Startup: Project Management tables created/verified")
+        except Exception as e:
+            print(f"Warning: PM table creation failed: {e}")
+
+    def _create_sm_tables():
+        try:
+            from common_lib.modules.secrets_manager.init_db import create_sm_tables
+
+            create_sm_tables(engine)
+            print("Startup: Secrets Manager tables created/verified")
+        except Exception as e:
+            print(f"Warning: SM table creation failed: {e}")
+
+    def _start_memory_tasks():
+        import asyncio
+
+        # Decay task
+        try:
+            from common_lib.modules.memory.config import get_config as _gmcfg
+
+            _init_decay = _gmcfg().decay_interval_seconds
+            logger.info(f"Periodic memory decay interval configured to {_init_decay}s")
+
+            async def decay_periodic_loop():
+                await asyncio.sleep(15)
+                while True:
+                    try:
+                        from app.core.memory_service import get_memory_service
+
+                        svc = get_memory_service()
+                        logger.info(
+                            "Executing periodic memory decay cycle background task..."
+                        )
+                        await svc.run_decay_cycle()
                     except Exception as e:
-                        logger.error(f"Failed to load task {task_file}: {e}")
+                        logger.error(
+                            f"Error in periodic memory decay cycle background task: {e}"
+                        )
+                    from common_lib.modules.memory.config import get_config as _gmcfg2
 
-                print(f"Startup: Resumed {len(pending_tasks)} downloads in background")
-    except Exception as e:
-        print(f"Warning: Could not resume downloads: {e}")
+                    await asyncio.sleep(_gmcfg2().decay_interval_seconds)
 
-    # Start scheduler cron loops
-    try:
-        from common_lib.modules.core_infrastructure.scheduler.service import (
-            get_scheduler_service,
-        )
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.create_task(decay_periodic_loop())
+            loop.run_forever()
+        except Exception as e:
+            print(f"Warning: Could not start periodic memory decay task: {e}")
 
-        scheduler = get_scheduler_service()
-        scheduler.load_from_disk()
-        await scheduler.start_all()
-        print("Startup: Scheduler loaded jobs and started active cron loops")
-    except Exception as e:
-        print(f"Warning: Could not start scheduler: {e}")
+    def _init_turbovec():
+        try:
+            vector_backend = os.getenv("VECTOR_BACKEND", "auto")
+            if vector_backend in ("turbovec", "auto"):
+                from common_lib.modules.memory.service import get_memory_service
 
-    # --- Create Project Management tables ---
-    try:
-        from common_lib.modules.project_management.init_db import create_pm_tables
+                svc = get_memory_service()
+                if svc and not svc.turbovec_adapter:
+                    from common_lib.vectorstores.factory import VectorStoreFactory
 
-        create_pm_tables(engine)
-        print("Startup: Project Management tables created/verified")
-    except Exception as e:
-        print(f"Warning: PM table creation failed: {e}")
-
-    # --- Create Secrets Manager tables ---
-    try:
-        from common_lib.modules.secrets_manager.init_db import create_sm_tables
-
-        create_sm_tables(engine)
-        print("Startup: Secrets Manager tables created/verified")
-    except Exception as e:
-        print(f"Warning: SM table creation failed: {e}")
-
-    # --- Project Management → Notification Bridge ---
-    # NOTE (2026-09-27): removed dead import of
-    # common_lib.modules.integration.bridges.project_management_notification_bridge,
-    # which never existed (warned on every boot). PM notifications flow through
-    # the notification center event bus instead; see notification/events + bus.
-
-    # Start periodic decay loop task (interval live-configurable from config.ini / API)
-    decay_task = None
-    try:
-        import asyncio
-        from common_lib.modules.memory.config import get_config as _gmcfg
-
-        _init_decay = _gmcfg().decay_interval_seconds
-        logger.info(f"Periodic memory decay interval configured to {_init_decay}s")
-
-        async def decay_periodic_loop():
-            await asyncio.sleep(15)
-            while True:
-                try:
-                    from app.core.memory_service import get_memory_service
-
-                    svc = get_memory_service()
-                    logger.info(
-                        "Executing periodic memory decay cycle background task..."
+                    factory = VectorStoreFactory(
+                        {
+                            "vector_backend": "turbovec",
+                            "dim": int(os.getenv("EMBEDDING_DIMENSION", "768")),
+                            "bit_width": int(os.getenv("TURBOVEC_BIT_WIDTH", "2")),
+                            "turbovec_index_path": os.getenv(
+                                "TURBOVEC_INDEX_PATH", "/data/turbovec"
+                            ),
+                        }
                     )
-                    await svc.run_decay_cycle()
-                except Exception as e:
-                    logger.error(
-                        f"Error in periodic memory decay cycle background task: {e}"
-                    )
-                from common_lib.modules.memory.config import get_config as _gmcfg2
+                    if factory._turbovec_available():
+                        adapter = factory.create(vector_backend="turbovec")
+                        svc.set_turbovec_adapter(adapter)
+                        print(
+                            f"Startup: TurboVec vector store initialized (dim={adapter.dim}, bit_width={adapter.bit_width})"
+                        )
+                    else:
+                        print("Startup: TurboVec not available (pip install turbovec)")
+        except Exception as e:
+            print(f"Startup: TurboVec initialization skipped: {e}")
 
-                await asyncio.sleep(_gmcfg2().decay_interval_seconds)
+    def _load_plugins():
+        try:
+            from common_lib.modules.orchestration.plugin import PluginContext, PluginLoader
 
-        decay_task = asyncio.create_task(decay_periodic_loop())
-        print(
-            f"Startup: Periodic memory decay task started (interval={_init_decay}s, live-updatable)"
-        )
-    except Exception as e:
-        print(f"Warning: Could not start periodic memory decay task: {e}")
+            plugin_ctx = PluginContext(name="platform")
 
-    # Start periodic compaction loop task (interval live-configurable from config.ini / API)
-    compaction_task = None
-    try:
-        import asyncio
-        from common_lib.modules.memory.config import get_config as _gmcfg
-
-        _init_compact = _gmcfg().compaction_interval_seconds
-        logger.info(
-            f"Periodic memory compaction interval configured to {_init_compact}s"
-        )
-
-        async def compaction_periodic_loop():
-            await asyncio.sleep(30)
-            while True:
-                try:
-                    from app.core.memory_service import get_memory_service
-
-                    svc = get_memory_service()
-                    await svc.check_and_run_autocompaction(threshold=15)
-                except Exception as e:
-                    logger.error(
-                        f"Error in periodic memory compaction background task: {e}"
-                    )
-                from common_lib.modules.memory.config import get_config as _gmcfg2
-
-                await asyncio.sleep(_gmcfg2().compaction_interval_seconds)
-
-        compaction_task = asyncio.create_task(compaction_periodic_loop())
-        print(
-            f"Startup: Periodic memory compaction task started (interval={_init_compact}s, live-updatable)"
-        )
-    except Exception as e:
-        print(f"Warning: Could not start periodic memory compaction task: {e}")
-
-    # --- Initialize TurboVec adapter if enabled ---
-    try:
-        vector_backend = os.getenv("VECTOR_BACKEND", "auto")
-        if vector_backend in ("turbovec", "auto"):
-            from common_lib.modules.memory.service import get_memory_service
-
-            svc = get_memory_service()
-            if svc and not svc.turbovec_adapter:
-                from common_lib.vectorstores.factory import VectorStoreFactory
-
-                factory = VectorStoreFactory(
-                    {
-                        "vector_backend": "turbovec",
-                        "dim": int(os.getenv("EMBEDDING_DIMENSION", "768")),
-                        "bit_width": int(os.getenv("TURBOVEC_BIT_WIDTH", "2")),
-                        "turbovec_index_path": os.getenv(
-                            "TURBOVEC_INDEX_PATH", "/data/turbovec"
-                        ),
-                    }
-                )
-                if factory._turbovec_available():
-                    adapter = factory.create(vector_backend="turbovec")
-                    svc.set_turbovec_adapter(adapter)
-                    print(
-                        f"Startup: TurboVec vector store initialized (dim={adapter.dim}, bit_width={adapter.bit_width})"
-                    )
-                else:
-                    print("Startup: TurboVec not available (pip install turbovec)")
-    except Exception as e:
-        print(f"Startup: TurboVec initialization skipped: {e}")
-
-    # --- PLUGIN SYSTEM: Load all 39 built-in plugins from platform.yml ---
-    try:
-        from common_lib.modules.orchestration.plugin import PluginContext, PluginLoader
-
-        plugin_ctx = PluginContext(name="platform")
-
-        # Code signing: read key from env; if set, all plugins verified on boot
-        _plugin_signing_key = os.environ.get("PLUGIN_SIGNING_KEY", "")
-        plugin_loader = PluginLoader(
-            plugin_ctx, signing_key=_plugin_signing_key or None
-        )
-
-        # Resolve platform.yml path
-        _common_lib_src = (
-            Path(__file__).parent.parent / "Python Libs" / "common_lib" / "src"
-        )
-        _platform_yml = (
-            _common_lib_src / "common_lib" / "configs" / "plugins" / "platform.yml"
-        )
-
-        if _platform_yml.exists():
-            plugin_loader.load_from_yaml(str(_platform_yml))
-            loaded_count = len(plugin_loader._plugins)
-            loaded_names = list(plugin_loader._plugins.keys())
-            print(
-                f"Startup: Plugin system loaded {loaded_count} plugins: {', '.join(loaded_names[:10])}{'...' if loaded_count > 10 else ''}"
-            )
-        else:
-            print(
-                f"Startup: platform.yml not found at {_platform_yml}, skipping plugin load"
+            # Code signing: read key from env; if set, all plugins verified on boot
+            _plugin_signing_key = os.environ.get("PLUGIN_SIGNING_KEY", "")
+            plugin_loader = PluginLoader(
+                plugin_ctx, signing_key=_plugin_signing_key or None
             )
 
-        # Store on app.state for route access
-        app.state.plugin_ctx = plugin_ctx
-        app.state.plugin_loader = plugin_loader
-
-        # Set as global context so MCP tools and other modules can access it
-        from common_lib.modules.orchestration.plugin import set_context
-
-        set_context(plugin_ctx)
-
-        # Store loader globally for hot-reload endpoint
-        import common_lib.modules.orchestration.plugin as _plugin_pkg
-
-        _plugin_pkg._global_loader = plugin_loader
-
-        # Validate all plugins loaded correctly
-        validation = plugin_loader.validate_all()
-        if not validation["valid"]:
-            print(f"Startup: Plugin validation FAILED: {validation['errors']}")
-        else:
-            print(
-                f"Startup: Plugin validation OK ({validation['plugin_count']} plugins, {validation['service_count']} services)"
+            # Resolve platform.yml path
+            _common_lib_src = (
+                Path(__file__).parent.parent / "Python Libs" / "common_lib" / "src"
             )
-        if validation.get("warnings"):
-            for w in validation["warnings"][:5]:
-                print(f"  Warning: {w}")
+            _platform_yml = (
+                _common_lib_src / "common_lib" / "configs" / "plugins" / "platform.yml"
+            )
 
-        # Log signature verification results
-        sig_results = validation.get("signatures")
-        if sig_results:
-            verified = sig_results.get("verified", 0)
-            tampered = sig_results.get("tampered", [])
-            unsigned = sig_results.get("unsigned", [])
-            if tampered:
-                print(f"Startup: SIGNATURE TAMPERED: {tampered}")
-            if unsigned:
+            if _platform_yml.exists():
+                plugin_loader.load_from_yaml(str(_platform_yml))
+                loaded_count = len(plugin_loader._plugins)
+                loaded_names = list(plugin_loader._plugins.keys())
                 print(
-                    f"Startup: {len(unsigned)} unsigned plugins (no manifest): {unsigned[:5]}"
+                    f"Startup: Plugin system loaded {loaded_count} plugins: {', '.join(loaded_names[:10])}{'...' if loaded_count > 10 else ''}"
                 )
-            if verified > 0:
-                print(f"Startup: {verified} plugins signature-verified OK")
-        elif _plugin_signing_key:
-            print(
-                f"Startup: Code signing enabled but no manifests found — run 'plugin-sign --key <key>' to sign plugins"
-            )
+            else:
+                print(
+                    f"Warning: platform.yml not found at {_platform_yml}. Plugin system loaded without platform config."
+                )
+        except Exception as e:
+            print(f"Startup: Plugin system initialization skipped: {e}")
 
-        # Freeze critical services (cannot be overwritten at runtime)
-        for critical in ["settings", "auth", "security", "database"]:
-            if plugin_ctx.has(critical):
-                plugin_ctx.freeze(critical)
-
-        # Log registered services
-        services = plugin_ctx.keys()
-        print(
-            f"Startup: Plugin services available: {', '.join(services[:15])}{'...' if len(services) > 15 else ''}"
-        )
-
-    except Exception as pe:
-        print(f"Startup: Plugin system initialization failed: {pe}")
-        import traceback
-
-        traceback.print_exc()
-
-    # ── TOOL PLUGIN SYSTEM: Pre-load native + integrated + external plugins ──
-    # This is the tool-plugin layer (BaseToolPlugin / @tool / @node) used by
-    # the agentic loop and the /api/v1/plugins REST endpoints. The infrastructure
-    # layer above (orchestration.plugin.PluginLoader) handles DI services.
-    try:
-        from common_lib.modules.plugins.manager import get_plugin_manager
-
-        tool_manager = get_plugin_manager()  # singleton, lazy-starts
-        loaded = len(tool_manager.engine.list_plugins())
-        print(f"Startup: Tool plugin system loaded {loaded} plugins")
-    except Exception as te:
-        print(f"Startup: Tool plugin system initialization failed: {te}")
-        import traceback
-
-        traceback.print_exc()
-
-    # ── Hot-reload watcher (opt-in via PLUGIN_RELOAD_MODE env var) ──
-    # Modes: manual (default), poll, watch
-    # See common_lib/modules/plugins/engine/watcher.py
-    try:
-        from common_lib.modules.plugins.engine.watcher import (
-            WatcherConfig,
-            get_plugin_watcher,
-        )
-
-        wcfg = WatcherConfig.from_env()
-        watcher = get_plugin_watcher(config=wcfg)
-        # Pass the running asyncio loop to the watcher so it can
-        # schedule debounced reloads. On first startup, the loop
-        # is already running (we're inside lifespan's __aenter__).
-        import asyncio as _asyncio
-
-        try:
-            _loop = _asyncio.get_running_loop()
-            watcher.start(_loop)
-        except RuntimeError:
-            watcher.start(None)  # will use get_event_loop later
-        if wcfg.mode == "manual":
-            print(
-                "Startup: Plugin hot-reload watcher is MANUAL (set PLUGIN_RELOAD_MODE=poll|watch to enable)"
-            )
-        else:
-            print(
-                f"Startup: Plugin hot-reload watcher active (mode={wcfg.mode}, "
-                f"interval={wcfg.interval_sec}s)"
-            )
-    except Exception as we:
-        print(f"Startup: Plugin hot-reload watcher initialization failed: {we}")
-
-    yield
-    # Shutdown
-    # Stop the watcher before tearing down the rest
-    try:
-        from common_lib.modules.plugins.engine.watcher import (
-            reset_plugin_watcher,
-        )
-
-        reset_plugin_watcher()
-    except Exception:
+    async def _async_background_tasks():
+        # Any async operations that need to run after app is ready
         pass
-    engine.dispose()
 
-    # Stop periodic decay loop task
-    if decay_task:
-        try:
-            decay_task.cancel()
-            await decay_task
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            print(f"Warning: Error canceling periodic memory decay task: {e}")
-        print("Shutdown: Periodic memory decay task stopped")
+    # Start sync background thread
+    threading.Thread(target=run_sync_background, daemon=True, name="startup-bg-sync").start()
 
-    # Stop periodic compaction loop task
-    if compaction_task:
-        try:
-            compaction_task.cancel()
-            await compaction_task
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            print(f"Warning: Error canceling periodic memory compaction task: {e}")
-        print("Shutdown: Periodic memory compaction task stopped")
-
-    # Stop scheduler cron loops
-    try:
-        from common_lib.modules.core_infrastructure.scheduler.service import (
-            get_scheduler_service,
-        )
-
-        scheduler = get_scheduler_service()
-        await scheduler.stop_all()
-        print("Shutdown: Scheduler stopped, all jobs persisted")
-    except Exception as e:
-        print(f"Warning: Could not stop scheduler: {e}")
-
-
-def get_plugin_context():
-    """FastAPI dependency — returns the global PluginContext.
-
-    Use in routes:
-        from app.main import get_plugin_context
-        ctx = Depends(get_plugin_context)
-        ctx.tools.search(...)
-    """
-
-    # This will be overridden by the dependency injection below
-    raise RuntimeError("PluginContext not available — app not started yet")
+    # Schedule async background tasks on the event loop (will run when loop starts)
+    @app.on_event("startup")
+    async def _startup_async_tasks():
+        await _async_background_tasks()
 
 
 def create_app() -> FastAPI:
@@ -1442,209 +1323,95 @@ def create_app() -> FastAPI:
             )
     except Exception as _instance_error:  # noqa: BLE001 - never block the boot
         logger.warning(
-            "[NodeInstances] registry wiring skipped entirely: %s: %s",
-            type(_instance_error).__name__,
+            "[NodeInstances] registration had failures (fail-open): %s",
             _instance_error,
-            exc_info=True,
         )
 
     app = FastAPI(
-        title=settings.PROJECT_NAME,
-        version=settings.VERSION,
-        openapi_url=settings.OPENAPI_URL,
-        docs_url=settings.DOCS_URL,
-        redoc_url=settings.REDOC_URL,
+        title="Nexus Platform API",
         lifespan=lifespan,
     )
 
-    # Wire plugin context dependency
-    from fastapi import Request as _Req
-
-    async def _plugin_ctx_dep(request: _Req):
-        ctx = getattr(request.app.state, "plugin_ctx", None)
-        if ctx is None:
-            from common_lib.modules.orchestration.plugin import PluginContext
-
-            ctx = PluginContext(name="fallback")
-        return ctx
-
-    app.dependency_overrides[get_plugin_context] = _plugin_ctx_dep
-
-    # Observability Middleware (outermost — capture correlation context first)
-    from common_lib.modules.observability.constants import (
-        ENABLE_OBSERVABILITY_EXTENSIONS,
-    )
-
-    if ENABLE_OBSERVABILITY_EXTENSIONS:
-        from common_lib.modules.observability.middleware import (
-            CorrelationMiddleware,
-            RequestLoggingMiddleware,
-        )
-
-        # P1-5 FIX: Activate middleware — previously commented out while the startup
-        # message claimed they were enabled. Both are now actually registered.
-        app.add_middleware(CorrelationMiddleware)
-        app.add_middleware(RequestLoggingMiddleware)
-        print("Startup: Correlation and Request Logging middleware enabled")
-    else:
-        print(
-            "Startup: Observability extensions disabled (ENABLE_OBSERVABILITY_EXTENSIONS=False)"
-        )
-
-    # Register all events in the observability catalog
-    from common_lib.modules.observability.events import register_all_events
-
-    register_all_events()
-    print("Startup: All observability events registered")
-
-    # Wire AI trackers into execution paths
-    from common_lib.modules.observability.wiring import wire_all
-
-    wire_all()
-    print("Startup: AI Tracker wiring complete")
-
-    # Register SLO defaults
-    from common_lib.modules.observability.slos import SLOManager
-
-    SLOManager.register_defaults()
-    print("Startup: SLO defaults registered")
-
-    # P0-3 FIX: CORS now uses the explicit allowlist from settings.BACKEND_CORS_ORIGINS.
-    # Previously allow_origin_regex="https?://.*" allowed ANY website to make credentialed
-    # requests to the API — a high-risk cross-origin attack surface.
-    #
-    # - Dev: defaults to ["http://localhost:3000", "http://localhost:5173"]
-    # - Prod/staging: set BACKEND_CORS_ORIGINS in config.ini or env to the real frontend URL(s)
+    # CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.BACKEND_CORS_ORIGINS,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=[
-            "Authorization",
-            "Content-Type",
-            "X-Tenant-Id",
-            "X-Subject-Id",
-            "X-Subject-Type",
-            "Accept",
-            "Cache-Control",
-        ],
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
-    # P1-3: Global ingress rate limiter — sliding window keyed by tenant+subject.
-    # Limits per group: auth=10, generation=20, download=5, streaming=10, default=120 (per minute).
-    # Configure via RATE_LIMIT_* env vars; disable with RATE_LIMIT_ENABLED=false.
-    from app.middleware.rate_limit import RateLimitMiddleware
-
-    app.add_middleware(RateLimitMiddleware)
-    print("Startup: Rate Limit Middleware enabled")
-
-    # Response Caching Middleware — disabled by default (P0-2 fix).
-    # Enable only after identity-aware isolation tests pass.
-    if os.environ.get("RESPONSE_CACHE_ENABLED", "false").lower() == "true":
-        from app.middleware.response_cache import ResponseCacheMiddleware
-
-        app.add_middleware(ResponseCacheMiddleware)
-        print("Startup: Response Cache Middleware enabled")
-
-    # Authz Middleware — extracts subject identity from JWT/headers for every request
-    from app.modules.auth.middleware.authz import AuthzMiddleware
-
-    app.add_middleware(AuthzMiddleware)
-    print("Startup: Authz Middleware enabled")
-
-    # Control Center Activity Logging — automatically logs every API request
-    try:
-        from app.modules.control_center.middleware.activity_logger import (
-            ActivityLoggingMiddleware,
-        )
-
-        app.add_middleware(ActivityLoggingMiddleware)
-        print("Startup: Control Center Activity Logging middleware enabled")
-    except Exception as cc_err:
-        print(f"Warning: Control Center Activity Logging middleware failed: {cc_err}")
-
-    # voice_control BC deprecation headers (Phase 12 — PR 5), now behind the
-    # default-OFF flag ``voice_control.deprecation_headers``.
-    #
-    # Adds ``Deprecation: true`` + ``Sunset: <2027-02-28>`` +
-    # ``Link: <canonical URL>; rel="successor-version"`` to every
-    # ``/api/v1/voice-control/*`` response. The canonical
-    # ``/api/v1/platform-controls/*`` URL space is unaffected. See
-    # common_lib/modules/platform_controls/docs/11_migration_from_voice_control.md
-    # §6.4 for the middleware design and §11 for the deprecation
-    # timeline. Wrapped in try/except so a missing voice_control
-    # package (pre-Phase 12) never breaks startup.
-    #
-    # WHY THE FLAG (S8-T6): the middleware matches on the path prefix alone and
-    # never checks that a route exists behind it. Nothing is mounted at
-    # ``/api/v1/voice-control`` — there is no ROUTER_DEFINITIONS entry, and
-    # enumerating the built app yields 0 served paths under that prefix (the
-    # canonical side is a Phase-0 skeleton serving only ``/health``). So with the
-    # middleware on, every 404 under the deprecated prefix advertised a live
-    # deprecation, and a 404 with no canonical counterpart advertised a
-    # successor URL that itself 404s:
-    #
-    #   GET /api/v1/voice-control/does-not-exist -> 404
-    #       deprecation: true
-    #       link: </api/v1/platform-controls/does-not-exist>; rel="successor-version"
-    #
-    # Defaulting OFF stops that lie while keeping the BC signal one flag-flip away
-    # for the day routes actually land under the prefix. Mounting the shim instead
-    # was rejected: it would re-open a sunsetting URL (Sunset 2027-02-28) whose
-    # canonical side has nothing worth aliasing and zero existing consumers.
-    # See app/modules/voice_control/flags.py for the full rationale, including why
-    # the flag must be registered AND asserted (is_enabled() resolves an
-    # unregistered name to True, so an unregistered "default OFF" flag is ON).
-    try:
-        from app.modules.voice_control.flags import (
-            deprecation_headers_enabled,
-            register_deprecation_headers_flag,
-        )
-
-        # Registration is asserted, not assumed — see flags.py.
-        register_deprecation_headers_flag()
-
-        if deprecation_headers_enabled():
-            from app.modules.voice_control.middleware import (
-                DeprecationHeadersMiddleware,
-            )
-
-            app.add_middleware(DeprecationHeadersMiddleware)
-            print(
-                "Startup: voice_control deprecation headers middleware enabled "
-                "(Sunset: 2027-02-28)"
-            )
-        else:
-            # Logged, not silent: the flag defaults OFF and the only reason to
-            # flip it is a route landing under the deprecated prefix.
-            print(
-                "Startup: voice_control deprecation headers middleware DISABLED "
-                "(flag 'voice_control.deprecation_headers' is off — no routes are "
-                "mounted under /api/v1/voice-control, so the middleware would only "
-                "tag 404s as deprecated-but-alive)"
-            )
-    except Exception as vc_err:
-        # Fail closed: a broken flag module must not silently switch the
-        # middleware back on, and must not break startup either.
-        print(
-            "Warning: voice_control deprecation headers not registered "
-            f"(treated as disabled): {vc_err}"
-        )
-
-    # Register Custom OpenAPI
+    # NOTE: background work (deferred routers, MCP warmup, seeding) is NOT
+    # spawned here. It starts from lifespan via _spawn_background_tasks, after
+    # the DB is verified. Spawning import-heavy threads during create_app
+    # raced the main thread's own imports and multiplied startup time.
+    # ─── Critical: Exception handlers & OpenAPI ───
     app.openapi = lambda: custom_openapi(app)
+    from fastapi.exceptions import RequestValidationError
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+    from sqlalchemy.exc import SQLAlchemyError
+    from app.core.exceptions import (
+        NexusException,
+        nexus_exception_handler,
+        validation_exception_handler,
+        pydantic_exception_handler,
+        sqlalchemy_exception_handler,
+        generic_exception_handler,
+        http_exception_handler,
+        service_error_handler,
+    )
 
-    # Global auth dependency — applied to ALL routes at once.
-    # When DEV_MODE=True, auth is bypassed entirely.
-    # When DEV_MODE=False, every request must be authenticated.
+    app.add_exception_handler(NexusException, nexus_exception_handler)
+    from common_lib.modules.ai_models.domain.exceptions import ModelNotFoundError
+    from app.core.exceptions import model_not_found_exception_handler
+    from common_lib.modules.exceptions import ServiceError
+
+    app.add_exception_handler(ModelNotFoundError, model_not_found_exception_handler)
+    app.add_exception_handler(ServiceError, service_error_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    from pydantic import ValidationError
+
+    app.add_exception_handler(ValidationError, pydantic_exception_handler)
+    app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+    app.add_exception_handler(Exception, generic_exception_handler)
+
+    # Health endpoint
+    from common_lib.modules.observability import get_health_data
+
+    @app.get("/health", include_in_schema=False)
+    @app.get("/readyz", include_in_schema=False)
+    async def health_check():
+        return get_health_data()
+
+    @app.get("/v1/models", include_in_schema=False)
+    async def v1_models_compat():
+        return {"object": "list", "data": []}
+
+    @app.get("/readyz-deep", include_in_schema=False)
+    async def readiness_deep():
+        """Deep readiness: true only once deferred routers are mounted.
+
+        Poll this (instead of hammering real endpoints) to know when the
+        full API surface is live after a restart.
+        """
+        complete = bool(getattr(app.state, "deferred_mount_complete", False))
+        return {
+            "ready": complete,
+            "deferred_routers_mounted": complete,
+            "routes": len(app.routes),
+        }
+
+    # ─── Critical: Always-on routers (sync) ───
+    # Only the always-on subset mounts here (~8s). Deferred entries are
+    # stashed for the post-bind orchestrator (lifespan). No background
+    # threads are spawned here — see lifespan.
     global_deps = [Depends(get_current_active_user)] if not settings.DEV_MODE else []
-
-    # P2-1: All routers registered via declarative registry.
-    # See app/core/routers.py for the full list.
     from app.core.routers import register_routers
 
-    register_routers(app, settings.API_V1_STR, global_deps)
+    deferred = register_routers(app, settings.API_V1_STR, global_deps, sync_only=True)
+    app.state._deferred_router_entries = deferred
+    app.state.deferred_mount_complete = False
 
     # FastMCP SSE transport — enables opencode / MCP clients to connect directly
     from app.mcp.server import mcp_server, wait_for_node_tools
@@ -1727,37 +1494,6 @@ def create_app() -> FastAPI:
         name="assets",
     )
 
-    # Exception Handlers
-    from fastapi.exceptions import RequestValidationError
-    from starlette.exceptions import HTTPException as StarletteHTTPException
-    from sqlalchemy.exc import SQLAlchemyError
-    from app.core.exceptions import (
-        NexusException,
-        nexus_exception_handler,
-        validation_exception_handler,
-        pydantic_exception_handler,
-        sqlalchemy_exception_handler,
-        generic_exception_handler,
-        http_exception_handler,
-        service_error_handler,
-    )
-
-    app.add_exception_handler(NexusException, nexus_exception_handler)
-    from common_lib.modules.ai_models.domain.exceptions import ModelNotFoundError
-    from app.core.exceptions import model_not_found_exception_handler
-
-    app.add_exception_handler(ModelNotFoundError, model_not_found_exception_handler)
-    from common_lib.modules.exceptions import ServiceError
-
-    app.add_exception_handler(ServiceError, service_error_handler)
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
-    from pydantic import ValidationError
-
-    app.add_exception_handler(ValidationError, pydantic_exception_handler)
-    app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
-    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
-    app.add_exception_handler(Exception, generic_exception_handler)
-
     # Observability — health endpoint registered directly, not via common_lib
     from common_lib.modules.observability import (
         get_health_data,
@@ -1828,12 +1564,11 @@ if __name__ == "__main__":
             host=os.environ.get("UVICORN_HOST", "0.0.0.0"),
             port=int(os.environ.get("UVICORN_PORT", "8000")),
             workers=workers,
-            reload=False,
         )
     else:
         uvicorn.run(
-            "app.main:app",
+            app,
             host=os.environ.get("UVICORN_HOST", "0.0.0.0"),
             port=int(os.environ.get("UVICORN_PORT", "8000")),
-            reload=os.environ.get("UVICORN_RELOAD", "1") == "1",
+            reload=os.environ.get("UVICORN_RELOAD", "false").lower() == "true",
         )

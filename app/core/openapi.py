@@ -26,11 +26,23 @@ def custom_openapi(app):
     )
     
     # Customizing the schema for Agents
-    # Example: Ensure operationIds are clean and predictable
-    for path, path_item in openapi_schema.get("paths", {}).items():
-        for method, operation in path_item.items():
-            if "operationId" not in operation:
-                operation["operationId"] = f"{method}_{path}"
+    # Example: Ensure operationIds are clean and predictable.
+    # Wrapped defensively: a single malformed route must not 500 /openapi.json.
+    try:
+        for path, path_item in openapi_schema.get("paths", {}).items():
+            if not isinstance(path_item, dict):
+                continue
+            for method, operation in path_item.items():
+                if not isinstance(operation, dict):
+                    continue
+                if "operationId" not in operation:
+                    operation["operationId"] = f"{method}_{path}"
+    except Exception:
+        import logging as _logging
+
+        _logging.getLogger(__name__).exception(
+            "custom_openapi post-processing failed — serving uncustomized schema"
+        )
     
     app.openapi_schema = openapi_schema
     return app.openapi_schema
