@@ -25,18 +25,36 @@ def get_container():
 
 
 @router.get("/", response_model=APIResponse[List[Dict[str, Any]]])
-async def list_models(container: AIModelsContainer = Depends(get_container)):
+async def list_models(
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = Query(50, ge=1, le=200, description="Items per page"),
+    container: AIModelsContainer = Depends(get_container)
+):
     try:
-        container.health_monitor.verify_all_models()
+        # Don't call verify_all_models() here — it does filesystem I/O for every model
+        # and makes the list endpoint very slow. Use the /sync endpoint to refresh
+        # model availability on-demand instead.
         models = container.registry_service.list_models()
+        
+        # Apply pagination
+        total = len(models)
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated_models = models[start:end]
+        
         result = []
-        for model in models:
+        for model in paginated_models:
             m_dict = model.model_dump()
             active_task = container.downloader.get_download_progress(model.id)
             if active_task.get("status") != "not_found":
                 m_dict["download_task"] = active_task
             result.append(m_dict)
-        return APIResponse(data=result, message="Models retrieved successfully")
+        
+        return APIResponse(
+            data=result, 
+            message="Models retrieved successfully",
+            meta={"page": page, "page_size": page_size, "total": total, "total_pages": (total + page_size - 1) // page_size}
+        )
     except Exception as e:
         logger.error(f"Failed to list models: {e}")
         try:

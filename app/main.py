@@ -88,12 +88,6 @@ async def lifespan(app: FastAPI):
     Minimal synchronous startup - only critical operations.
     All non-critical operations run in background tasks.
     """
-    # ─── Critical: MCP tool warmup, deferred routers, seeding ───
-    # All handled by the single post-bind orchestrator thread (spawned below
-    # via _spawn_background_tasks): Phase A mounts deferred routers, Phase B
-    # triggers the MCP @node scan, Phase C seeds sequentially. Nothing heavy
-    # runs inline here so the server binds immediately.
-
     # ─── Critical: Database connection & init_db ───
     max_retries = 4
     retry_interval = 2
@@ -144,40 +138,43 @@ async def lifespan(app: FastAPI):
     _spawn_background_tasks(app)
 
     # ─── Critical: Exception handlers & OpenAPI ───
-    app.openapi = lambda: custom_openapi(app)
-    from fastapi.exceptions import RequestValidationError
-    from starlette.exceptions import HTTPException as StarletteHTTPException
-    from sqlalchemy.exc import SQLAlchemyError
-    from app.core.exceptions import (
-        NexusException,
-        nexus_exception_handler,
-        validation_exception_handler,
-        pydantic_exception_handler,
-        sqlalchemy_exception_handler,
-        generic_exception_handler,
-        http_exception_handler,
-        service_error_handler,
-    )
+    # These are registered FAST via a background task to unblock yield
+    async def _setup_exception_handlers():
+        app.openapi = lambda: custom_openapi(app)
+        from fastapi.exceptions import RequestValidationError
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+        from sqlalchemy.exc import SQLAlchemyError
+        from app.core.exceptions import (
+            NexusException,
+            nexus_exception_handler,
+            validation_exception_handler,
+            pydantic_exception_handler,
+            sqlalchemy_exception_handler,
+            generic_exception_handler,
+            http_exception_handler,
+            service_error_handler,
+        )
 
-    app.add_exception_handler(NexusException, nexus_exception_handler)
-    from common_lib.modules.ai_models.domain.exceptions import ModelNotFoundError
-    from app.core.exceptions import model_not_found_exception_handler
-    from common_lib.modules.exceptions import ServiceError
+        app.add_exception_handler(NexusException, nexus_exception_handler)
+        from common_lib.modules.ai_models.domain.exceptions import ModelNotFoundError
+        from app.core.exceptions import model_not_found_exception_handler
+        from common_lib.modules.exceptions import ServiceError
 
-    app.add_exception_handler(ModelNotFoundError, model_not_found_exception_handler)
-    app.add_exception_handler(ServiceError, service_error_handler)
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
-    from pydantic import ValidationError
+        app.add_exception_handler(ModelNotFoundError, model_not_found_exception_handler)
+        app.add_exception_handler(ServiceError, service_error_handler)
+        app.add_exception_handler(RequestValidationError, validation_exception_handler)
+        from pydantic import ValidationError
 
-    app.add_exception_handler(ValidationError, pydantic_exception_handler)
-    app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
-    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
-    app.add_exception_handler(Exception, generic_exception_handler)
+        app.add_exception_handler(ValidationError, pydantic_exception_handler)
+        app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
+        app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+        app.add_exception_handler(Exception, generic_exception_handler)
 
-    # Health endpoints are registered in create_app — do NOT duplicate them
-    # here (duplicate routes bloat the route table and confuse /openapi.json).
+    # Spawn exception handlers in background - don't block yield
+    import asyncio
+    asyncio.create_task(_setup_exception_handlers())
 
-    # Yield control - app is now ready to serve requests!
+    # Yield control IMMEDIATELY - app is ready to serve requests!
     yield
 
     # ─── Shutdown: cleanup background tasks ───
@@ -207,11 +204,12 @@ def _spawn_background_tasks(app: FastAPI):
             Router mounting (Phase A) and MCP warmup (Phase B) still run.
         """
         import time
+        import concurrent.futures
 
         try:
-            delay = float(os.getenv("NEXUS_BG_DELAY_SECONDS", "20"))
+            delay = float(os.getenv("NEXUS_BG_DELAY_SECONDS", "2"))
         except ValueError:
-            delay = 20.0
+            delay = 2.0
         if delay > 0:
             time.sleep(delay)
 
@@ -256,32 +254,49 @@ def _spawn_background_tasks(app: FastAPI):
         except Exception as e:
             _startup_warn(f"dynamic @node MCP registration skipped: {e}")
 
-        # ── Phase C: seeding / sync / wiring (sequential, no thread pools) ──
+        # ── Phase C: seeding / sync / wiring (parallel where safe) ──
         if os.getenv("NEXUS_SKIP_STARTUP_SEEDING", "0") == "1":
             _startup_info("Skipping startup seeding (NEXUS_SKIP_STARTUP_SEEDING=1)")
             return
 
-        _seed_rbac_and_themes()
-        _seed_keys_and_hitl()
-        _seed_connectors()
-        _seed_connections_yaml()
-        _sync_nodes_registry()
-        _seed_knowledge_hub()
-        _seed_rules_engine()
-        _seed_integration_configs()
-        _register_rip_tools()
-        _wire_integration_bridges()
-        _seed_observability_yaml()
-        _seed_self_learning_configs()
-        _sync_registry_from_files()
-        _seed_ui_nodes()
-        _resume_model_downloads()
-        _start_scheduler()
-        _create_pm_tables()
-        _create_sm_tables()
-        _start_memory_tasks()
-        _init_turbovec()
-        _load_plugins()
+        # Group 1: Independent seeding tasks (can run in parallel)
+        parallel_tasks = [
+            _seed_rbac_and_themes,
+            _seed_keys_and_hitl,
+            _seed_connectors,
+            _seed_connections_yaml,
+            _sync_nodes_registry,
+        ]
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [executor.submit(task) for task in parallel_tasks]
+            concurrent.futures.wait(futures)
+
+        # Group 2: Sequential tasks (have dependencies)
+        sequential_tasks = [
+            _seed_knowledge_hub,
+            _seed_rules_engine,
+            _seed_integration_configs,
+            _register_rip_tools,
+            _wire_integration_bridges,
+            _seed_observability_yaml,
+            _seed_self_learning_configs,
+            _sync_registry_from_files,
+            _seed_ui_nodes,
+            _resume_model_downloads,
+            _start_scheduler,
+            _create_pm_tables,
+            _create_sm_tables,
+            _start_memory_tasks,
+            _init_turbovec,
+            _load_plugins,
+        ]
+
+        for task in sequential_tasks:
+            try:
+                task()
+            except Exception as e:
+                _startup_warn(f"Background task {task.__name__} failed: {e}")
 
         _startup_debug("Background startup tasks completed")
 
