@@ -13,6 +13,11 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/capabilities", tags=["Capabilities"])
 
+# RAG-P0-003: RAG ontology seed surface (additive; flag-gated per-route).
+from app.modules.capabilities.routes.rag_ontology import rag_router as _rag_router
+
+router.include_router(_rag_router)
+
 
 # ── Request/Response Models ──────────────────────────────────────────────────
 
