@@ -125,6 +125,7 @@ from app.mcp.tools.multiagent_tools import register_multiagent_tools
 from app.mcp.tools.dataset_management import register_dataset_management_tools
 from app.mcp.tools.decision_engine import register_decision_engine_tools
 from app.mcp.tools.cognitive_runtime import register_cognitive_runtime_tools
+from app.mcp.tools.cli_investigation import register_cli_investigation_tools
 
 # Setup MCP-specific logging
 logging.basicConfig(level=logging.INFO)
@@ -253,6 +254,7 @@ register_behaviour_tools(mcp_server)
 register_i2w_tools(mcp_server)
 register_decision_engine_tools(mcp_server)
 register_cognitive_runtime_tools(mcp_server)
+register_cli_investigation_tools(mcp_server)
 
 # 3. Register Modular Resources
 register_cognitive_resources(mcp_server)
@@ -367,7 +369,10 @@ def start_node_tool_warmup() -> bool:
         register_dynamic_node_tools_once()
         return False
     with _node_tools_warmup_lock:
-        if _node_tools_warmup_thread is not None and _node_tools_warmup_thread.is_alive():
+        if (
+            _node_tools_warmup_thread is not None
+            and _node_tools_warmup_thread.is_alive()
+        ):
             return False
         thread = threading.Thread(
             target=register_dynamic_node_tools_once,
