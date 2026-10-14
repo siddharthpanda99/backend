@@ -7,6 +7,7 @@ from app.modules.auth.dependencies.index import get_current_active_user
 from app.modules.agents.routes.registry import router as registry_router
 from app.modules.agents.routes.runtime_routes import router as runtime_router
 from app.modules.agents.routes.session_routes import router as session_router
+from app.modules.agents.routes.todos_routes import router as todos_router
 from app.modules.agents.routes.pipeline_routes import router as pipeline_router
 from app.modules.agents.routes.tracing_routes import router as tracing_router
 from app.modules.agents.routes.policy_routes import router as policy_router
@@ -32,6 +33,7 @@ router.include_router(registry_router, prefix="/registry", tags=["Registry"])
 router.include_router(policy_router, prefix="", tags=["Policy & Multi-Agent"])
 router.include_router(runtime_router, prefix="/runtime", tags=["Agent Runtime"])
 router.include_router(session_router, prefix="/runtime", tags=["Sessions"])
+router.include_router(todos_router, prefix="/runtime", tags=["Agent Todos"])
 router.include_router(pipeline_router, prefix="/pipelines", tags=["Pipelines"])
 router.include_router(tracing_router, prefix="/traces", tags=["Agent Tracing"])
 router.include_router(task_router, prefix="/tasks", tags=["Task Queue"])

@@ -60,6 +60,7 @@ from common_lib.modules.agents.runtime.service import (
     list_available_loops as _list_loops,
     list_commands as _list_commands,
     list_gemini_models as _list_gemini,
+    sync_commands as _sync_commands,
 )
 
 logger = get_logger(__name__)
@@ -590,6 +591,13 @@ async def list_commands():
     from app.core.common_lib_integration import common_memory
 
     return _list_commands(common_memory)
+
+
+@router.post("/commands/sync")
+async def sync_commands():
+    from app.core.common_lib_integration import common_memory
+
+    return _sync_commands(common_memory)
 
 
 @router.get("/available_workflows")

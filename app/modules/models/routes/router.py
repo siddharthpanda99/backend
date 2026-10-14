@@ -28,20 +28,20 @@ def get_container():
 async def list_models(
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(50, ge=1, le=200, description="Items per page"),
-    container: AIModelsContainer = Depends(get_container)
+    container: AIModelsContainer = Depends(get_container),
 ):
     try:
         # Don't call verify_all_models() here — it does filesystem I/O for every model
         # and makes the list endpoint very slow. Use the /sync endpoint to refresh
         # model availability on-demand instead.
         models = container.registry_service.list_models()
-        
+
         # Apply pagination
         total = len(models)
         start = (page - 1) * page_size
         end = start + page_size
         paginated_models = models[start:end]
-        
+
         result = []
         for model in paginated_models:
             m_dict = model.model_dump()
@@ -49,11 +49,16 @@ async def list_models(
             if active_task.get("status") != "not_found":
                 m_dict["download_task"] = active_task
             result.append(m_dict)
-        
+
         return APIResponse(
-            data=result, 
+            data=result,
             message="Models retrieved successfully",
-            meta={"page": page, "page_size": page_size, "total": total, "total_pages": (total + page_size - 1) // page_size}
+            meta={
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": (total + page_size - 1) // page_size,
+            },
         )
     except Exception as e:
         logger.error(f"Failed to list models: {e}")
@@ -61,6 +66,21 @@ async def list_models(
             container.session.rollback()
         except Exception:
             pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tiers", response_model=APIResponse[List[Dict[str, Any]]])
+async def list_model_tiers():
+    """List the static model-tier catalogue (low|medium|high|ultra, Chat Parity G4)."""
+    try:
+        from common_lib.modules.ai_models.tiers import get_model_tiers
+
+        return APIResponse(
+            data=[t.model_dump() for t in get_model_tiers()],
+            message="Model tiers retrieved successfully",
+        )
+    except Exception as e:
+        logger.error(f"Failed to list model tiers: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -414,4 +434,6 @@ try:
 
     router.include_router(_frontier_router)
 except Exception as _frontier_mount_error:  # noqa: BLE001
-    logger.warning(f"Model routing frontier routes unavailable: {_frontier_mount_error}")
+    logger.warning(
+        f"Model routing frontier routes unavailable: {_frontier_mount_error}"
+    )
