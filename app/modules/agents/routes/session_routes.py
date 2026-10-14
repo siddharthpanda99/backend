@@ -16,6 +16,7 @@ from common_lib.modules.agents.session_schemas import (
     SessionCreate,
     SessionUpdate,
     SessionResponse,
+    SessionForkRequest,
     ConversationCreate,
     ConversationResponse,
     MessageCreate,
@@ -96,6 +97,18 @@ def create_session(data: SessionCreate, session: SQLSession = Depends(get_db_ses
 def get_session(session_id: str, session: SQLSession = Depends(get_db_session)):
     try:
         return svc.get_session(session, session_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+
+@router.post("/{session_id}/fork", response_model=SessionResponse, status_code=201)
+def fork_session(
+    session_id: str,
+    data: SessionForkRequest | None = None,
+    session: SQLSession = Depends(get_db_session),
+):
+    try:
+        return svc.fork_session(session, session_id, data)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Session not found")
 
