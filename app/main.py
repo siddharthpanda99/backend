@@ -44,17 +44,19 @@ from common_lib.modules.data_storage.database.connection import engine
 # Startup logging helper with color codes - only critical messages go to console, rest to debug
 import sys
 
+
 # ANSI color codes
 class _StartupColors:
-    RESET = '\033[0m'
-    BOLD = '\033[1m'
-    RED = '\033[91m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    MAGENTA = '\033[95m'
-    CYAN = '\033[96m'
-    WHITE = '\033[97m'
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    RED = "\033[91m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    MAGENTA = "\033[95m"
+    CYAN = "\033[96m"
+    WHITE = "\033[97m"
+
 
 # Only enable colors if stdout is a TTY
 if sys.stdout.isatty():
@@ -62,20 +64,28 @@ if sys.stdout.isatty():
 else:
     # Disable colors if not a TTY
     for attr in dir(_StartupColors):
-        if not attr.startswith('_'):
-            setattr(_StartupColors, attr, '')
+        if not attr.startswith("_"):
+            setattr(_StartupColors, attr, "")
+
 
 def _startup_info(msg: str):
     """Log critical startup info to console (green)."""
     print(f"{_StartupColors.GREEN}[STARTUP]{_StartupColors.RESET} {msg}", flush=True)
 
+
 def _startup_warn(msg: str):
     """Log startup warnings to console (yellow)."""
-    print(f"{_StartupColors.YELLOW}[STARTUP WARN]{_StartupColors.RESET} {msg}", flush=True)
+    print(
+        f"{_StartupColors.YELLOW}[STARTUP WARN]{_StartupColors.RESET} {msg}", flush=True
+    )
+
 
 def _startup_error(msg: str):
     """Log startup errors to console (red)."""
-    print(f"{_StartupColors.RED}[STARTUP ERROR]{_StartupColors.RESET} {msg}", flush=True)
+    print(
+        f"{_StartupColors.RED}[STARTUP ERROR]{_StartupColors.RESET} {msg}", flush=True
+    )
+
 
 def _startup_debug(msg: str):
     """Log startup debug info (only visible with DEBUG log level)."""
@@ -94,7 +104,9 @@ async def lifespan(app: FastAPI):
 
     for attempt in range(max_retries):
         try:
-            _startup_info(f"Verifying database connection (Attempt {attempt + 1}/{max_retries})...")
+            _startup_info(
+                f"Verifying database connection (Attempt {attempt + 1}/{max_retries})..."
+            )
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
             _startup_info("Database connection established successfully.")
@@ -114,7 +126,9 @@ async def lifespan(app: FastAPI):
             break
         except Exception as e:
             if attempt < max_retries - 1:
-                _startup_warn(f"Database connection failed. Retrying in {retry_interval}s...")
+                _startup_warn(
+                    f"Database connection failed. Retrying in {retry_interval}s..."
+                )
                 _startup_debug(f"Error: {e}")
                 time.sleep(retry_interval)
             else:
@@ -172,6 +186,7 @@ async def lifespan(app: FastAPI):
 
     # Spawn exception handlers in background - don't block yield
     import asyncio
+
     asyncio.create_task(_setup_exception_handlers())
 
     # Yield control IMMEDIATELY - app is ready to serve requests!
@@ -223,7 +238,9 @@ def _spawn_background_tasks(app: FastAPI):
             if deferred and ctx:
                 api_prefix, global_deps = ctx
                 register_routers_background(app, api_prefix, global_deps, deferred)
-                _startup_info(f"Mounted {len(deferred)} deferred routers (API complete)")
+                _startup_info(
+                    f"Mounted {len(deferred)} deferred routers (API complete)"
+                )
             else:
                 _startup_debug("No deferred routers to mount")
         except Exception as e:
@@ -241,7 +258,9 @@ def _spawn_background_tasks(app: FastAPI):
             app.openapi()
             _startup_info(f"OpenAPI cache warmed in {time.time() - t0:.1f}s")
         except Exception as e:
-            _startup_warn(f"OpenAPI pre-warm failed (first /docs call will be slow): {e}")
+            _startup_warn(
+                f"OpenAPI pre-warm failed (first /docs call will be slow): {e}"
+            )
 
         # ── Phase B: MCP @node warmup (the big import scan, runs in its own thread) ──
         try:
@@ -317,7 +336,9 @@ def _spawn_background_tasks(app: FastAPI):
 
             with SQLSession(engine) as rbac_session:
                 result = seed_roles(rbac_session)
-                _startup_debug(f"RBAC seeded: {result['permissions']} permissions, {result['roles']} roles")
+                _startup_debug(
+                    f"RBAC seeded: {result['permissions']} permissions, {result['roles']} roles"
+                )
         except Exception as se:
             _startup_warn(f"RBAC seeding failed: {se}")
 
@@ -339,7 +360,9 @@ def _spawn_background_tasks(app: FastAPI):
             )
 
             seeded_m, seeded_f = KeyManagementService().seed_proxy_catalog()
-            _startup_debug(f"Proxy catalog seeded: {seeded_m} models, {seeded_f} fallbacks.")
+            _startup_debug(
+                f"Proxy catalog seeded: {seeded_m} models, {seeded_f} fallbacks."
+            )
 
             seeded_k = KeyManagementService().seed_from_config()
             if seeded_k:
@@ -366,9 +389,7 @@ def _spawn_background_tasks(app: FastAPI):
                 new_count = 0
                 updated_count = 0
                 for connector_data in get_connector_seeds():
-                    existing = seed_session.get(
-                        ConnectorRecord, connector_data["id"]
-                    )
+                    existing = seed_session.get(ConnectorRecord, connector_data["id"])
                     if existing:
                         for field, value in connector_data.items():
                             setattr(existing, field, value)
@@ -379,7 +400,9 @@ def _spawn_background_tasks(app: FastAPI):
                         new_count += 1
                 if new_count or updated_count:
                     seed_session.commit()
-                    _startup_debug(f"Connectors seeded: {new_count} new, {updated_count} updated")
+                    _startup_debug(
+                        f"Connectors seeded: {new_count} new, {updated_count} updated"
+                    )
                 else:
                     _startup_debug("Connectors: all already up to date")
         except Exception as se:
@@ -398,6 +421,9 @@ def _spawn_background_tasks(app: FastAPI):
             _startup_warn(f"Connections seeding from YAML failed: {conn_se}")
 
     def _sync_nodes_registry():
+        # ONCE-per-process seed (lifespan background orchestrator only — never
+        # per-request). Warm DB => served from node_definitions without an AST
+        # re-scan; cold DB or NODES_REFRESH=1 => one seed scan + persist.
         try:
             from common_lib.modules.image_processing.nodes_registry.startup import (
                 sync_nodes_on_startup,
@@ -436,7 +462,9 @@ def _spawn_background_tasks(app: FastAPI):
 
             seeded_rules = seed_default_rules()
             if seeded_rules:
-                _startup_debug(f"Seeded {seeded_rules} default rules into the rules engine")
+                _startup_debug(
+                    f"Seeded {seeded_rules} default rules into the rules engine"
+                )
             else:
                 _startup_debug("Default rules already seeded")
 
@@ -472,7 +500,9 @@ def _spawn_background_tasks(app: FastAPI):
 
                 pipeline_count = svc.seed_default_pipelines(session=seed_ic_session)
                 if pipeline_count:
-                    _startup_debug(f"Seeded {pipeline_count} integration sample pipelines")
+                    _startup_debug(
+                        f"Seeded {pipeline_count} integration sample pipelines"
+                    )
                 else:
                     _startup_debug("Integration sample pipelines already seeded")
 
@@ -509,6 +539,7 @@ def _spawn_background_tasks(app: FastAPI):
 
             adapter = RIPToolsAdapter()
             import asyncio
+
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             registered = loop.run_until_complete(adapter.register_rip_tools())
@@ -560,6 +591,7 @@ def _spawn_background_tasks(app: FastAPI):
                 ).first()
                 if not existing:
                     from datetime import datetime
+
                     now = datetime.now(datetime.timezone.utc).replace(tzinfo=None)
                     _rows = []
 
@@ -872,8 +904,7 @@ def _spawn_background_tasks(app: FastAPI):
                     for _r in _rows:
                         _sl_seed.add(_r)
                     _sl_seed.commit()
-                    print(
-                        )
+                    print()
                 else:
                     print("Startup: Self-learning sample configs already seeded")
         except Exception as se:
@@ -1015,8 +1046,13 @@ def _spawn_background_tasks(app: FastAPI):
                                                         and f.stat().st_size > 1024
                                                     ):
                                                         current_size = f.stat().st_size
-                                                        if current_size != last_disk_size:
-                                                            last_disk_size = current_size
+                                                        if (
+                                                            current_size
+                                                            != last_disk_size
+                                                        ):
+                                                            last_disk_size = (
+                                                                current_size
+                                                            )
                                                             if (
                                                                 expected_size
                                                                 and expected_size > 0
@@ -1056,17 +1092,19 @@ def _spawn_background_tasks(app: FastAPI):
                                         file_id=file_id,
                                         destination_subfolder=dest_folder,
                                         model_type=model_type,
-                                        progress_callback=lambda d, t: event_bus.publish(
-                                            task_id,
-                                            {
-                                                "task_id": task_id,
-                                                "status": "downloading",
-                                                "progress": int((d / t * 100))
-                                                if t > 0
-                                                else 0,
-                                                "downloaded": d,
-                                                "total": t,
-                                            },
+                                        progress_callback=lambda d, t: (
+                                            event_bus.publish(
+                                                task_id,
+                                                {
+                                                    "task_id": task_id,
+                                                    "status": "downloading",
+                                                    "progress": int((d / t * 100))
+                                                    if t > 0
+                                                    else 0,
+                                                    "downloaded": d,
+                                                    "total": t,
+                                                },
+                                            )
                                         ),
                                     )
 
@@ -1088,7 +1126,9 @@ def _spawn_background_tasks(app: FastAPI):
                                         },
                                     )
                                 except Exception as dl_err:
-                                    logger.error(f"Failed to resume {task_id}: {dl_err}")
+                                    logger.error(
+                                        f"Failed to resume {task_id}: {dl_err}"
+                                    )
                                     event_bus.publish(
                                         task_id,
                                         {
@@ -1105,12 +1145,16 @@ def _spawn_background_tasks(app: FastAPI):
 
                             import threading
 
-                            threading.Thread(target=resume_download, daemon=True).start()
+                            threading.Thread(
+                                target=resume_download, daemon=True
+                            ).start()
 
                         except Exception as e:
                             logger.error(f"Failed to load task {task_file}: {e}")
 
-                    print(f"Startup: Resumed {len(pending_tasks)} downloads in background")
+                    print(
+                        f"Startup: Resumed {len(pending_tasks)} downloads in background"
+                    )
         except Exception as e:
             print(f"Warning: Could not resume downloads: {e}")
 
@@ -1123,6 +1167,7 @@ def _spawn_background_tasks(app: FastAPI):
             scheduler = get_scheduler_service()
             scheduler.load_from_disk()
             import asyncio
+
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             loop.run_until_complete(scheduler.start_all())
@@ -1218,7 +1263,10 @@ def _spawn_background_tasks(app: FastAPI):
 
     def _load_plugins():
         try:
-            from common_lib.modules.orchestration.plugin import PluginContext, PluginLoader
+            from common_lib.modules.orchestration.plugin import (
+                PluginContext,
+                PluginLoader,
+            )
 
             plugin_ctx = PluginContext(name="platform")
 
@@ -1255,7 +1303,9 @@ def _spawn_background_tasks(app: FastAPI):
         pass
 
     # Start sync background thread
-    threading.Thread(target=run_sync_background, daemon=True, name="startup-bg-sync").start()
+    threading.Thread(
+        target=run_sync_background, daemon=True, name="startup-bg-sync"
+    ).start()
 
     # Schedule async background tasks on the event loop (will run when loop starts)
     @app.on_event("startup")
