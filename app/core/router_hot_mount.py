@@ -266,6 +266,9 @@ def mount_router_entry(
     """
     full_prefix = f"{api_prefix}{entry.get('prefix', '')}"
     router = entry["router"]
+    # Support lazy router factory: if router is a factory function (not an APIRouter instance), call it
+    if hasattr(router, '__call__') and not hasattr(router, 'routes'):
+        router = router()
     handlers = startup_handler_count(router)
     key = (
         mount_key(position, full_prefix)

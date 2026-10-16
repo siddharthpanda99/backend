@@ -178,6 +178,12 @@ def _rip_router():
     return router
 
 
+def _nlp2sql_router():
+    from app.modules.nlp2sql.routes import router
+
+    return router
+
+
 def _team_router():
     from app.modules.team.routes import router
 
@@ -1887,6 +1893,14 @@ def register_routers(app: FastAPI, api_prefix: str, global_deps: List[Any]) -> N
             "tags": ["RIP — Retrieval Intelligence"],
             "auth": True,
             "module": "rip",
+        },
+        # ── NLP-to-SQL Data Intelligence (feature-flagged, default OFF) ──
+        {
+            "router": _nlp2sql_router(),
+            "prefix": "",
+            "tags": ["NLP-to-SQL"],
+            "auth": True,
+            "module": "nlp2sql",
         },
         # ── Orchestrator Hub ──────────────────────────────────────
         {
