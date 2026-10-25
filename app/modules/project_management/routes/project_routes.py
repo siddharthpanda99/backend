@@ -20,6 +20,7 @@ from common_lib.modules.project_management.schemas import (
     IssueTypeCreate, IssueTypeUpdate, IssueTypeRead,
     ProjectBlueprintCreate, ProjectBlueprintUpdate, BlueprintProvisionRequest,
     BlueprintBulkProvisionRequest, BlueprintPropagateRequest,
+    SprintRead,
 )
 from app.modules.project_management.field_security_deps import (
     filter_single_response,
@@ -59,7 +60,8 @@ def create_project(
     """Create a new project."""
     svc = ProjectService(session)
     try:
-        return svc.create_project(data)
+        project = svc.create_project(data)
+        return ProjectRead.model_validate(project)
     except Exception as e:
         logger.exception("Failed to create project")
         raise HTTPException(status_code=500, detail=str(e))
@@ -169,6 +171,23 @@ def get_project_stats(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return svc.get_project_stats(project_id)
+
+
+@router.get("/{project_id}/sprints", response_model=List[SprintRead])
+def list_project_sprints(
+    request: Request,
+    project_id: str,
+    status: Optional[str] = Query(None),
+    session: Session = Depends(_get_session),
+    _perm: None = require_permission("sprint.read", "*", "sprint"),
+):
+    """List sprints for a specific project."""
+    from common_lib.modules.project_management import SprintService
+    svc = SprintService(session)
+    sprints = svc.list_sprints(project_id=project_id, status=status)
+    items = [s.model_dump() for s in sprints]
+    items = filter_list_response(request, session, "sprint", items, project_id=project_id)
+    return [SprintRead.model_validate(i) for i in items]
 
 
 # ===========================================================================

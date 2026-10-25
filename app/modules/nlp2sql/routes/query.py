@@ -182,32 +182,25 @@ async def cancel_run_route(run_id: str) -> dict:
 
 @router.get("/query-runs/{run_id}/results", response_model=dict)
 async def get_run_results_route(run_id: str, workspace_id: str = "default") -> dict:
-    """SSOT §12 results-by-run (UI ``getRunResults``) — typed 501, not stubbed.
+    """SSOT §12 results-by-run (UI ``getRunResults``).
 
-    The run is resolved first (unknown id → typed 400 via the service), but no
-    run→artifact lookup exists: artifact records carry ``query_run_id`` yet
-    expose no ``get_artifact_by_run`` accessor, and routes scope forbids adding
-    service logic (G1). Next wave adds that accessor, then this handler returns
-    ``artifacts.get_artifact(artifact_id, workspace_id)``.
+    The run is resolved first (unknown id → typed 400 via the service), then
+    the artifact is fetched via the run→artifact lookup. A run with no stored
+    artifact (or a workspace mismatch) → typed 403 via the service, never a
+    fabricated row. ``response_model`` stays ``dict`` (declared contract);
+    the payload carries the ``ResultArtifactRead`` shape.
     """
     try:
-        from common_lib.modules.nlp2sql.execution import runner
+        from common_lib.modules.nlp2sql.execution import artifacts, runner
 
         runner.get_run(run_id)
+        return artifacts.get_artifact_by_run(run_id, workspace_id)
     except Exception as exc:
         from common_lib.modules.nlp2sql import errors as _errors
 
         if isinstance(exc, _errors.Nlp2SqlError):
             raise shared.to_http(exc)
         raise
-    _ = workspace_id
-    raise shared.not_implemented(
-        "Run results need a run-to-artifact lookup that does not exist yet.",
-        extra={
-            "run_id": run_id,
-            "missing_accessor": "execution.artifacts.get_artifact_by_run",
-        },
-    )
 
 
 @router.get("/result-artifacts/{artifact_id}", response_model=ResultArtifactRead)

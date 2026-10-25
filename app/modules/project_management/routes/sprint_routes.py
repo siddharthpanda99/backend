@@ -36,10 +36,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("", response_model=List[SprintRead])
 @router.get("/", response_model=List[SprintRead])
 def list_sprints(
     request: Request,
-    project_id: str = Query(...),
+    project_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     session: Session = Depends(_get_session),
     _perm: None = require_permission("sprint.read", "*", "sprint"),

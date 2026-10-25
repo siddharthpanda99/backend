@@ -47,18 +47,22 @@ async def create_session_route(payload: SessionCreate) -> dict:
 @router.get("", response_model=dict)
 @router.get("/", response_model=dict, include_in_schema=False)
 async def list_sessions_route(workspace_id: str = "default") -> dict:
-    """Session list (UI ``listSessions``) — typed 501, not stubbed.
+    """Session list (UI ``listSessions``) — workspace-scoped.
 
-    No list accessor exists in the service layer (in-memory ``_sessions`` has
-    no reader), and routes scope forbids adding service logic (G1). Next wave
-    adds ``service.list_sessions(workspace_id) -> list[SessionRead]``, then
-    this handler returns ``{"sessions": [...]}``.
+    Backed by ``service.list_sessions`` (in-memory registry read); unknown or
+    empty workspaces return ``{"sessions": []}``. ``response_model`` stays
+    ``dict`` (declared contract); each row carries the ``SessionRead`` shape.
     """
-    _ = workspace_id
-    raise shared.not_implemented(
-        "Session listing needs a service accessor that does not exist yet.",
-        extra={"missing_accessor": "service.list_sessions"},
-    )
+    try:
+        from common_lib.modules.nlp2sql import service
+
+        return {"sessions": service.list_sessions(workspace_id)}
+    except Exception as exc:
+        from common_lib.modules.nlp2sql import errors as _errors
+
+        if isinstance(exc, _errors.Nlp2SqlError):
+            raise shared.to_http(exc)
+        raise
 
 
 @router.post("/{session_id}/messages", response_model=dict)

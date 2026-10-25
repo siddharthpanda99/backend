@@ -137,3 +137,105 @@ async def get_lineage(
     if trace_id:
         return {"trace": obs.get_trace(trace_id)}
     return {"traces": obs.get_recent_traces(limit)}
+
+
+# ── Cost Summary (NEX-P1-003) ──────────────────────────────────────────────
+# Thin route: logic lives in common_lib.modules.observability.cost_tracker
+
+@router.get("/observability/cost/summary")
+async def get_cost_summary(
+    tenant_id: str | None = None,
+    group_by: str = "skill",
+):
+    """Get cost aggregation grouped by skill/model/workflow/agent (NEX-P1-003)."""
+    try:
+        from common_lib.modules.observability.cost_tracker import get_cost_aggregation_service
+
+        svc = get_cost_aggregation_service()
+        if not svc.is_enabled():
+            return {
+                "enabled": False,
+                "message": "Cost ledger disabled. Set OBSERVABILITY_COST_LEDGER=1 to enable.",
+                "data": [],
+            }
+        data = svc.get_cost_summary(tenant_id=tenant_id, group_by=group_by)
+        return {"enabled": True, "group_by": group_by, "data": data}
+    except Exception as e:
+        from fastapi import HTTPException
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to get cost summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/observability/cost/per-outcome")
+async def get_cost_per_outcome(
+    tenant_id: str | None = None,
+):
+    """Get cost per successful outcome grouped by outcome class (NEX-P1-003)."""
+    try:
+        from common_lib.modules.observability.cost_tracker import get_cost_aggregation_service
+
+        svc = get_cost_aggregation_service()
+        if not svc.is_enabled():
+            return {
+                "enabled": False,
+                "message": "Cost ledger disabled. Set OBSERVABILITY_COST_LEDGER=1 to enable.",
+                "data": [],
+            }
+        data = svc.get_cost_per_outcome(tenant_id=tenant_id)
+        return {"enabled": True, "data": data}
+    except Exception as e:
+        from fastapi import HTTPException
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to get cost per outcome: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Errors Breakdown ──────────────────────────────────────────────────────
+
+@router.get("/observability/errors/breakdown")
+async def get_errors_breakdown():
+    """Get error breakdown by type/module/operation for the Observability studio."""
+    try:
+        from common_lib.modules.observability import get_observability
+
+        obs = get_observability()
+        metrics_data = obs.get_all_metrics()
+        
+        # Extract error-related metrics
+        error_metrics = {}
+        for name, val in metrics_data.get("counters", {}).items():
+            if "error" in name.lower() or "failure" in name.lower():
+                error_metrics[name] = val
+        
+        # Also check for error rates in gauges
+        for name, val in metrics_data.get("gauges", {}).items():
+            if "error" in name.lower() or "failure" in name.lower():
+                error_metrics[name] = val
+        
+        # Group by module/operation from traces
+        error_by_module = {}
+        error_by_operation = {}
+        
+        for span in obs._spans:
+            if span.status in ("error", "failure"):
+                module = span.attributes.get("module", "unknown")
+                operation = span.name
+                
+                error_by_module[module] = error_by_module.get(module, 0) + 1
+                error_by_operation[operation] = error_by_operation.get(operation, 0) + 1
+        
+        return {
+            "error_counters": error_metrics,
+            "by_module": error_by_module,
+            "by_operation": error_by_operation,
+            "total_errors": sum(error_by_module.values()),
+        }
+    except Exception as e:
+        from fastapi import HTTPException
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to get errors breakdown: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

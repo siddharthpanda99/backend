@@ -25,7 +25,7 @@ def _get_session():
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/pmo", tags=["project_management", "pmo", "strategy"])
+router = APIRouter(tags=["project_management", "pmo", "strategy"])
 
 
 # ===========================================================================
@@ -41,9 +41,12 @@ def _get_pmo_service(session: Session):
 # Demand Management
 # ===========================================================================
 
+@router.get("/demand")
 @router.get("/demands")
+@router.get("/pmo/demand")
+@router.get("/pmo/demands")
 def list_demands(
-    workspace_id: str = Query(..., description="Workspace ID"),
+    workspace_id: Optional[str] = Query(None, description="Workspace ID"),
     status: Optional[str] = Query(None, description="Filter by status"),
     priority: Optional[str] = Query(None, description="Filter by priority"),
     category: Optional[str] = Query(None, description="Filter by category"),
@@ -54,14 +57,19 @@ def list_demands(
 ):
     """List demand items with filters."""
     svc = _get_pmo_service(session)
-    return svc.list_demands(
+    res = svc.list_demands(
         workspace_id=workspace_id, status=status,
         priority=priority, category=category,
         limit=limit, offset=offset,
     )
+    items = [i.model_dump() if hasattr(i, "model_dump") else i for i in res] if res else []
+    return {"items": items, "total": len(items), "limit": limit, "offset": offset}
 
 
 @router.get("/demands/{demand_id}")
+@router.get("/demand/{demand_id}")
+@router.get("/pmo/demands/{demand_id}")
+@router.get("/pmo/demand/{demand_id}")
 def get_demand(demand_id: str, session: Session = Depends(_get_session), _perm: None = require_permission("demand.read", "*", "demand")):
     """Get a demand item by ID."""
     svc = _get_pmo_service(session)
@@ -72,8 +80,11 @@ def get_demand(demand_id: str, session: Session = Depends(_get_session), _perm: 
 
 
 @router.post("/demands", status_code=201)
+@router.post("/demand", status_code=201)
+@router.post("/pmo/demands", status_code=201)
+@router.post("/pmo/demand", status_code=201)
 def create_demand(
-    workspace_id: str = Query(...),
+    workspace_id: Optional[str] = Query(None),
     title: str = Query(...),
     description: Optional[str] = Query(None),
     priority: str = Query("medium"),
@@ -95,6 +106,9 @@ def create_demand(
 
 
 @router.put("/demands/{demand_id}")
+@router.put("/demand/{demand_id}")
+@router.put("/pmo/demands/{demand_id}")
+@router.put("/pmo/demand/{demand_id}")
 def update_demand(
     demand_id: str,
     title: Optional[str] = Query(None),
@@ -129,6 +143,9 @@ def update_demand(
 
 
 @router.delete("/demands/{demand_id}")
+@router.delete("/demand/{demand_id}")
+@router.delete("/pmo/demands/{demand_id}")
+@router.delete("/pmo/demand/{demand_id}")
 def delete_demand(demand_id: str, session: Session = Depends(_get_session), _perm: None = require_permission("demand.delete", "*", "demand")):
     """Delete a demand item."""
     svc = _get_pmo_service(session)
@@ -138,6 +155,9 @@ def delete_demand(demand_id: str, session: Session = Depends(_get_session), _per
 
 
 @router.post("/demands/{demand_id}/review")
+@router.post("/demand/{demand_id}/review")
+@router.post("/pmo/demands/{demand_id}/review")
+@router.post("/pmo/demand/{demand_id}/review")
 def review_demand(
     demand_id: str,
     status: str = Query(..., description="Review status: approved, declined, on_hold"),
@@ -161,8 +181,11 @@ def review_demand(
 # ===========================================================================
 
 @router.get("/proposals")
+@router.get("/investments")
+@router.get("/pmo/proposals")
+@router.get("/pmo/investments")
 def list_proposals(
-    workspace_id: str = Query(...),
+    workspace_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None, description="Filter by status"),
     risk_level: Optional[str] = Query(None, description="Filter by risk level"),
     limit: int = Query(50),
@@ -172,11 +195,16 @@ def list_proposals(
 ):
     """List investment proposals with filters."""
     svc = _get_pmo_service(session)
-    return svc.list_proposals(workspace_id=workspace_id, status=status,
+    res = svc.list_proposals(workspace_id=workspace_id, status=status,
                               risk_level=risk_level, limit=limit, offset=offset)
+    items = [i.model_dump() if hasattr(i, "model_dump") else i for i in res] if res else []
+    return {"items": items, "total": len(items), "limit": limit, "offset": offset}
 
 
 @router.get("/proposals/{proposal_id}")
+@router.get("/investments/{proposal_id}")
+@router.get("/pmo/proposals/{proposal_id}")
+@router.get("/pmo/investments/{proposal_id}")
 def get_proposal(proposal_id: str, session: Session = Depends(_get_session), _perm: None = require_permission("proposal.read", "*", "proposal")):
     """Get an investment proposal by ID."""
     svc = _get_pmo_service(session)
@@ -258,8 +286,9 @@ def delete_proposal(proposal_id: str, session: Session = Depends(_get_session), 
 # ===========================================================================
 
 @router.get("/initiatives")
+@router.get("/pmo/initiatives")
 def list_initiatives(
-    workspace_id: str = Query(...),
+    workspace_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     pillar: Optional[str] = Query(None),
     limit: int = Query(50),
@@ -269,11 +298,14 @@ def list_initiatives(
 ):
     """List strategic initiatives."""
     svc = _get_pmo_service(session)
-    return svc.list_initiatives(workspace_id=workspace_id, status=status,
+    res = svc.list_initiatives(workspace_id=workspace_id, status=status,
                                 pillar=pillar, limit=limit, offset=offset)
+    items = [i.model_dump() if hasattr(i, "model_dump") else i for i in res] if res else []
+    return {"items": items, "total": len(items), "limit": limit, "offset": offset}
 
 
 @router.get("/initiatives/{initiative_id}")
+@router.get("/pmo/initiatives/{initiative_id}")
 def get_initiative(initiative_id: str, session: Session = Depends(_get_session), _perm: None = require_permission("initiative.read", "*", "initiative")):
     """Get a strategic initiative by ID."""
     svc = _get_pmo_service(session)
@@ -351,8 +383,9 @@ def delete_initiative(initiative_id: str, session: Session = Depends(_get_sessio
 # ===========================================================================
 
 @router.get("/scenarios")
+@router.get("/pmo/scenarios")
 def list_scenarios(
-    workspace_id: str = Query(...),
+    workspace_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     limit: int = Query(50),
     offset: int = Query(0),
@@ -361,10 +394,13 @@ def list_scenarios(
 ):
     """List what-if scenarios."""
     svc = _get_pmo_service(session)
-    return svc.list_scenarios(workspace_id=workspace_id, status=status, limit=limit, offset=offset)
+    res = svc.list_scenarios(workspace_id=workspace_id, status=status, limit=limit, offset=offset)
+    items = [i.model_dump() if hasattr(i, "model_dump") else i for i in res] if res else []
+    return {"items": items, "total": len(items), "limit": limit, "offset": offset}
 
 
 @router.get("/scenarios/{scenario_id}")
+@router.get("/pmo/scenarios/{scenario_id}")
 def get_scenario(scenario_id: str, session: Session = Depends(_get_session), _perm: None = require_permission("scenario.read", "*", "scenario")):
     """Get a scenario by ID."""
     svc = _get_pmo_service(session)
@@ -431,8 +467,9 @@ def delete_scenario(scenario_id: str, session: Session = Depends(_get_session), 
 # ===========================================================================
 
 @router.get("/benefits")
+@router.get("/pmo/benefits")
 def list_benefits(
-    workspace_id: str = Query(...),
+    workspace_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     benefit_type: Optional[str] = Query(None),
     limit: int = Query(50),
@@ -442,11 +479,14 @@ def list_benefits(
 ):
     """List benefits with filters."""
     svc = _get_pmo_service(session)
-    return svc.list_benefits(workspace_id=workspace_id, status=status,
+    res = svc.list_benefits(workspace_id=workspace_id, status=status,
                              benefit_type=benefit_type, limit=limit, offset=offset)
+    items = [i.model_dump() if hasattr(i, "model_dump") else i for i in res] if res else []
+    return {"items": items, "total": len(items), "limit": limit, "offset": offset}
 
 
 @router.get("/benefits/{benefit_id}")
+@router.get("/pmo/benefits/{benefit_id}")
 def get_benefit(benefit_id: str, session: Session = Depends(_get_session), _perm: None = require_permission("benefit.read", "*", "benefit")):
     """Get a benefit by ID."""
     svc = _get_pmo_service(session)
@@ -526,8 +566,11 @@ def delete_benefit(benefit_id: str, session: Session = Depends(_get_session), _p
 # ===========================================================================
 
 @router.get("/demands/analytics")
+@router.get("/demand/analytics")
+@router.get("/pmo/demands/analytics")
+@router.get("/pmo/demand/analytics")
 def demand_analytics(
-    workspace_id: str = Query(...),
+    workspace_id: Optional[str] = Query(None),
     session: Session = Depends(_get_session),
     _perm: None = require_permission("demand.read", "*", "demand"),
 ):
@@ -537,6 +580,7 @@ def demand_analytics(
 
 
 @router.get("/portfolios/{portfolio_id}/analytics")
+@router.get("/pmo/portfolios/{portfolio_id}/analytics")
 def portfolio_analytics(
     portfolio_id: str,
     session: Session = Depends(_get_session),
@@ -583,8 +627,9 @@ def create_capacity_plan(
 
 
 @router.get("/capacity-plans")
+@router.get("/pmo/capacity-plans")
 def list_capacity_plans(
-    workspace_id: str = Query(...),
+    workspace_id: Optional[str] = Query(None),
     plan_type: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     limit: int = Query(50),
@@ -594,13 +639,16 @@ def list_capacity_plans(
 ):
     """List capacity plans for a workspace."""
     svc = _get_pmo_service(session)
-    return svc.list_capacity_plans(
+    res = svc.list_capacity_plans(
         workspace_id=workspace_id, plan_type=plan_type,
         status=status, limit=limit, offset=offset,
     )
+    items = [i.model_dump() if hasattr(i, "model_dump") else i for i in res] if res else []
+    return {"items": items, "total": len(items), "limit": limit, "offset": offset}
 
 
 @router.get("/capacity-plans/{plan_id}")
+@router.get("/pmo/capacity-plans/{plan_id}")
 def get_capacity_plan(plan_id: str, session: Session = Depends(_get_session), _perm: None = require_permission("capacity.read", "*", "capacity")):
     """Get a single capacity plan by ID."""
     svc = _get_pmo_service(session)
@@ -648,6 +696,7 @@ def delete_capacity_plan(plan_id: str, session: Session = Depends(_get_session),
 
 
 @router.get("/capacity-utilization/{workspace_id}")
+@router.get("/pmo/capacity-utilization/{workspace_id}")
 def get_capacity_utilization(workspace_id: str, session: Session = Depends(_get_session), _perm: None = require_permission("capacity.read", "*", "capacity")):
     """Get capacity utilization across all active plans."""
     svc = _get_pmo_service(session)

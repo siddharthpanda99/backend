@@ -58,7 +58,7 @@ def list_goals(
         limit=limit,
         offset=offset,
     )
-    items = [g.model_dump() for g in goals] if hasattr(goals[0], 'model_dump') else goals
+    items = [g.model_dump() for g in goals] if goals and hasattr(goals[0], 'model_dump') else goals
     items = filter_list_response(request, session, "goal", items, project_id=project_id)
     total = len(items)
     return {"items": items, "total": total, "limit": limit, "offset": offset, "has_more": (offset + limit) < total}

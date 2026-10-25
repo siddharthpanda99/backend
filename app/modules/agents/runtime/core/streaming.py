@@ -229,58 +229,93 @@ async def stream_agent_generator(
                 workflow_id = decision.get("workflow_id")
                 parameters = decision.get("parameters") or {}
                 if workflow_id:
-                    logger.info(f"[Streaming] Executing workflow: {workflow_id} with params: {list(parameters.keys())}")
+                    logger.info(
+                        f"[Streaming] Executing workflow: {workflow_id} with params: {list(parameters.keys())}"
+                    )
                     # Trace event for workflow start
-                    yield trace("workflow", f"▶ Workflow Started: {workflow_id}", f"Parameters: {list(parameters.keys())}")
-                    yield _enc({
-                        "event_type": "workflow_start",
-                        "workflow_id": workflow_id,
-                        "content": f"Starting workflow: {workflow_id}",
-                    })
-                    
+                    yield trace(
+                        "workflow",
+                        f"▶ Workflow Started: {workflow_id}",
+                        f"Parameters: {list(parameters.keys())}",
+                    )
+                    yield _enc(
+                        {
+                            "event_type": "workflow_start",
+                            "workflow_id": workflow_id,
+                            "content": f"Starting workflow: {workflow_id}",
+                        }
+                    )
+
                     try:
                         # Execute workflow via workflow service
-                        result = await _execute_workflow_async(workflow_id, parameters, session_id)
-                        
+                        result = await _execute_workflow_async(
+                            workflow_id, parameters, session_id
+                        )
+
                         if result.get("status") == "success":
                             output_files = result.get("output_files", [])
                             output_text = result.get("output_text", "")
-                            
+
                             # Trace event for workflow completion
-                            yield trace("workflow", f"✅ Workflow Completed: {workflow_id}", f"Generated {len(output_files)} file(s)")
+                            yield trace(
+                                "workflow",
+                                f"✅ Workflow Completed: {workflow_id}",
+                                f"Generated {len(output_files)} file(s)",
+                            )
                             # Yield workflow completion event
-                            yield _enc({
-                                "event_type": "workflow_complete",
-                                "workflow_id": workflow_id,
-                                "output_files": output_files,
-                                "output_text": output_text,
-                                "metadata": result.get("metadata", {}),
-                                "content": output_text or f"Workflow completed. Generated {len(output_files)} file(s).",
-                            })
-                            
+                            yield _enc(
+                                {
+                                    "event_type": "workflow_complete",
+                                    "workflow_id": workflow_id,
+                                    "output_files": output_files,
+                                    "output_text": output_text,
+                                    "metadata": result.get("metadata", {}),
+                                    "content": output_text
+                                    or f"Workflow completed. Generated {len(output_files)} file(s).",
+                                }
+                            )
+
                             # Also yield as final answer for chat
                             if output_text:
-                                yield _enc({
-                                    "event_type": "final_answer",
-                                    "content": output_text,
-                                })
+                                _wf_content, _wf_sidecars = _extract_sidecars(
+                                    output_text
+                                )
+                                yield _enc(
+                                    _with_sidecars(
+                                        {
+                                            "event_type": "final_answer",
+                                            "content": _wf_content,
+                                        },
+                                        _wf_sidecars,
+                                    )
+                                )
                         else:
-                            yield trace("error", f"❌ Workflow Failed: {workflow_id}", result.get("error", "Unknown error"))
-                            yield _enc({
-                                "event_type": "workflow_error",
-                                "workflow_id": workflow_id,
-                                "error": result.get("error", "Unknown error"),
-                                "content": f"Workflow failed: {result.get('error', 'Unknown error')}",
-                            })
+                            yield trace(
+                                "error",
+                                f"❌ Workflow Failed: {workflow_id}",
+                                result.get("error", "Unknown error"),
+                            )
+                            yield _enc(
+                                {
+                                    "event_type": "workflow_error",
+                                    "workflow_id": workflow_id,
+                                    "error": result.get("error", "Unknown error"),
+                                    "content": f"Workflow failed: {result.get('error', 'Unknown error')}",
+                                }
+                            )
                     except Exception as e:
                         logger.error(f"[Streaming] Workflow execution failed: {e}")
-                        yield trace("error", f"❌ Workflow Error: {workflow_id}", str(e))
-                        yield _enc({
-                            "event_type": "workflow_error",
-                            "workflow_id": workflow_id,
-                            "error": str(e),
-                            "content": f"Workflow execution failed: {e}",
-                        })
+                        yield trace(
+                            "error", f"❌ Workflow Error: {workflow_id}", str(e)
+                        )
+                        yield _enc(
+                            {
+                                "event_type": "workflow_error",
+                                "workflow_id": workflow_id,
+                                "error": str(e),
+                                "content": f"Workflow execution failed: {e}",
+                            }
+                        )
                     return
 
         # Inject operational metadata on the very first turn of this thread
@@ -908,8 +943,16 @@ async def stream_agent_generator(
                 out = ev.get("data", {}).get("output", "")
                 if not isinstance(out, str):
                     out = json.dumps(out, default=str)
+                _tool_content, _tool_sidecars = _extract_sidecars(out)
                 yield _enc(
-                    {"event_type": "tool_end", "tool_name": name, "content": str(out)}
+                    _with_sidecars(
+                        {
+                            "event_type": "tool_end",
+                            "tool_name": name,
+                            "content": str(_tool_content),
+                        },
+                        _tool_sidecars,
+                    )
                 )
                 yield trace(
                     "tool_result", f"📥 Result: {name}", str(out), {"tool_name": name}
@@ -1152,7 +1195,13 @@ async def stream_agent_generator(
             if final_answer_thought:
                 body = f"THOUGHT: {final_answer_thought}\nFINAL: {final_answer}"
             yield trace("decision", "✅ Final Answer", body)
-            yield _enc({"event_type": "agent_complete", "content": str(final_answer)})
+            _fa_content, _fa_sidecars = _extract_sidecars(str(final_answer))
+            yield _enc(
+                _with_sidecars(
+                    {"event_type": "agent_complete", "content": _fa_content},
+                    _fa_sidecars,
+                )
+            )
             # Record agent complete trace event
             trace_recorder.record_agent_complete(
                 session_id=session_id,
@@ -1247,6 +1296,90 @@ def _enc(payload: dict) -> str:
     return f"data: {json.dumps(payload, default=str)}\n\n"
 
 
+# R5.2: optional blocks/citations sidecars for tool_end / final_answer /
+# agent_complete. All five keys are Optional and omitted-when-empty so old
+# payloads stay byte-identical. Unknown output_type -> frontend fallback
+# (content passed through, no sidecars attached). Envelope/event names and
+# terminal semantics are unchanged; sidecars travel via _enc payloads only.
+_SIDECAR_KEYS = (
+    "blocks",
+    "rich_blocks",
+    "citations",
+    "island_fence",
+    "registry_version",
+)
+
+_KNOWN_OUTPUT_TYPES = frozenset({"text", "markdown", "blocks", "rich"})
+
+
+def _with_sidecars(payload: dict, sidecars: dict) -> dict:
+    """Attach non-empty sidecar keys to an SSE payload (via _enc only)."""
+    if not sidecars:
+        return payload
+    for _key in _SIDECAR_KEYS:
+        _val = sidecars.get(_key)
+        if _val is None:
+            continue
+        if isinstance(_val, (list, dict, str)) and len(_val) == 0:
+            continue
+        payload[_key] = _val
+    return payload
+
+
+def _extract_sidecars(output: Any) -> tuple:
+    """Split an agent/tool output into (content_str, sidecars_dict).
+
+    Accepts a plain string (possibly JSON-encoded) or a dict. Known shapes::
+
+        {"content": "...", "blocks": [...], ...}
+        {"text": "...", "citations": [...], ...}
+        {"output_type": "text"|"markdown"|"blocks"|"rich", ...}
+
+    Unknown ``output_type`` values fall back to plain content with no
+    sidecars so the frontend renders the raw text.
+    """
+    sidecars: dict = {}
+    if isinstance(output, dict):
+        _data = output
+    elif isinstance(output, str):
+        _stripped = output.strip()
+        if not _stripped.startswith("{"):
+            return output, sidecars
+        try:
+            _data = json.loads(_stripped)
+        except (ValueError, TypeError):
+            return output, sidecars
+        if not isinstance(_data, dict):
+            return output, sidecars
+    else:
+        return output, sidecars
+
+    _otype = _data.get("output_type")
+    if _otype is not None and _otype not in _KNOWN_OUTPUT_TYPES:
+        # Frontend fallback: render raw text, attach nothing.
+        _fallback = _data.get("content")
+        if _fallback is None:
+            _fallback = _data.get("text", output if isinstance(output, str) else "")
+        return (str(_fallback), sidecars)
+
+    for _key in _SIDECAR_KEYS:
+        _val = _data.get(_key)
+        if _val is None:
+            continue
+        if isinstance(_val, (list, dict, str)) and len(_val) == 0:
+            continue
+        sidecars[_key] = _val
+
+    _content = _data.get("content")
+    if _content is None:
+        _content = _data.get("text", _data.get("answer"))
+    if _content is None:
+        # No text field: keep plain-string outputs byte-identical,
+        # otherwise fall back to the original rendering.
+        return (output if isinstance(output, str) else str(output), sidecars)
+    return (str(_content), sidecars)
+
+
 def _clean(d: dict) -> dict:
     return {
         str(k): (v if isinstance(v, (str, int, float, bool, type(None))) else str(v))
@@ -1318,6 +1451,7 @@ def _prompt_preview(ev: dict) -> str:
 # Workflow Execution Helper
 # ---------------------------------------------------------------------------
 
+
 async def _execute_workflow_async(
     workflow_id: str,
     parameters: dict[str, Any],
@@ -1325,35 +1459,56 @@ async def _execute_workflow_async(
 ) -> dict[str, Any]:
     """
     Execute a workflow with the given parameters.
-    
+
     Returns:
         dict with status, output_files, output_text, metadata, execution_time
     """
     import time
     import uuid
+
     start_time = time.time()
-    
+
     try:
         from common_lib.core.di_container import bridge
+
         memory_store = bridge.memory_store
         if not memory_store:
-            return {"status": "failed", "error": "Memory store not available", "output_files": [], "output_text": "", "metadata": {}, "execution_time": 0}
+            return {
+                "status": "failed",
+                "error": "Memory store not available",
+                "output_files": [],
+                "output_text": "",
+                "metadata": {},
+                "execution_time": 0,
+            }
 
         # Get workflow definition
         wf = memory_store.get_workflow_definition(workflow_id)
         if not wf:
-            return {"status": "failed", "error": f"Workflow {workflow_id} not found", "output_files": [], "output_text": "", "metadata": {}, "execution_time": 0}
+            return {
+                "status": "failed",
+                "error": f"Workflow {workflow_id} not found",
+                "output_files": [],
+                "output_text": "",
+                "metadata": {},
+                "execution_time": 0,
+            }
 
         wf_def = wf.get("definition", {})
         engine = wf.get("engine", "standard")
 
         if engine == "agentic" or wf_def.get("workflow_type") == "executable_graph":
-            return await _execute_agentic_workflow(wf_def, parameters, session_id, start_time)
+            return await _execute_agentic_workflow(
+                wf_def, parameters, session_id, start_time
+            )
         else:
-            return await _execute_standard_workflow(wf_def, parameters, session_id, start_time)
+            return await _execute_standard_workflow(
+                wf_def, parameters, session_id, start_time
+            )
 
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"_execute_workflow_async failed: {e}")
         return {
@@ -1393,12 +1548,20 @@ async def _execute_standard_workflow(
         output_text = ""
         if hasattr(result, "outputs") and isinstance(result.outputs, dict):
             for key, value in result.outputs.items():
-                if isinstance(value, str) and (value.endswith(".png") or value.endswith(".jpg") or value.endswith(".webp")):
+                if isinstance(value, str) and (
+                    value.endswith(".png")
+                    or value.endswith(".jpg")
+                    or value.endswith(".webp")
+                ):
                     output_files.append(value)
                     output_text = value
                 elif isinstance(value, list):
                     for v in value:
-                        if isinstance(v, str) and (v.endswith(".png") or v.endswith(".jpg") or v.endswith(".webp")):
+                        if isinstance(v, str) and (
+                            v.endswith(".png")
+                            or v.endswith(".jpg")
+                            or v.endswith(".webp")
+                        ):
                             output_files.append(v)
                             if not output_text:
                                 output_text = v
@@ -1417,6 +1580,7 @@ async def _execute_standard_workflow(
 
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Standard workflow execution failed: {e}")
         return {
@@ -1437,7 +1601,9 @@ async def _execute_agentic_workflow(
 ) -> dict[str, Any]:
     """Execute an agentic (ReAct loop) workflow."""
     try:
-        from common_lib.modules.workflows.agentic.declarative_builder import DeclarativeAgenticBuilder
+        from common_lib.modules.workflows.agentic.declarative_builder import (
+            DeclarativeAgenticBuilder,
+        )
         from common_lib.modules.workflows.agentic.schemas import AgenticWorkflowSchema
         from langgraph.checkpoint.memory import MemorySaver
         from langchain_core.agents import AgentFinish
@@ -1507,6 +1673,7 @@ async def _execute_agentic_workflow(
 
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Agentic workflow execution failed: {e}")
         return {

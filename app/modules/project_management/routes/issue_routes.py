@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("", response_model=PaginatedResponse)
 @router.get("/", response_model=PaginatedResponse)
 def list_issues(
     request: Request,
@@ -104,7 +105,8 @@ def create_issue(
     """Create a new issue."""
     svc = IssueService(session)
     try:
-        return svc.create_issue(data)
+        issue = svc.create_issue(data)
+        return IssueRead.model_validate(issue)
     except Exception as e:
         logger.exception("Failed to create issue")
         raise HTTPException(status_code=500, detail=str(e))
