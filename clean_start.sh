@@ -221,6 +221,8 @@ if [ -z "$SKIP_CONTAINER" ]; then
     cd "$ABS_RESOURCES_DIR" || { echo "ERROR: Could not find resources directory: $ABS_RESOURCES_DIR"; exit 1; }
     echo " - Ensuring Database Service (nexus_db) is running..."
     $COMPOSE_CMD -f "$DB_COMPOSE" up -d db
+    echo " - Ensuring MinIO Service is running..."
+    $COMPOSE_CMD -f "$MINIO_COMPOSE" up -d minio 2>/dev/null || true
 fi
 
 # 3. Wait for PostgreSQL Readiness

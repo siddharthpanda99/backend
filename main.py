@@ -34,31 +34,13 @@ if __name__ == "__main__":
         reload=True,
         reload_dirs=[app_dir, common_lib_dir],
         reload_excludes=[
-            ".venv/*",
-            "**/.venv/*",
-            "node_modules/*",
-            "**/node_modules/*",
-            "logs/*",
-            "**/logs/*",
-            "resources/*",
-            "**/resources/*",
-            "**/resources/**/*",
-            "**/resources/*.yaml",
-            "**/resources/*.json",
-            "CHARACTER_PROFILES_DIR/*",
-            "**/character_profiles/*",
-            "**/__pycache__/*",
-            "**/__pycache__/**",
-            "**/*.pyc",
-            "**/*.pyo",
-            "**/*.pyd",
-            "**/*.db*",  # SQLite databases, journals, WAL files
-            "**/.db*",
-            "**/.pytest_cache/*",
-            ".antigrav-history/*",
-            "**/.idea/*",  # JetBrains
-            "**/.vscode/*",  # VS Code
-            "**/.git/*",  # Git
+            "*.pyc",
+            "*.pyo",
+            "*.pyd",
             "*.log",
+            "*.db*",
+            ".pytest_cache",
+            "__pycache__",
+            ".git",
         ],
     )
