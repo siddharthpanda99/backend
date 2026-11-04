@@ -3163,6 +3163,19 @@ def register_routers(
             "auth": True,
             "module": "cognitive_runtime",
         },
+        # ── Auto-Ontology (Semantic Layer over SQL Sources) ───────────────
+        # Feature-flag gated: AUTO_ONTOLOGY_ENABLED (master) + sub-flags
+        # AUTO_ONTOLOGY_INGESTION / AUTO_ONTOLOGY_QA / AUTO_ONTOLOGY_MCP / AUTO_ONTOLOGY_UI
+        {
+            "router": __import__(
+                "app.modules.auto_ontology.routes", fromlist=["router"]
+            ).router,
+            "prefix": "/auto-ontology",
+            "tags": ["Auto-Ontology"],
+            "auth": True,
+            "module": "auto_ontology",
+            "feature_flag": "AUTO_ONTOLOGY_ENABLED",
+        },
     ]
 
     orig_lifespan = getattr(app.router, "lifespan_context", None)

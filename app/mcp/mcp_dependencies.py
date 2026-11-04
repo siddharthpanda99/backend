@@ -198,3 +198,12 @@ def resolve_mcp_auth_provider():
     )
 
     return get_mcp_auth_provider()
+
+
+def resolve_auto_ontology_service():
+    """Helper to get the AutoOntologyService singleton."""
+    from common_lib.modules.auto_ontology.service import AutoOntologyService
+    from common_lib.modules.auto_ontology.config import get_settings
+
+    settings = get_settings()
+    return AutoOntologyService(db_url=settings.db_url, settings=settings)

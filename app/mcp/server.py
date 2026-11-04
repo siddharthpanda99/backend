@@ -35,6 +35,7 @@ from app.mcp.tools.hooks_triggers import register_hooks_triggers_tools
 from app.mcp.tools.knowledge import register_knowledge_tools
 from app.mcp.tools.knowledgebase import register_knowledgebase_tools
 from app.mcp.tools.kpe import register_kpe_tools
+from app.mcp.tools.auto_ontology import register_auto_ontology_tools
 from app.mcp.tools.learning import register_learning_tools
 from app.mcp.tools.explainer import register_explainer_tools
 from app.mcp.tools.generators import register_generator_tools
@@ -168,6 +169,7 @@ register_image_edit_tools(mcp_server)
 register_hooks_triggers_tools(mcp_server)
 register_knowledge_tools(mcp_server)
 register_knowledge_api_tools(mcp_server)
+register_auto_ontology_tools(mcp_server)
 register_alerts_tools(mcp_server)
 register_knowledgebase_tools(mcp_server)
 register_kpe_tools(mcp_server)
