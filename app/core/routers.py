@@ -2289,10 +2289,11 @@ def register_routers(
         # ── Prompt Studio ──────────────────────────────────────────
         {
             "router": _prompt_studio_router,
-            "prefix": "",
+            "prefix": "/prompt-studio",
             "tags": ["Prompt Studio"],
             "auth": True,
             "module": "prompt_studio",
+            "feature_flag": "PROMPT_STUDIO_ENABLED",
         },
         # ── Dev & Debug ────────────────────────────────────────────
         {
@@ -3175,6 +3176,62 @@ def register_routers(
             "auth": True,
             "module": "auto_ontology",
             "feature_flag": "AUTO_ONTOLOGY_ENABLED",
+        },
+        # ── Superagent Adaptation Modules (Phases 0-3) ────────────────────
+        # Durable side-effect queue (dsh-superagent Effects pattern)
+        {
+            "router": __import__(
+                "app.modules.effects.routes", fromlist=["router"]
+            ).router,
+            "prefix": "/effects",
+            "tags": ["Effects"],
+            "auth": True,
+            "module": "effects",
+            "feature_flag": "EFFECTS_ENABLED",
+        },
+        # Unified event ingestion: GitHub, Slack, Webhook, CI (dsh-superagent Source/Trigger)
+        {
+            "router": __import__(
+                "app.modules.event_ingestion.routes", fromlist=["router"]
+            ).router,
+            "prefix": "/event-ingestion",
+            "tags": ["Event Ingestion"],
+            "auth": True,
+            "module": "event_ingestion",
+            "feature_flag": "EVENT_INGESTION_ENABLED",
+        },
+        # Cross-workflow context subscriptions + fan-out (dsh-superagent Subscription)
+        {
+            "router": __import__(
+                "app.modules.subscriptions.routes", fromlist=["router"]
+            ).router,
+            "prefix": "/subscriptions",
+            "tags": ["Subscriptions"],
+            "auth": True,
+            "module": "subscriptions",
+            "feature_flag": "SUBSCRIPTIONS_ENABLED",
+        },
+        # Gate + Assessment → Mandate issuance (dsh-superagent Eval pattern)
+        {
+            "router": __import__(
+                "app.modules.request_evaluator.routes", fromlist=["router"]
+            ).router,
+            "prefix": "/request-evaluator",
+            "tags": ["Request Evaluator"],
+            "auth": True,
+            "module": "request_evaluator",
+            "feature_flag": "REQUEST_EVALUATOR_ENABLED",
+        },
+        # Worker slots, DshExecutor, background jobs (dsh-superagent Assignments)
+        {
+            "router": __import__(
+                "app.modules.assignments.routes", fromlist=["router"]
+            ).router,
+            "prefix": "/assignments",
+            "tags": ["Assignments"],
+            "auth": True,
+            "module": "assignments",
+            "feature_flag": "ASSIGNMENTS_ENABLED",
         },
     ]
 
