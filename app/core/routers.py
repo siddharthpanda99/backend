@@ -92,6 +92,12 @@ def _data_configs_router():
     return router
 
 
+def _character_studio_router():
+    from app.modules.character_studio.routes import router
+
+    return router
+
+
 def _knowledge_router():
     from app.modules.knowledge.routes import router
 
@@ -1768,6 +1774,15 @@ def register_routers(
             "tags": ["Data Configs"],
             "auth": True,
             "module": "workflows",
+        },
+        # ── Character Studio ────────────────────────────────────────
+        {
+            "router": _character_studio_router,
+            "prefix": "/character-studio",
+            "tags": ["Character Studio"],
+            "auth": True,
+            "module": "workflows",
+            "feature_flag": "CHARACTER_IDENTITY_ENABLED",
         },
         # ── Tools & Models ─────────────────────────────────────────
         {
