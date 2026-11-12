@@ -268,7 +268,17 @@ def mount_router_entry(
     router = entry["router"]
     # Support lazy router factory: if router is a factory function (not an APIRouter instance), call it
     if hasattr(router, '__call__') and not hasattr(router, 'routes'):
-        router = router()
+        try:
+            router = router()
+        except Exception as exc:  # noqa: BLE001 — degrade this entry, keep mounting the rest
+            logger.error("router factory for %s failed: %s — skipping this router", full_prefix, exc)
+            return MountOutcome(
+                prefix=full_prefix,
+                action="refused",
+                reason=f"router factory failed: {exc}",
+                startup_handlers=0,
+                key=f"standalone::{full_prefix}::{id(entry)}",
+            )
     handlers = startup_handler_count(router)
     key = (
         mount_key(position, full_prefix)

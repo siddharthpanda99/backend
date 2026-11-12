@@ -1531,6 +1531,21 @@ def create_app() -> FastAPI:
             f"Plugin server proxy router not registered: {_e}"
         )
 
+    # Character Studio outputs live in the monorepo-root resources tree
+    # (RESOURCES_ROOT/generated_content/character_outputs), NOT under
+    # GENERATED_CONTENT, so they need their own sub-mount. Registered BEFORE
+    # the generic /generated mount so it wins for this prefix only; all other
+    # /generated paths keep their existing behaviour.
+    from common_lib.paths import RESOURCES_ROOT as _RESOURCES_ROOT
+
+    _char_outputs = _RESOURCES_ROOT / "generated_content" / "character_outputs"
+    os.makedirs(_char_outputs, exist_ok=True)
+    app.mount(
+        "/generated/character_outputs",
+        StaticFiles(directory=str(_char_outputs)),
+        name="generated_character_outputs",
+    )
+
     # Serve generated images as static files
     from common_lib.paths import GENERATED_CONTENT
 

@@ -97,6 +97,21 @@ def _character_studio_router():
 
     return router
 
+def _effects_router():
+    from app.modules.effects.routes import router
+
+    return router
+
+def _event_ingestion_router():
+    from app.modules.event_ingestion.routes import router
+
+    return router
+
+def _subscriptions_router():
+    from app.modules.subscriptions.routes import router
+
+    return router
+
 
 def _knowledge_router():
     from app.modules.knowledge.routes import router
@@ -3195,9 +3210,7 @@ def register_routers(
         # ── Superagent Adaptation Modules (Phases 0-3) ────────────────────
         # Durable side-effect queue (dsh-superagent Effects pattern)
         {
-            "router": __import__(
-                "app.modules.effects.routes", fromlist=["router"]
-            ).router,
+            "router": _effects_router,
             "prefix": "/effects",
             "tags": ["Effects"],
             "auth": True,
@@ -3206,9 +3219,7 @@ def register_routers(
         },
         # Unified event ingestion: GitHub, Slack, Webhook, CI (dsh-superagent Source/Trigger)
         {
-            "router": __import__(
-                "app.modules.event_ingestion.routes", fromlist=["router"]
-            ).router,
+            "router": _event_ingestion_router,
             "prefix": "/event-ingestion",
             "tags": ["Event Ingestion"],
             "auth": True,
@@ -3217,9 +3228,7 @@ def register_routers(
         },
         # Cross-workflow context subscriptions + fan-out (dsh-superagent Subscription)
         {
-            "router": __import__(
-                "app.modules.subscriptions.routes", fromlist=["router"]
-            ).router,
+            "router": _subscriptions_router,
             "prefix": "/subscriptions",
             "tags": ["Subscriptions"],
             "auth": True,
