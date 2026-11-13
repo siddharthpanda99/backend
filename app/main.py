@@ -1632,11 +1632,18 @@ def create_app() -> FastAPI:
             app, endpoint="/metrics", include_in_schema=False
         )
     except Exception:
-        from common_lib.modules.observability import get_metrics_data
+        # Instrumentator is unavailable in this environment — serve the
+        # prometheus_client default REGISTRY directly (contains the platform's
+        # HTTP metrics and everything registered in prometheus_registry.py).
+        from common_lib.modules.observability import render_prometheus
+        from fastapi.responses import PlainTextResponse
 
         @app.get("/metrics", include_in_schema=False)
         async def metrics_endpoint():
-            return get_metrics_data()
+            return PlainTextResponse(
+                render_prometheus(),
+                media_type="text/plain; version=0.0.4; charset=utf-8",
+            )
 
     # NOTE: Knowledge Engine, Governance, Observability Admin, Docs,
     # Knowledge Hub, AuthZ, and Team routers are all registered by
