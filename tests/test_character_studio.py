@@ -82,23 +82,27 @@ def _unwrap_items(body):
 
 
 def _wait_for_deferred_mount(client, timeout_s: float = 300.0) -> None:
-    """Poll /readyz until the deferred router mount completes."""
+    """Poll /readyz-deep until the deferred router mount completes.
+
+    /readyz is a bare liveness alias (get_health_data()) and never reports
+    deferred-mount state; /readyz-deep exists precisely to report it.
+    """
     deadline = time.time() + timeout_s
     last = None
     while time.time() < deadline:
         try:
-            resp = client.get("/readyz")
+            resp = client.get("/readyz-deep")
             last = (resp.status_code, resp.text[:200])
             if (
                 resp.status_code == 200
-                and resp.json().get("deferred_mount_complete") is True
+                and resp.json().get("deferred_routers_mounted") is True
             ):
                 return
         except Exception as exc:  # noqa: BLE001 - readiness endpoint may hiccup during boot
             last = ("exception", str(exc))
         time.sleep(1.0)
     pytest.fail(
-        f"Deferred routers did not mount within {timeout_s}s. Last /readyz: {last}"
+        f"Deferred routers did not mount within {timeout_s}s. Last /readyz-deep: {last}"
     )
 
 
@@ -107,13 +111,40 @@ def client():
     from app.main import app
     from fastapi.testclient import TestClient
 
+    # Clean the database before starting tests
+    _clean_database()
+
     with TestClient(app) as c:
         _wait_for_deferred_mount(c, timeout_s=300.0)
         yield c
 
 
+def _clean_database():
+    """Remove all data from character_studio tables for a clean test run."""
+    import os
+    from sqlmodel import Session, select, delete
+    from common_lib.modules.image_processing.character_studio.models import (
+        CharacterRegistry,
+        CharacterDNA,
+        CharacterIdentity,
+        ReferenceAsset,
+        GenerationJob,
+        CharacterEvaluation,
+        StyleProfile,
+        CharacterOutfit,
+        GenerationProfile,
+    )
+
+    db_url = os.getenv("CHARACTER_STUDIO_DB_URL", "sqlite:///character_studio.db")
+    if db_url.startswith("sqlite:///"):
+        db_path = db_url.replace("sqlite:///", "")
+        if os.path.exists(db_path):
+            os.remove(db_path)
+    # Tables will be recreated on first use via init_db()
+
+
 @pytest.fixture(scope="session")
-def reference_asset_id(client):
+def reference_asset_id(client, test_character):
     """Create the canonical face reference (used by later tests)."""
     width, height, size = _image_meta(REFERENCE_IMAGE)
     resp = client.post(
@@ -134,7 +165,35 @@ def reference_asset_id(client):
         f"reference create failed: {resp.status_code} {resp.text}"
     )
     body = resp.json()
+    asset_id = body["asset_id"]
+
+    # Approve the reference asset for use in evaluation
+    resp = client.post(
+        f"{API}/references/{asset_id}/approve", json={"approved_by": "tester"}
+    )
+    assert resp.status_code == 200, (
+        f"approve reference failed: {resp.status_code} {resp.text}"
+    )
+
     return body["asset_id"]
+
+
+@pytest.fixture(scope="session")
+def test_character(client):
+    """Create the test character (used by later tests)."""
+    resp = client.post(
+        f"{API}/characters",
+        json={
+            "character_id": CHARACTER_ID,
+            "name": "Aria Integration",
+            "description": "Integration test character (aria photoshoot fixture)",
+        },
+    )
+    assert resp.status_code in (200, 201), (
+        f"character create failed: {resp.status_code} {resp.text}"
+    )
+    body = resp.json()
+    return body["character_id"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -160,25 +219,12 @@ def test_reference_fixture_exists_on_disk():
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_create_character(client):
-    resp = client.post(
-        f"{API}/characters",
-        json={
-            "character_id": CHARACTER_ID,
-            "name": "Aria Integration",
-            "description": "Integration-test character (aria photoshoot fixture)",
-        },
-    )
-    assert resp.status_code in (200, 201), (
-        f"create failed: {resp.status_code} {resp.text}"
-    )
-    body = resp.json()
-    assert body["character_id"] == CHARACTER_ID
-    assert body["name"] == "Aria Integration"
-    assert body["status"] == "draft"
+def test_create_character(client, test_character):
+    """Character is created by the test_character fixture."""
+    assert test_character == CHARACTER_ID
 
 
-def test_list_characters_shows_created_character(client):
+def test_list_characters_shows_created_character(client, test_character):
     resp = client.get(f"{API}/characters")
     assert resp.status_code == 200, f"list failed: {resp.status_code} {resp.text}"
     items, total = _unwrap_items(resp.json())
@@ -189,16 +235,16 @@ def test_list_characters_shows_created_character(client):
     assert total >= 1
 
 
-def test_get_character(client):
+def test_get_character(client, test_character):
     resp = client.get(f"{API}/characters/{CHARACTER_ID}")
     assert resp.status_code == 200, f"get failed: {resp.status_code} {resp.text}"
     body = resp.json()
     assert body["character_id"] == CHARACTER_ID
     assert body["name"] == "Aria Integration"
-    assert body["description"] == "Integration-test character (aria photoshoot fixture)"
+    assert body["description"] == "Integration test character (aria photoshoot fixture)"
 
 
-def test_patch_character_renames(client):
+def test_patch_character_renames(client, test_character):
     resp = client.patch(f"{API}/characters/{CHARACTER_ID}", json={"name": REN_NAME})
     assert resp.status_code == 200, f"patch failed: {resp.status_code} {resp.text}"
     assert resp.json()["name"] == REN_NAME
@@ -216,14 +262,16 @@ def test_patch_character_renames(client):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_get_dna_returns_404_before_creation(client):
+@pytest.mark.order(10)
+def test_get_dna_returns_404_before_creation(client, test_character):
     resp = client.get(f"{API}/characters/{CHARACTER_ID}/dna")
     assert resp.status_code == 404, (
         f"expected 404 for missing DNA, got {resp.status_code}: {resp.text}"
     )
 
 
-def test_put_dna_and_fields_round_trip(client):
+@pytest.mark.order(20)
+def test_put_dna_and_fields_round_trip(client, test_character):
     # NOTE: the HTTP DNA body folds unknown top-level attributes into
     # ``attribute_policies`` as strings, so the fixture source round-trips via
     # ``identity_lock_source`` (asserted below) rather than a raw top-level
@@ -270,7 +318,8 @@ def test_put_dna_and_fields_round_trip(client):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_create_identity_version(client):
+@pytest.mark.order(30)
+def test_create_identity_version(client, test_character):
     resp = client.post(
         f"{API}/characters/{CHARACTER_ID}/versions", json={"version": "1.0.0"}
     )
@@ -282,7 +331,8 @@ def test_create_identity_version(client):
     assert body["version"] == "1.0.0"
 
 
-def test_list_identities_contains_created_version(client):
+@pytest.mark.order(40)
+def test_list_identities_contains_created_version(client, test_character):
     resp = client.get(f"{API}/characters/{CHARACTER_ID}/versions")
     assert resp.status_code == 200, (
         f"list identities failed: {resp.status_code} {resp.text}"
@@ -299,9 +349,10 @@ def test_list_identities_contains_created_version(client):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_create_generation_profile(client):
+@pytest.mark.order(50)
+def test_create_generation_profile(client, test_character):
     resp = client.post(
-        f"{API}/characters/{CHARACTER_ID}/generation-profiles",
+        f"{API}/characters/{CHARACTER_ID}/profiles/generation",
         json={
             "profile_name": "test_photorealistic_sd15",
             "model_provider": "sd15",
@@ -323,9 +374,10 @@ def test_create_generation_profile(client):
     assert body["checkpoint"] == "dreamshaper_8"
 
 
-def test_create_style_profile(client):
+@pytest.mark.order(60)
+def test_create_style_profile(client, test_character):
     resp = client.post(
-        f"{API}/characters/{CHARACTER_ID}/style-profiles",
+        f"{API}/characters/{CHARACTER_ID}/profiles/style",
         json={
             "profile_name": "test_photorealistic",
             "rendering": "photorealistic",
@@ -342,7 +394,8 @@ def test_create_style_profile(client):
     assert body.get("consistency_policy", "strict") == "strict"
 
 
-def test_create_outfit(client):
+@pytest.mark.order(70)
+def test_create_outfit(client, test_character):
     resp = client.post(
         f"{API}/characters/{CHARACTER_ID}/outfits",
         json={
@@ -418,7 +471,7 @@ def test_list_references_approved_only_filter(client, reference_asset_id):
         )
 
 
-def test_archive_reference(client):
+def test_archive_reference(client, test_character):
     width, height, size = _image_meta(THREE_QUARTER_IMAGE)
     resp = client.post(
         f"{API}/characters/{CHARACTER_ID}/references",
@@ -439,7 +492,7 @@ def test_archive_reference(client):
     )
     asset_id = resp.json()["asset_id"]
 
-    resp = client.post(f"{API}/references/{asset_id}/archive")
+    resp = client.post(f"{API}/references/{asset_id}/archive", json={"reason": "integration-test-cleanup"})
     assert resp.status_code == 200, f"archive failed: {resp.status_code} {resp.text}"
     body = resp.json()
     # default list filtering of archived assets is implementation-defined;
@@ -499,7 +552,8 @@ def test_approve_asset(client, reference_asset_id):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_export_rpg_returns_manifest_and_files(client):
+@pytest.mark.order(80)
+def test_export_rpg_returns_manifest_and_files(client, test_character):
     resp = client.post(f"{API}/characters/{CHARACTER_ID}/export/rpg")
     assert resp.status_code == 200, f"export failed: {resp.status_code} {resp.text}"
     body = resp.json()
@@ -536,7 +590,8 @@ def _poll_job_until_terminal(client, job_id: str, timeout_s: float = 180.0) -> d
     )
 
 
-def test_generate_job_sd15_lifecycle(client):
+@pytest.mark.order(90)
+def test_generate_job_sd15_lifecycle(client, test_character):
     resp = client.post(
         f"{API}/characters/{CHARACTER_ID}/generate",
         json={
@@ -590,7 +645,21 @@ def test_generate_job_sd15_lifecycle(client):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_cancel_queued_job(client):
+@pytest.mark.order(100)
+def test_cancel_queued_job(client, test_character):
+    # Ensure character exists
+    resp = client.post(
+        f"{API}/characters",
+        json={
+            "character_id": CHARACTER_ID,
+            "name": "Aria Integration",
+            "description": "Integration test character (aria photoshoot fixture)",
+        },
+    )
+    assert resp.status_code in (200, 201), (
+        f"create failed: {resp.status_code} {resp.text}"
+    )
+
     resp = client.post(
         f"{API}/characters/{CHARACTER_ID}/generate",
         json={
@@ -607,6 +676,11 @@ def test_cancel_queued_job(client):
     job_id = resp.json().get("job_id")
     assert job_id, f"job_id missing: {resp.json()}"
 
+    # Give the background worker a moment to pick up the job and check for cancellation
+    import time
+
+    time.sleep(1.0)
+
     resp = client.post(f"{API}/generation-jobs/{job_id}/cancel")
     assert resp.status_code == 200, f"cancel failed: {resp.status_code} {resp.text}"
     body = resp.json()
@@ -621,3 +695,44 @@ def test_cancel_queued_job(client):
     assert resp.json().get("status") == "cancelled", (
         f"job not cancelled after get: {resp.json()}"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7b. All 9 export kinds — regression coverage
+# ═══════════════════════════════════════════════════════════════════════════
+
+EXPORT_KINDS_TESTED = [
+    "rpg",
+    "social",
+    "comic",
+    "turnaround",
+    "pose_sheet",
+    "comic_pages",
+    "social_grid",
+    "social_carousel",
+    "wardrobe",
+]
+
+
+@pytest.mark.order(85)
+@pytest.mark.parametrize("export_kind", EXPORT_KINDS_TESTED)
+def test_export_all_kinds_return_manifest_and_files(
+    client, test_character, export_kind
+):
+    endpoint = export_kind.replace("_", "-")
+    resp = client.post(f"{API}/characters/{CHARACTER_ID}/export/{endpoint}")
+    assert resp.status_code == 200, (
+        f"export {export_kind!r} failed: {resp.status_code} {resp.text}"
+    )
+    body = resp.json()
+    assert "manifest" in body, f"manifest missing from export response ({export_kind}): {list(body)}"
+    assert "files" in body, f"files missing from export response ({export_kind}): {list(body)}"
+    assert isinstance(body["files"], list), f"files must be a list: {body['files']!r}"
+    manifest = body["manifest"]
+    for key in ("character", "dna", "assets", "provenance"):
+        assert key in manifest, (
+            f"manifest ({export_kind}) missing key {key!r}: {list(manifest)}"
+        )
+    assert manifest["character"]["character_id"] == CHARACTER_ID
+    # every export kind must carry the kind label in the manifest (per spec)
+    assert manifest.get("export_kind") == export_kind

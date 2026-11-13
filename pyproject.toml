@@ -3,7 +3,7 @@ name = "backend"
 version = "0.1.0"
 description = "Nexus AI Platform Backend"
 readme = "README.md"
-requires-python = ">=3.10, <3.13"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "fastapi[standard]>=0.128.0",
     "python-json-logger>=2.0.0",
@@ -14,7 +14,7 @@ dependencies = [
     "passlib>=1.7.4",
     "python-jose[cryptography]>=3.3.0",
     "argon2-cffi>=25.1.0",
-    "common_lib",
+    "common_lib[vision]",
     "langchain>=0.3.0",
     "langchain-openai>=0.1.0",
     "langchain-core>=0.3.0",
@@ -42,7 +42,7 @@ dependencies = [
     "psycopg2-binary>=2.9.12",
     "soundfile>=0.14.0",
     "audioread>=3.1.0",
-    "opencv-contrib-python>=5.0.0,<6.0.0",
+    "opencv-contrib-python-headless>=4.8.0,<5.0.0",
     "midiutil>=1.2.1",
     "pydub>=0.25.1",
     "python-rtmidi>=1.5.8",
@@ -77,6 +77,46 @@ markers = [
 # naming the package and the install command, instead of a bare ModuleNotFoundError.
 [project.optional-dependencies]
 prompts-sync = ["ijson>=3.2"]
+
+# Vision pipeline extra: SD1.5/SDXL/Flux diffusion + FaceID/InsightFace evaluation
+# Exact versions pinned for reproducibility — do not upgrade without full test pass.
+# torch 2.6.0+cu124 is ABI-paired with torchvision 0.21.0+cu124; diffusers 0.31.0 is the
+# last version compatible with huggingface_hub < 1.0 (required by transformers 4.57.6).
+vision = [
+    "torch==2.6.0+cu124",
+    "torchvision==0.21.0+cu124",
+    "transformers==4.57.6",
+    "diffusers==0.31.0",
+    "accelerate==0.26.0",
+    "xformers==0.0.29.post3",
+    "tomesd==0.1.3",
+    "peft==0.7.0",
+    "compel>=2.0.0",
+    "omegaconf>=2.3.0",
+    "pillow>=10.0.0",
+    "civitai-py>=0.1.10",
+    "controlnet-aux>=0.0.7",
+    "segment-anything>=1.0",
+    "ultralytics>=8.0.0",
+    "mediapipe>=0.10.0",
+    "insightface==0.7.3",
+    "onnx==1.15.0",
+    "onnxruntime-gpu==1.17.0",
+    "scikit-learn>=1.3.0",
+    "joblib>=1.3.0",
+    "scipy>=1.10.0",
+    "numpy>=1.24.0,<2.0.0",
+    "turbovec>=0.1.0",
+    "huggingface_hub==0.34.2",
+    "hf_xet",
+    "python-multipart>=0.0.6",
+    "iopath==0.1.10",
+    "DeepCache>=0.1.1",
+    "pytesseract>=0.3.10",
+    "pymupdf>=1.23.0",
+    "sentence-transformers>=2.2.0",
+    "opencv-contrib-python-headless>=4.8.0,<5.0.0",
+]
 
 [project.scripts]
 # Repointed 2026-10-03 (CLI retirement). `app.cli:main` was BROKEN before this
@@ -128,6 +168,20 @@ allow-direct-references = true
 
 [tool.uv.sources]
 common_lib = { path = "../Python Libs/common_lib", editable = true }
+
+[tool.uv]
+override-dependencies = [
+    "diffusers==0.31.0",
+    "insightface==0.7.3",
+    "onnx==1.15.0",
+    "onnxruntime-gpu==1.17.0",
+    "python-multipart==0.0.6",
+    "iopath==0.1.10",
+    "DeepCache==0.1.1",
+    "pytesseract==0.3.10",
+    "pymupdf==1.26.7",
+    "opencv-contrib-python-headless==4.8.1.78",
+]
 
 [dependency-groups]
 dev = [

@@ -97,15 +97,18 @@ def _character_studio_router():
 
     return router
 
+
 def _effects_router():
     from app.modules.effects.routes import router
 
     return router
 
+
 def _event_ingestion_router():
     from app.modules.event_ingestion.routes import router
 
     return router
+
 
 def _subscriptions_router():
     from app.modules.subscriptions.routes import router
@@ -3372,7 +3375,4 @@ def register_routers_background(
     logger.info("Background: Registered %d deferred routers", len(active_deferred))
 
 
-__all__ = ["register_routers"]
-
-# Export for external access
-__all__ = ["register_routers", "ROUTER_DEFINITIONS"]
+__all__ = ["register_routers", "ROUTER_DEFINITIONS", "prune_router_definitions"]

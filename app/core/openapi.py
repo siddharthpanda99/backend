@@ -3,6 +3,21 @@ from app.core.settings import get_settings
 
 settings = get_settings()
 
+# Tag registry — single source of openapi tag metadata for the whole API.
+OPENAPI_TAGS = [
+    {
+        "name": "Character Studio",
+        "description": (
+            "Character identity & consistency studio: creation, DNA/identity versioning, "
+            "reference bank + approval workflow (with audit trail), style/generation profiles, "
+            "outfits/accessories/poses/expressions, generation jobs with full reproducibility "
+            "snapshot, moderation reports, campaigns (comic panel continuity), and 9 export kinds "
+            "(rpg, social, comic, turnaround, pose_sheet, comic_pages, social_grid, social_carousel, wardrobe). "
+            "All endpoints are feature-flagged (CHARACTER_IDENTITY_ENABLED)."
+        ),
+    },
+]
+
 def custom_openapi(app):
     if app.openapi_schema:
         return app.openapi_schema
@@ -24,6 +39,7 @@ def custom_openapi(app):
             Agents should look at the tags to understand the context of capabilities.
             """,
             routes=app.routes,
+            tags=OPENAPI_TAGS,
         )
     except Exception as e:
         import logging as _logging

@@ -1,0 +1,27 @@
+/* Character Studio — scoped Swagger UI accent theme.
+   Layers on top of the default swagger-ui.css; every selector is scoped
+   to /SwaggerUI paths so no default behaviour is removed, only accented. */
+
+/* Scoped accent for the Character Studio tag group (operations.list shows
+   the group's description from openapi_tags; here we tint the tag header). */
+#swagger-ui .opblock-tag[data-tag="Character Studio"] {
+  background: linear-gradient(90deg, rgba(139, 92, 246, 0.14) 0%, rgba(139, 92, 246, 0.02) 60%, transparent 100%);
+  border-left: 3px solid #8b5cf6;
+  padding-left: 12px;
+  border-radius: 4px;
+}
+
+#swagger-ui .opblock-tag[data-tag="Character Studio"] h3,
+#swagger-ui .opblock-tag[data-tag="Character Studio"] .opblock-tag-section {
+  color: #6d3bd1 !important;
+}
+
+/* Accent the "Character Studio" operations so they are scannable in the dump. */
+#swagger-ui .opblock[data-tag="Character Studio"] {
+  border-color: rgba(139, 92, 246, 0.45);
+}
+
+/* Slight polish for tag descriptions in the group header */
+#swagger-ui .opblock-tag small {
+  max-width: 52rem;
+}

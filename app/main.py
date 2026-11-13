@@ -1395,6 +1395,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Nexus Platform API",
         lifespan=lifespan,
+        docs_url=None,  # custom /docs with Character Studio tag theming (see below)
     )
 
     # CORS
@@ -1573,6 +1574,27 @@ def create_app() -> FastAPI:
         StaticFiles(directory=str(ASSETS_DIR)),
         name="assets",
     )
+
+    # Static assets for Swagger UI theming (scoped Character Studio accent)
+    _app_static = Path(__file__).parent / "static"
+    if _app_static.is_dir():
+        app.mount("/static", StaticFiles(directory=str(_app_static)), name="app_static")
+
+    from fastapi.openapi.docs import get_swagger_ui_html
+
+    @app.get("/docs", include_in_schema=False)
+    async def custom_swagger_ui_html():
+        return get_swagger_ui_html(
+            openapi_url=app.openapi_url,
+            title="Nexus Platform API — Swagger UI",
+            swagger_css_url="/static/swagger-studio.css",
+            swagger_ui_parameters={
+                "displayRequestDuration": True,
+                "docExpansion": "list",
+                "deepLinking": True,
+                "persistAuthorization": True,
+            },
+        )
 
     # Observability — health endpoint registered directly, not via common_lib
     from common_lib.modules.observability import (
