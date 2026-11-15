@@ -15,6 +15,7 @@ from app.modules.audio.routes.voice_gallery import router as voice_gallery_route
 from app.modules.audio.routes.capabilities import router as capabilities_router
 from app.modules.audio.routes.asr_engines import router as asr_engines_router
 from app.modules.audio.routes.stories import router as stories_router
+from app.modules.audio.routes.voice_studio import router as voice_studio_router
 
 # Merge takes routes into the main audio router under the same prefix
 # The takes_router has sub-path /generate, /takes/*, etc.
@@ -136,6 +137,34 @@ except ImportError as _yue_import_error:  # pragma: no cover
         _yue_import_error,
     )
 
+# Merge Music Studio routes under /music prefix (feature-flag gated; default OFF)
+try:
+    from app.modules.audio.routes.music import router as music_router
+
+    for route in music_router.routes:
+        main_router.routes.append(route)
+except ImportError as _music_import_error:  # pragma: no cover
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "audio.music routes not mounted (import failed: %s)",
+        _music_import_error,
+    )
+
+# Merge Zonos TTS routes under /zonos prefix (feature-flag gated; default OFF)
+try:
+    from app.modules.audio.routes.zonos import router as zonos_router
+
+    for route in zonos_router.routes:
+        main_router.routes.append(route)
+except ImportError as _zonos_import_error:  # pragma: no cover
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "audio.zonos routes not mounted (import failed: %s)",
+        _zonos_import_error,
+    )
+
 # Merge audio workflows catalogue and execution routes under /workflows prefix
 try:
     from app.modules.audio.routes.workflows import router as workflows_router
@@ -165,12 +194,38 @@ for route in capabilities_router.routes:
 for route in stories_router.routes:
     main_router.routes.append(route)
 
+# Merge voice studio routes under /studio prefix
+for route in voice_studio_router.routes:
+    main_router.routes.append(route)
+
 # Merge ASR engine-registry routes under /asr prefix. asr_engines_router declares
 # absolute paths (/asr/engines, /asr/engines/default,
 # /asr/engines/{engine_id}/install-state), so they are appended verbatim and surface
 # as /api/v1/audio/asr/engines/*.
 for route in asr_engines_router.routes:
     main_router.routes.append(route)
+
+# Merge Transcription Studio routes under /transcribe. transcribe_router declares
+# absolute paths (/transcribe/upload, /transcribe/{run_id}, /transcribe), so they are
+# appended verbatim and surface as /api/v1/audio/transcribe/* — the namespace the
+# Transcription Studio calls. NOTE: POST /api/v1/audio/transcribe itself stays owned
+# by the legacy jobs-backed handler in router.py (first registered wins); the new
+# upload flow is served at /transcribe/upload — see app/modules/audio/routes/transcribe.py.
+# Resilient mount (same pattern as the studio merge block + the longform/yue guards):
+# on ImportError the feature is simply absent until its dependencies land, instead of
+# taking down the whole audio route surface.
+try:
+    from app.modules.audio.routes.transcribe import router as transcribe_router
+
+    for route in transcribe_router.routes:
+        main_router.routes.append(route)
+except ImportError as _transcribe_import_error:  # pragma: no cover
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "audio.transcribe routes not mounted (import failed: %s)",
+        _transcribe_import_error,
+    )
 
 __all__ = ["router"]
 
