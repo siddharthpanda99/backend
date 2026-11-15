@@ -241,6 +241,20 @@ except ImportError as _sound_design_import_error:  # pragma: no cover
         _sound_design_import_error,
     )
 
+# Merge Audio Workstation Studio routes under /studio/workstation
+try:
+    from app.modules.audio.routes.audio_workstation import router as workstation_router
+
+    for route in workstation_router.routes:
+        main_router.routes.append(route)
+except ImportError as _workstation_import_error:  # pragma: no cover
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "audio.workstation routes not mounted (import failed: %s)",
+        _workstation_import_error,
+    )
+
 __all__ = ["router"]
 
 # Re-export main_router as router
