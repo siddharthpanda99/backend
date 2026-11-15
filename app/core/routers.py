@@ -3039,10 +3039,21 @@ def register_routers(
         # ── Image Intelligence Platform ───────────────────────────
         {
             "router": __import__(
-                "app.routers.image_router", fromlist=["router"]
+                "app.modules.image_processing.routes", fromlist=["router"]
             ).router,
-            "prefix": "",
+            "prefix": "/image-processing",
             "tags": ["Image Intelligence Platform"],
+            "auth": True,
+            "module": "image_processing",
+        },
+        # ── Creative Studio (YAML Recipe Workflows) ───────────────────
+        {
+            "router": __import__(
+                "app.modules.image_processing.routes",
+                fromlist=["creative_studio_router"],
+            ).creative_studio_router,
+            "prefix": "/image-processing/creative-studio",
+            "tags": ["Creative Studio"],
             "auth": True,
             "module": "image_processing",
         },

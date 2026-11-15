@@ -227,6 +227,20 @@ except ImportError as _transcribe_import_error:  # pragma: no cover
         _transcribe_import_error,
     )
 
+# Merge Sound Design Studio routes under /studio/sound-design
+try:
+    from app.modules.audio.routes.sound_design import router as sound_design_router
+
+    for route in sound_design_router.routes:
+        main_router.routes.append(route)
+except ImportError as _sound_design_import_error:  # pragma: no cover
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "audio.sound_design routes not mounted (import failed: %s)",
+        _sound_design_import_error,
+    )
+
 __all__ = ["router"]
 
 # Re-export main_router as router
