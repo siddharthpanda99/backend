@@ -269,6 +269,36 @@ except ImportError as _podcast_import_error:  # pragma: no cover
         _podcast_import_error,
     )
 
+# Merge Film Audio Studio routes under /film-audio
+try:
+    from app.modules.audio.routes.film_audio import router as film_audio_router
+
+    for route in film_audio_router.routes:
+        main_router.routes.append(route)
+except ImportError as _film_audio_import_error:  # pragma: no cover
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "audio.film_audio routes not mounted (import failed: %s)",
+        _film_audio_import_error,
+    )
+
+# Merge Voice Conversion Studio routes under /voice-conversion
+try:
+    from app.modules.audio.routes.voice_conversion import (
+        router as voice_conversion_router,
+    )
+
+    for route in voice_conversion_router.routes:
+        main_router.routes.append(route)
+except ImportError as _voice_conversion_import_error:  # pragma: no cover
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "audio.voice_conversion routes not mounted (import failed: %s)",
+        _voice_conversion_import_error,
+    )
+
 __all__ = ["router"]
 
 # Re-export main_router as router
