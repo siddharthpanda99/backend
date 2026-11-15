@@ -2033,67 +2033,6 @@ async def audio_transform(request: AudioTransformRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Module 52: Podcast / Broadcast Suite
-# ═══════════════════════════════════════════════════════════════════════
-
-
-@router.post("/podcast/process", response_model=PodcastProcessResponse)
-async def process_podcast(request: PodcastProcessRequest):
-    """Process podcast audio: loudness, silence removal, denoising."""
-    try:
-        import soundfile as sf
-        from common_lib.modules.audio_processing.services.podcast_service import (
-            PodcastSuite,
-            PodcastConfig,
-        )
-
-        suite = PodcastSuite()
-        audio, sr = sf.read(request.audio_path, dtype="float32")
-        config = PodcastConfig(
-            target_lufs=request.target_lufs,
-            true_peak_limit=request.true_peak_limit,
-            remove_silence=request.remove_silence,
-            silence_threshold_db=request.silence_threshold_db,
-            silence_min_duration_ms=request.silence_min_duration_ms,
-            highpass_hz=request.highpass_hz,
-            denoise=request.denoise,
-            normalize=request.normalize,
-        )
-        output, meta = suite.process_episode(audio, sr, config)
-        filename = f"podcast_{uuid.uuid4().hex[:8]}.wav"
-        out = str(_get_audio_service().output_dir / filename)
-        sf.write(out, output, sr)
-        return PodcastProcessResponse(
-            audio_url=f"/generated/audio/{filename}",
-            filename=filename,
-            duration_seconds=meta.get("output_duration", len(output) / sr),
-            metadata=meta,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/podcast/chapters", response_model=ChapterDetectionResponse)
-async def detect_chapters(request: ChapterDetectionRequest):
-    """Detect chapters in podcast audio."""
-    try:
-        import soundfile as sf
-        from common_lib.modules.audio_processing.services.podcast_service import (
-            PodcastSuite,
-        )
-
-        suite = PodcastSuite()
-        audio, sr = sf.read(request.audio_path, dtype="float32")
-        chapters = suite.detect_chapters(
-            audio, sr, request.min_gap_seconds, request.energy_threshold_db
-        )
-        return ChapterDetectionResponse(chapters=chapters, total_chapters=len(chapters))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ═══════════════════════════════════════════════════════════════════════
 # Module 08: Sampling Engine
 # ═══════════════════════════════════════════════════════════════════════
 

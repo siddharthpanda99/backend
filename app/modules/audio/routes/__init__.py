@@ -255,6 +255,20 @@ except ImportError as _workstation_import_error:  # pragma: no cover
         _workstation_import_error,
     )
 
+# Merge Podcast Studio routes under /studio/podcast
+try:
+    from app.modules.audio.routes.podcast import router as podcast_router
+
+    for route in podcast_router.routes:
+        main_router.routes.append(route)
+except ImportError as _podcast_import_error:  # pragma: no cover
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "audio.podcast routes not mounted (import failed: %s)",
+        _podcast_import_error,
+    )
+
 __all__ = ["router"]
 
 # Re-export main_router as router
