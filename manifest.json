@@ -1,0 +1,14 @@
+{
+  "recipe": "sdxl_t2i_realvisxl",
+  "engine": "yaml_pipeline",
+  "pipeline": "sdxl_t2i_realvisxl.yaml",
+  "prompt": "professional portrait, photorealistic, detailed, 8k, sharp focus",
+  "duration_s": 77.9,
+  "output": "",
+  "vlm": {
+    "tags": [],
+    "defects": [],
+    "note": "creative_studio.automatic disabled"
+  },
+  "exported_at": "2026-11-14T15:09:18.725699+00:00"
+}
