@@ -299,6 +299,39 @@ except ImportError as _voice_conversion_import_error:  # pragma: no cover
         _voice_conversion_import_error,
     )
 
+# Merge Wave 7 Intelligence routes under /intelligence
+try:
+    from app.modules.audio.routes.intelligence import router as intelligence_router
+
+    for route in intelligence_router.routes:
+        main_router.routes.append(route)
+except ImportError as _intelligence_import_error:  # pragma: no cover
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "audio.intelligence routes not mounted (import failed: %s)",
+        _intelligence_import_error,
+    )
+
+# Merge Wave 9 Consent + Watermark routes (always-on safety features)
+try:
+    from app.modules.audio.routes.consent import (
+        router as consent_router,
+        watermark_router as consent_watermark_router,
+    )
+
+    for route in consent_router.routes:
+        main_router.routes.append(route)
+    for route in consent_watermark_router.routes:
+        main_router.routes.append(route)
+except ImportError as _consent_import_error:  # pragma: no cover
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "audio.consent routes not mounted (import failed: %s)",
+        _consent_import_error,
+    )
+
 __all__ = ["router"]
 
 # Re-export main_router as router
