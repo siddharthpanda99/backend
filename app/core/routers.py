@@ -861,6 +861,11 @@ def register_routers(
 
         return router
 
+    def _three_d_router():
+        from app.modules.three_d.routes import router
+
+        return router
+
     def _face_router():
         from app.modules.face.routes import router
 
@@ -908,6 +913,11 @@ def register_routers(
 
     def _audio_router():
         from app.modules.audio.routes import router
+
+        return router
+
+    def _runtime_fabric_router():
+        from app.modules.runtime_fabric.routes import router
 
         return router
 
@@ -1899,6 +1909,14 @@ def register_routers(
             "module": "vision",
         },
         {
+            "router": _three_d_router,
+            "prefix": "/three-d",
+            "tags": ["3D Generation"],
+            "auth": True,
+            "module": "three_d",
+            "feature_flag": "THREE_D_ENABLED",
+        },
+        {
             "router": _face_router,
             "prefix": "/face",
             "tags": ["Face Operations"],
@@ -1960,6 +1978,15 @@ def register_routers(
             "tags": ["Audio & TTS"],
             "auth": True,
             "module": "audio",
+        },
+        {
+            # Runtime Fabric admin surface (profiles/workers/GPU/jobs).
+            # common_lib owns the logic; app/modules/runtime_fabric only re-hosts it.
+            "router": _runtime_fabric_router,
+            "prefix": "/runtime",
+            "tags": ["Runtime Fabric"],
+            "auth": True,
+            "module": "runtime_fabric",
         },
         {
             "router": _open_code_review_router,
