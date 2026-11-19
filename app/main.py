@@ -1588,6 +1588,7 @@ def create_app() -> FastAPI:
             openapi_url=app.openapi_url,
             title="Nexus Platform API — Swagger UI",
             swagger_css_url="/static/swagger-studio.css",
+            swagger_js_url="/static/swagger-ui-bundle.js",
             swagger_ui_parameters={
                 "displayRequestDuration": True,
                 "docExpansion": "list",

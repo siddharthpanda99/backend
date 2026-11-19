@@ -866,6 +866,11 @@ def register_routers(
 
         return router
 
+    def _video_processing_router():
+        from app.modules.video_processing.routes import router
+
+        return router
+
     def _face_router():
         from app.modules.face.routes import router
 
@@ -918,6 +923,11 @@ def register_routers(
 
     def _runtime_fabric_router():
         from app.modules.runtime_fabric.routes import router
+
+        return router
+
+    def _runtime_fabric_generate_router():
+        from app.modules.runtime_fabric.routes.generate_routes import router
 
         return router
 
@@ -1917,6 +1927,14 @@ def register_routers(
             "feature_flag": "THREE_D_ENABLED",
         },
         {
+            "router": _video_processing_router,
+            "prefix": "/video-processing",
+            "tags": ["Video Generation"],
+            "auth": True,
+            "module": "image_processing",
+            "feature_flag": "VIDEO_PROCESSING_ENABLED",
+        },
+        {
             "router": _face_router,
             "prefix": "/face",
             "tags": ["Face Operations"],
@@ -1985,6 +2003,15 @@ def register_routers(
             "router": _runtime_fabric_router,
             "prefix": "/runtime",
             "tags": ["Runtime Fabric"],
+            "auth": True,
+            "module": "runtime_fabric",
+        },
+        {
+            # AI generation proxy (POST /api/v1/ai/generate, GET /api/v1/ai/health).
+            # Thin transport: proxies to the local Runtime Fabric control plane.
+            "router": _runtime_fabric_generate_router,
+            "prefix": "/ai",
+            "tags": ["AI Generation"],
             "auth": True,
             "module": "runtime_fabric",
         },
@@ -3081,6 +3108,17 @@ def register_routers(
             ).creative_studio_router,
             "prefix": "/image-processing/creative-studio",
             "tags": ["Creative Studio"],
+            "auth": True,
+            "module": "image_processing",
+        },
+        # ── Dev Mode Image Generation (Direct Host CLI) ──────────────
+        {
+            "router": __import__(
+                "app.modules.image_processing.routes",
+                fromlist=["dev_mode_router"],
+            ).dev_mode_router,
+            "prefix": "/image-processing/dev-mode",
+            "tags": ["Dev Mode Image Generation"],
             "auth": True,
             "module": "image_processing",
         },

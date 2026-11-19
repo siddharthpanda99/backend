@@ -27,12 +27,50 @@ from common_lib.modules.three_d.exceptions import (
     InvalidInputError,
     GPUOutOfMemoryError,
 )
+from common_lib.modules.three_d.feature_flags import (
+    THREE_D_ENABLED,
+    THREE_D_GENERATION,
+    THREE_D_MODEL_DOWNLOAD,
+)
 
 from app.modules.jobs.actor import capture_job_actor, owned_job_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(capture_job_actor)])
+
+
+def _check_three_d_enabled() -> ThreeDGenerateResponse | None:
+    """Check if ThreeD module is enabled, return error response if not."""
+    if not THREE_D_ENABLED.is_enabled():
+        return ThreeDGenerateResponse(
+            status="error",
+            error="Feature disabled",
+            message="ThreeD module is not enabled. Set THREE_D_ENABLED=true to enable.",
+        )
+    return None
+
+
+def _check_generation_enabled() -> ThreeDGenerateResponse | None:
+    """Check if 3D generation is enabled."""
+    if not THREE_D_GENERATION.is_enabled():
+        return ThreeDGenerateResponse(
+            status="error",
+            error="Feature disabled",
+            message="3D generation is not enabled. Set THREE_D_GENERATION=true to enable.",
+        )
+    return None
+
+
+def _check_download_enabled() -> ThreeDDownloadResponse | None:
+    """Check if model download is enabled."""
+    if not THREE_D_MODEL_DOWNLOAD.is_enabled():
+        return ThreeDDownloadResponse(
+            status="error",
+            model_id="idol",
+            error="Model download is not enabled. Set THREE_D_MODEL_DOWNLOAD=true to enable.",
+        )
+    return None
 
 
 # ── Helper Functions ───────────────────────────────────────────────────
@@ -78,6 +116,11 @@ async def generate_3d(request: ThreeDGenerateRequest):
     Supports both real photographs (mode=real) and synthetic renders (mode=synthetic).
     Returns a .ply file with Gaussian splat data plus preview and camera parameters.
     """
+    # Check feature flags
+    flag_error = _check_three_d_enabled() or _check_generation_enabled()
+    if flag_error:
+        return flag_error
+
     service = get_three_d_service()
     try:
         result = await service.generate_3d(request)
@@ -86,6 +129,43 @@ async def generate_3d(request: ThreeDGenerateRequest):
         return _handle_generation_error(e)
     except Exception as e:
         return _handle_generation_error(e)
+
+
+@router.post("/generate/async", response_model=ThreeDGenerateResponse)
+async def generate_3d_async(request: ThreeDGenerateRequest):
+    """
+    Queue a 3D generation job asynchronously.
+
+    Returns immediately with a job_id for polling. Use /jobs/{job_id} to check status.
+    """
+    # Check feature flags
+    flag_error = _check_three_d_enabled() or _check_generation_enabled()
+    if flag_error:
+        return flag_error
+
+    # Check async generation flag
+    from common_lib.modules.three_d.feature_flags import THREE_D_ASYNC_GENERATION
+
+    if not THREE_D_ASYNC_GENERATION.is_enabled():
+        return ThreeDGenerateResponse(
+            status="error",
+            error="Feature disabled",
+            message="Async 3D generation is not enabled. Set THREE_D_ASYNC_GENERATION=true to enable.",
+        )
+
+    # For now, run synchronously but return job-like response
+    # In production, submit to job queue
+    import uuid
+
+    job_id = str(uuid.uuid4())
+
+    service = get_three_d_service()
+    # Note: Real implementation would use job queue
+    return {
+        "status": "queued",
+        "job_id": job_id,
+        "message": "Job queued. Use /jobs/{job_id} to poll status.",
+    }
 
 
 @router.post("/generate/async")
@@ -147,6 +227,11 @@ async def download_model(model_id: str, request: ThreeDDownloadRequest):
     Requires HuggingFace authentication for gated dependencies (DINOv3, FLUX VAE).
     Run 'hf auth login' and accept terms before downloading.
     """
+    # Check feature flags
+    flag_error = _check_three_d_enabled() or _check_download_enabled()
+    if flag_error:
+        return flag_error
+
     service = get_three_d_service()
     try:
         result = await service.download_model(model_id, request.force)

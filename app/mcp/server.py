@@ -18,6 +18,8 @@ from app.mcp.tools.graph import register_graph_tools
 from app.mcp.tools.vision import register_vision_tools
 from app.mcp.tools.filters import register_filter_tools
 from app.mcp.tools.audio import register_audio_tools
+from app.mcp.tools.three_d import register_three_d_tools
+from app.mcp.tools.video_processing import register_video_processing_tools
 from app.mcp.tools.audio_parity import register_audio_parity_tools
 from app.mcp.tools.data_forge import register_data_forge_tools
 from app.mcp.tools.fleet import register_fleet_tools
@@ -153,6 +155,8 @@ register_graph_tools(mcp_server)
 register_vision_tools(mcp_server)
 register_filter_tools(mcp_server)
 register_audio_tools(mcp_server)
+register_three_d_tools(mcp_server)
+register_video_processing_tools(mcp_server)
 register_audio_parity_tools(mcp_server)
 register_data_forge_tools(mcp_server)
 register_fleet_tools(mcp_server)

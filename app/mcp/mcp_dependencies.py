@@ -207,3 +207,19 @@ def resolve_auto_ontology_service():
 
     settings = get_settings()
     return AutoOntologyService(db_url=settings.db_url, settings=settings)
+
+
+def resolve_three_d_service():
+    """Helper to get ThreeD service."""
+    from common_lib.modules.three_d.service import get_three_d_service
+
+    return get_three_d_service()
+
+
+def resolve_video_processing_service():
+    """Helper to get VideoProcessing service."""
+    from common_lib.modules.image_processing.video_processing.service import (
+        get_video_processing_service,
+    )
+
+    return get_video_processing_service()

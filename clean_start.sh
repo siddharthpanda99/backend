@@ -4,6 +4,7 @@
 RESOURCES_DIR="../../resources"
 DB_COMPOSE="db.compose.yml"
 MINIO_COMPOSE="minio.compose.yml"
+# MINIO_COMPOSE="minio.compose.yml"  # DISABLED - minio service disabled
 VLLM_COMPOSE="vllm.compose.yml"
 DOWN_ON_EXIT=0
 
@@ -222,7 +223,7 @@ if [ -z "$SKIP_CONTAINER" ]; then
     echo " - Ensuring Database Service (nexus_db) is running..."
     $COMPOSE_CMD -f "$DB_COMPOSE" up -d db
     echo " - Ensuring MinIO Service is running..."
-    $COMPOSE_CMD -f "$MINIO_COMPOSE" up -d minio 2>/dev/null || true
+    # $COMPOSE_CMD -f "$MINIO_COMPOSE" up -d minio 2>/dev/null || true
 fi
 
 # 3. Wait for PostgreSQL Readiness

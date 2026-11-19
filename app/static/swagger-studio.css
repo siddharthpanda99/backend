@@ -1,27 +1,125 @@
-/* Character Studio — scoped Swagger UI accent theme.
-   Layers on top of the default swagger-ui.css; every selector is scoped
-   to /SwaggerUI paths so no default behaviour is removed, only accented. */
+/* Nexus Platform — Swagger UI theme.
+   FastAPI's get_swagger_ui_html(swagger_css_url=...) REPLACES the default
+   swagger-ui.css rather than stacking on it, so this file pulls the
+   official build in via @import (must be the first rule in the file). */
+@import url("/static/swagger-ui.css");
 
-/* Scoped accent for the Character Studio tag group (operations.list shows
-   the group's description from openapi_tags; here we tint the tag header). */
-#swagger-ui .opblock-tag[data-tag="Character Studio"] {
-  background: linear-gradient(90deg, rgba(139, 92, 246, 0.14) 0%, rgba(139, 92, 246, 0.02) 60%, transparent 100%);
-  border-left: 3px solid #8b5cf6;
-  padding-left: 12px;
+/* =========================================================
+   Route-group headers — one uniform accented card for ALL
+   tags (Character Studio included, not special-cased).
+
+   Default layout squeezes the tag description into the same
+   flex row as the title and truncates the title with
+   white-space:nowrap + ellipsis. This reflows the description
+   to its own full-width line below the title so long
+   descriptions wrap cleanly, and un-truncates the title.
+   ========================================================= */
+.swagger-ui .opblock-tag {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 6px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-left: 4px solid #8b5cf6;
+  border-radius: 8px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.35);
+  background: linear-gradient(
+    90deg,
+    rgba(139, 92, 246, 0.12) 0%,
+    rgba(139, 92, 246, 0.03) 55%,
+    transparent 100%
+  );
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.swagger-ui .opblock-tag:hover {
+  background: linear-gradient(
+    90deg,
+    rgba(139, 92, 246, 0.18) 0%,
+    rgba(139, 92, 246, 0.05) 55%,
+    transparent 100%
+  );
+  border-color: rgba(139, 92, 246, 0.55);
+}
+
+/* Title wrapper: un-truncate, wrap freely */
+.swagger-ui .opblock-tag > div {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* Description: full width, below the title, wrapping */
+.swagger-ui .opblock-tag small {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  flex: none;
+  display: block;
+  padding: 0;
+  max-width: 72rem;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.65;
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Chevron button: right-aligned on the title row */
+.swagger-ui .opblock-tag > .expand-operation {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  justify-self: center;
+  opacity: 0.7;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.swagger-ui .opblock-tag > .expand-operation:hover {
+  opacity: 1;
+}
+
+/* External-docs link (rare): bottom-right, clear of the description */
+.swagger-ui .opblock-tag > .info__externaldocs {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+  align-self: start;
+}
+
+/* Keep each section's operations visually attached to its card */
+.swagger-ui .opblock-tag-section {
+  margin-bottom: 6px;
+}
+
+/* =========================================================
+   Top API info block — readable body text, code chips
+   ========================================================= */
+.swagger-ui .info .description {
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.swagger-ui .info .description p,
+.swagger-ui .info .description li {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.swagger-ui .info .description code {
+  padding: 1px 6px;
   border-radius: 4px;
-}
-
-#swagger-ui .opblock-tag[data-tag="Character Studio"] h3,
-#swagger-ui .opblock-tag[data-tag="Character Studio"] .opblock-tag-section {
-  color: #6d3bd1 !important;
-}
-
-/* Accent the "Character Studio" operations so they are scannable in the dump. */
-#swagger-ui .opblock[data-tag="Character Studio"] {
-  border-color: rgba(139, 92, 246, 0.45);
-}
-
-/* Slight polish for tag descriptions in the group header */
-#swagger-ui .opblock-tag small {
-  max-width: 52rem;
+  background: rgba(139, 92, 246, 0.12);
+  font-size: 0.9em;
 }
