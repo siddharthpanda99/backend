@@ -25,7 +25,7 @@ from common_lib.modules.orchestration.entities.registry.utils import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(redirect_slashes=True)
 
 # ---------------------------------------------------------------------------
 # Shared service instance
@@ -559,6 +559,7 @@ async def get_entity(entity_type: str, entity_id: str):
 
 
 @router.get("/", response_model=APIResponse[Dict[str, Any]])
+@router.get("", response_model=APIResponse[Dict[str, Any]])
 async def list_entities(
     entity_type: Optional[str] = Query(
         None,

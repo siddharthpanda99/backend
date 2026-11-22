@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.modules.auth.dependencies import get_current_identity
 
-from common_lib.modules.runtime_fabric.generation_client import (
+from fabric.generation_client import (
     GenerationProxyError,
     RuntimeFabricGenerationClient,
     generation_proxy_enabled,
