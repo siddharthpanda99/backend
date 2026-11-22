@@ -199,7 +199,7 @@ echo "[1/7] Terminating stale fabric processes on port $PORT..."
 if command -v fuser >/dev/null 2>&1; then
     fuser -k "${PORT}/tcp" 2>/dev/null || true
 fi
-pkill -f "common_lib.modules.runtime_fabric.server" 2>/dev/null || true
+pkill -f "fabric.server" 2>/dev/null || true
 # Orphaned workers keep VRAM allocated; terminate them too.
 pkill -f "common_lib.nexus_workers" 2>/dev/null || true
 sleep 1
@@ -221,6 +221,7 @@ else
         fi
         if [[ -x "$FABRIC_PY" ]]; then
             uv pip install --python "$FABRIC_PY" fastapi "uvicorn[standard]" httpx pydantic \
+                python-multipart \
                 || echo "WARNING: control-plane dep install failed" >&2
             uv pip install --python "$FABRIC_PY" --no-deps -e "$COMMON_LIB_PROJECT" \
                 || echo "WARNING: editable common_lib install failed" >&2
@@ -232,7 +233,7 @@ if [[ ! -x "$FABRIC_PY" ]]; then
     echo "          re-run without --skip-install, or create it manually." >&2
     exit 1
 fi
-if ! (cd "$BACKEND_DIR" && "$FABRIC_PY" -c "import common_lib.modules.runtime_fabric.server" 2>/tmp/fabric_import_error.log); then
+if ! (cd "$BACKEND_DIR" && "$FABRIC_PY" -c "import fabric.server" 2>/tmp/fabric_import_error.log); then
     echo "CRITICAL: fabric control-plane import failed:" >&2
     cat /tmp/fabric_import_error.log >&2
     exit 1
@@ -475,5 +476,5 @@ echo "  logs:      $NEXUS_LOG_DIR (workers), uvicorn on stdout"
 echo "  platform backend remains on port 8000 (./clean_start.sh)"
 echo ""
 
-cd "$COMMON_LIB_SRC"
-exec "$FABRIC_PY" -m common_lib.modules.runtime_fabric.server
+cd "$BACKEND_DIR"
+exec "$FABRIC_PY" -m fabric.server

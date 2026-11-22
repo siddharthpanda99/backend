@@ -1,0 +1,438 @@
+# Nexus Runtime Execution Fabric - Profile Configuration
+#
+# This file defines all runtime profiles for the fabric. Each profile defines
+# how a specific toolchain/model should be executed, including its resource
+# requirements, environment, and capabilities.
+#
+# The profiles are loaded at startup and used by the ProfileRegistry to map
+# model IDs to execution profiles.
+
+# --- Environment-overridable roots (Docker deployment defaults preserved) ---
+# These can be overridden via environment variables:
+#   NEXUS_ENVS_ROOT       - root of the per-toolchain venvs (default /opt/nexus/envs)
+#   NEXUS_CONTROL_VENV    - the control-plane venv (default /opt/nexus/control-venv)
+#   NEXUS_TOOLCHAINS_ROOT - root of toolchain working dirs (default /opt/nexus/toolchains)
+#   NEXUS_TOOLCHAIN_VENVS - repo toolchains/ tree; workers resolve to <root>/<toolchain>/.venv/bin/python
+#   NEXUS_WORKDIR         - shared working directory (default /opt/nexus)
+#   NEXUS_IMAGE_PYTHON    - python for the image toolchain (default $NEXUS_ENVS_ROOT/image/bin/python)
+#   NEXUS_CONTROL_SRC     - common_lib src for workers (default /opt/nexus/nexus-control/src)
+#   NEXUS_LOG_DIR         - worker log directory (default /data/logs)
+
+_env_defaults:
+  NEXUS_ENVS_ROOT: "/opt/nexus/envs"
+  NEXUS_CONTROL_VENV: "/opt/nexus/control-venv"
+  NEXUS_TOOLCHAINS_ROOT: "/opt/nexus/toolchains"
+  NEXUS_TOOLCHAIN_VENVS: ""
+  NEXUS_WORKDIR: "/opt/nexus"
+  NEXUS_IMAGE_PYTHON: ""
+  NEXUS_CONTROL_SRC: "/opt/nexus/nexus-control/src"
+  NEXUS_LOG_DIR: "/data/logs"
+
+# --- Toolchain Resolution ---
+# When NEXUS_TOOLCHAIN_VENVS is set, workers use <root>/<toolchain>/.venv/bin/python
+# This allows running the fabric on the host with isolated per-toolchain venvs.
+
+# --- Profile Definitions ---
+# Each profile defines how a specific toolchain/model family is executed.
+# Fields:
+#   profile_id: unique identifier for this profile
+#   toolchain: name of the toolchain (used for venv resolution)
+#   environment: environment path (can use ${ENV_VAR} syntax)
+#   python: python executable path (can use ${ENV_VAR} syntax)
+#   adapter: Python module path to the worker adapter
+#   protocol: communication protocol (local-http, grpc, etc.)
+#   startup_timeout_seconds: max time to wait for worker startup
+#   idle_timeout_seconds: time before idle worker is evicted
+#   max_workers: max concurrent workers for this profile
+#   device: target device (cuda, cpu, mps)
+#   capabilities: list of capability strings this profile provides
+#   resource_class: resource class (gpu_heavy, cpu_light, etc.)
+#   vram_mb: estimated VRAM requirement in MB
+#   enabled: whether this profile is active
+#   state: enabled/disabled/maintenance
+#   healthcheck_type: type of health check (worker_http, etc.)
+#   healthcheck_path: health check endpoint path
+#   working_directory: working directory for the worker
+#   environment_vars: additional environment variables for the worker
+#   model_families: list of model families this profile can run
+#   description: human-readable description
+#   best_configs: recommended generation parameters
+#   runtime_requirements: hardware/software requirements
+#   tags: tags for categorization
+
+profiles:
+  # Audio Generation Profiles
+  - profile_id: "acestep-cuda"
+    toolchain: "ace-step"
+    environment: "${NEXUS_TOOLCHAINS_ROOT}/ace-step"
+    python: "${NEXUS_TOOLCHAINS_ROOT}/ace-step/.venv/bin/python"
+    adapter: "common_lib.nexus_workers.acestep"
+    protocol: "local-http"
+    startup_timeout_seconds: 240
+    idle_timeout_seconds: 600
+    max_workers: 1
+    device: "cuda"
+    capabilities: ["music_gen"]
+    resource_class: "gpu_heavy"
+    vram_mb: 6000
+    enabled: true
+    state: "enabled"
+    healthcheck_type: "worker_http"
+    healthcheck_path: "/health"
+    working_directory: "${NEXUS_TOOLCHAINS_ROOT}/ace-step"
+    environment_vars: {}
+    model_families: ["ace-step"]
+    description: "ACE-Step music generation (torch 2.10+cu128, requires flash-attn, torchaudio)"
+    description_long: |
+      ACE-Step is a music generation model that produces high-quality music from text prompts.
+      Requires torch 2.10+ with CUDA 128 and flash-attn. The model is ~4.8GB and runs on 8GB+ VRAM.
+      Best for: music generation from text prompts, style transfer, lyrics-to-music.
+    best_configs:
+      - name: "default"
+        steps: 50
+        cfg: 7.0
+        sampler: "dpmpp_2m_sde"
+        scheduler: "karras"
+      - name: "fast"
+        steps: 25
+        cfg: 5.0
+        sampler: "euler_a"
+        scheduler: "karras"
+    runtime_requirements:
+      gpu_vram_mb: 6000
+      cpu_ram_gb: 8
+      torch_version: "2.10.0+cu128"
+      cuda_version: "12.8"
+      required_packages: ["flash-attn", "torchaudio", "gradio", "einops", "accelerate"]
+    tags: ["audio", "music", "generation", "ace-step"]
+    tags_internal: ["requires_flash_attn", "requires_cuda_128"]
+
+  - profile_id: "cosyvoice-cuda"
+    toolchain: "cosyvoice"
+    environment: "${NEXUS_TOOLCHAINS_ROOT}/cosyvoice"
+    python: "${NEXUS_TOOLCHAINS_ROOT}/cosyvoice/.venv/bin/python"
+    adapter: "common_lib.nexus_workers.cosyvoice"
+    protocol: "local-http"
+    startup_timeout_seconds: 240
+    idle_timeout_seconds: 600
+    max_workers: 1
+    device: "cuda"
+    capabilities: ["tts", "voice_cloning"]
+    resource_class: "gpu_heavy"
+    vram_mb: 6000
+    enabled: true
+    state: "enabled"
+    healthcheck_type: "worker_http"
+    healthcheck_path: "/health"
+    working_directory: "${NEXUS_TOOLCHAINS_ROOT}/cosyvoice"
+    environment_vars:
+      COSYVOICE_MODEL_DIR: "${COSYVOICE_MODEL_DIR:-${NEXUS_RESOURCES_ROOT}/ai_models/audio/cosyvoice2-0.5b}"
+    model_families: ["cosyvoice"]
+    description: "CosyVoice 2.0 TTS and voice cloning (torch 2.6+cu124, transformers 4.57.6)"
+    description_long: |
+      CosyVoice is a multi-lingual TTS model with zero-shot voice cloning capabilities.
+      Supports multiple languages and can clone voices from a 3-second reference audio.
+      Models: CosyVoice2-0.5B (multilingual), CosyVoice-300M (lightweight).
+      Best for: TTS, voice cloning, cross-lingual synthesis, emotional speech.
+    best_configs:
+      - name: "default"
+        speed: 1.0
+        language: "auto"
+        stream: false
+      - name: "fast"
+        speed: 1.2
+        stream: true
+    runtime_requirements:
+      gpu_vram_mb: 6000
+      cpu_ram_gb: 8
+      torch_version: "2.6.0+cu124"
+      cuda_version: "12.4"
+      required_packages: ["torchaudio", "transformers==4.57.6", "onnxruntime", "huggingface_hub"]
+    tags: ["audio", "tts", "voice_cloning", "cosyvoice", "multilingual"]
+    tags_internal: ["requires_torchaudio", "requires_transformers_457"]
+
+  - profile_id: "fish-speech-cuda"
+    toolchain: "fish-speech"
+    environment: "${NEXUS_TOOLCHAINS_ROOT}/fish-speech"
+    python: "${NEXUS_TOOLCHAINS_ROOT}/fish-speech/.venv/bin/python"
+    adapter: "common_lib.nexus_workers.fish_speech"
+    protocol: "local-http"
+    startup_timeout_seconds: 240
+    idle_timeout_seconds: 600
+    max_workers: 1
+    device: "cuda"
+    capabilities: ["tts", "voice_cloning", "voice_conversion"]
+    resource_class: "gpu_heavy"
+    vram_mb: 8000
+    enabled: true
+    state: "enabled"
+    healthcheck_type: "worker_http"
+    healthcheck_path: "/health"
+    working_directory: "${NEXUS_TOOLCHAINS_ROOT}/fish-speech"
+    environment_vars:
+      FISH_SPEECH_MODEL_DIR: "${FISH_SPEECH_MODEL_DIR:-${NEXUS_RESOURCES_ROOT}/ai_models/audio/fish-s2-pro}"
+    model_families: ["fish-speech"]
+    description: "Fish Speech 1.5 TTS (torch 2.8+cu128, 11GB+ model, requires portaudio)"
+    description_long: |
+      Fish Speech is a high-quality TTS model with S2-Pro architecture.
+      Requires ~11GB VRAM and portaudio system dependency. Uses VQ-GAN codec for audio.
+      Best for: high-fidelity TTS, voice cloning, expressive speech with emotion control.
+    best_configs:
+      - name: "default"
+        speed: 1.0
+        temperature: 0.7
+        top_p: 0.9
+      - name: "expressive"
+        temperature: 1.0
+        top_p: 0.95
+    runtime_requirements:
+      gpu_vram_mb: 8000
+      cpu_ram_gb: 16
+      torch_version: "2.8.0+cu128"
+      cuda_version: "12.8"
+      required_packages: ["portaudio", "pyaudio", "fish-speech", "vqgan"]
+    tags: ["audio", "tts", "voice_cloning", "fish-speech", "expressive"]
+    tags_internal: ["requires_portaudio", "high_vram"]
+
+  - profile_id: "seed-vc-cuda"
+    toolchain: "seed-vc"
+    environment: "${NEXUS_TOOLCHAINS_ROOT}/seed-vc"
+    python: "${NEXUS_TOOLCHAINS_ROOT}/seed-vc/.venv/bin/python"
+    adapter: "common_lib.nexus_workers.seed_vc"
+    protocol: "local-http"
+    startup_timeout_seconds: 240
+    idle_timeout_seconds: 600
+    max_workers: 1
+    device: "cuda"
+    capabilities: ["voice_conversion"]
+    resource_class: "gpu_heavy"
+    vram_mb: 4000
+    enabled: true
+    state: "enabled"
+    healthcheck_type: "worker_http"
+    healthcheck_path: "/health"
+    working_directory: "${NEXUS_TOOLCHAINS_ROOT}/seed-vc"
+    environment_vars: {}
+    model_families: ["seed-vc"]
+    description: "Seed-VC voice conversion (no model weights on disk yet)"
+    description_long: |
+      Seed-VC is a zero-shot voice conversion model. Currently no model weights are
+      downloaded to disk. Requires model download before first use.
+    best_configs:
+      - name: "default"
+        f0_method: "rmvpe"
+        pitch_shift: 0
+    runtime_requirements:
+      gpu_vram_mb: 4000
+      cpu_ram_gb: 8
+      required_packages: ["rvc", "torchcrepe"]
+    tags: ["audio", "voice_conversion", "seed-vc"]
+    tags_internal: ["weights_missing"]
+
+  - profile_id: "whisper-cuda"
+    toolchain: "whisper"
+    environment: "${NEXUS_CONTROL_VENV}"
+    python: "${NEXUS_CONTROL_VENV}/bin/python"
+    adapter: "common_lib.nexus_workers.whisper"
+    protocol: "local-http"
+    startup_timeout_seconds: 240
+    idle_timeout_seconds: 600
+    max_workers: 1
+    device: "cuda"
+    capabilities: ["stt"]
+    resource_class: "gpu_heavy"
+    vram_mb: 2000
+    enabled: true
+    state: "enabled"
+    healthcheck_type: "worker_http"
+    healthcheck_path: "/health"
+    working_directory: "${NEXUS_WORKDIR}"
+    environment_vars: {}
+    model_families: ["whisper"]
+    description: "OpenAI Whisper STT (stub implementation - needs real pipeline)"
+    description_long: |
+      Whisper STT worker. Currently a skeleton implementation that returns dummy
+      transcriptions. Needs real transformers pipeline integration.
+    best_configs:
+      - name: "default"
+        model: "large-v3"
+        language: "auto"
+        task: "transcribe"
+    runtime_requirements:
+      gpu_vram_mb: 2000
+      cpu_ram_gb: 4
+    tags: ["audio", "stt", "whisper", "transcription"]
+    tags_internal: ["stub_implementation"]
+
+  # Image Generation Profiles
+  - profile_id: "image-cuda"
+    toolchain: "image"
+    environment: "${NEXUS_TOOLCHAIN_VENVS}/image"
+    python: "${NEXUS_IMAGE_PYTHON:-${NEXUS_TOOLCHAIN_VENVS}/image/.venv/bin/python}"
+    adapter: "common_lib.nexus_workers.image_gen"
+    protocol: "local-http"
+    startup_timeout_seconds: 600
+    idle_timeout_seconds: 600
+    max_workers: 1
+    device: "cuda"
+    capabilities: ["image_gen"]
+    resource_class: "gpu_heavy"
+    vram_mb: 7000
+    enabled: true
+    state: "enabled"
+    healthcheck_type: "worker_http"
+    healthcheck_path: "/health"
+    working_directory: "${NEXUS_WORKDIR}"
+    environment_vars:
+      MOSS_SD_CLI: "${MOSS_SD_CLI:-${NEXUS_ENVS_ROOT}/sd-vulkan/sd-cli}"
+    backend_families: 
+      - "sdxl"
+      - "flux"
+      - "zimage"
+      - "zimage_turbo"
+      - "qwen-image"
+      - "qwen_image_2_1"
+      - "ming"
+      - "ming_image"
+      - "krea2"
+      - "krea2_turbo"
+      - "ernie"
+      - "ernie_image"
+      - "sana"
+      - "sd15"
+      - "stable_diffusion_1_5"
+      - "realvisxl"
+      - "reakrea2-turbo"
+      - "reakrea2"
+      - "fineporn"
+      - "pornmaster-zimage"
+      - "qwen3vl"
+      - "moss-native"
+    description: "Native torch/diffusers image generation (torch 2.6+cu124, diffusers 0.36)"
+    description_long: |
+      Native torch/diffusers image generation pipeline supporting multiple model families.
+      See backends.yaml for per-model configuration (checkpoints, steps, cfg, features).
+    best_configs_ref: "backends.yaml#/profiles/image-cuda"
+    runtime_requirements:
+      gpu_vram_mb: 7000
+      cpu_ram_gb: 16
+      torch_version: "2.6.0+cu124"
+      cuda_version: "12.4"
+      diffusers_version: "0.36.0"
+      transformers_version: "4.57.6"
+      required_packages: ["diffusers==0.36.0", "transformers==4.57.6", "accelerate", "safetensors", "sentencepiece", "gguf"]
+    tags: ["image", "generation", "t2i", "i2i", "inpaint", "outpaint", "sdxl", "flux", "qwen", "ming", "zimage"]
+    tags_internal: ["requires_diffusers_036", "requires_transformers_457"]
+
+  # ── MOSS INT8 ConvRot Native Profile ───────────────────────────────────
+  # Uses native ComfyUI loader with GGUF text encoder on CPU to avoid OOM
+  # on 8 GB VRAM. Text encoding runs on CPU via llama_cpp (~5.5 GB RAM),
+  # DiT runs at full VRAM speed with INT8 weights (~4.5 GB VRAM).
+  - profile_id: "moss-native"
+    toolchain: "image"
+    environment: "${NEXUS_TOOLCHAIN_VENVS}/image"
+    python: "${NEXUS_IMAGE_PYTHON:-${NEXUS_TOOLCHAIN_VENVS}/image/.venv/bin/python}"
+    adapter: "common_lib.nexus_workers.image_gen"
+    protocol: "local-http"
+    startup_timeout_seconds: 600
+    idle_timeout_seconds: 600
+    max_workers: 1
+    device: "cuda"
+    capabilities: ["image_gen"]
+    resource_class: "gpu_heavy"
+    vram_mb: 6000
+    enabled: true
+    state: "enabled"
+    healthcheck_type: "worker_http"
+    healthcheck_path: "/health"
+    working_directory: "${NEXUS_WORKDIR}"
+    environment_vars:
+      MOSS_SD_CLI: "${MOSS_SD_CLI:-${NEXUS_ENVS_ROOT}/sd-vulkan/sd-cli}"
+    backend_families:
+      - "moss-native"
+    description: "Native ComfyUI MOSS INT8 ConvRot (GGUF text encoder on CPU, INT8 DiT on GPU)"
+    description_long: |
+      Native ComfyUI-based pipeline for MOSS INT8 ConvRot models.
+      Uses GGUF int4 Qwen3.5-9B text encoder on CPU via llama_cpp to avoid
+      loading the 9.7 GB INT8 safetensors text encoder on GPU.
+      See backends.yaml for per-model configuration (checkpoints, steps, cfg, features).
+    best_configs_ref: "backends.yaml#/profiles/moss-native"
+    runtime_requirements:
+      gpu_vram_mb: 6000
+      cpu_ram_gb: 16
+      torch_version: "2.6.0+cu124"
+      cuda_version: "12.4"
+      diffusers_version: "0.36.0"
+      transformers_version: "4.57.6"
+      required_packages: ["diffusers==0.36.0", "transformers==4.57.6", "accelerate", "safetensors", "sentencepiece", "gguf", "llama-cpp-python"]
+    tags: ["image", "generation", "t2i", "moss", "int8", "convrot", "native"]
+    tags_internal: ["requires_diffusers_036", "requires_transformers_457", "requires_llama_cpp"]
+
+  - profile_id: "image-sdcli"
+    toolchain: "image-sdcli"
+    environment: "${NEXUS_ENVS_ROOT}/image-sdcli"
+    python: "${NEXUS_TOOLCHAIN_VENVS}/image-sdcli/.venv/bin/python"
+    adapter: "common_lib.nexus_workers.image_gen"
+    protocol: "local-http"
+    startup_timeout_seconds: 600
+    idle_timeout_seconds: 600
+    max_workers: 1
+    device: "cuda"
+    capabilities: ["image_gen"]
+    resource_class: "gpu_heavy"
+    vram_mb: 3200
+    enabled: true
+    state: "enabled"
+    healthcheck_type: "worker_http"
+    healthcheck_path: "/health"
+    working_directory: "${NEXUS_WORKDIR}"
+    environment_vars:
+      MOSS_SD_CLI: "${MOSS_SD_CLI:-${NEXUS_ENVS_ROOT}/sd-vulkan/sd-cli}"
+    backend_families: ["moss-gguf"]
+    description: "GGUF/Vulkan image generation via sd-cli subprocess (no torch in venv)"
+    description_long: |
+      GGUF/Vulkan image generation using the sd-cli binary (Vulkan-based).
+      The worker venv is minimal (~40MB) - only fastapi/uvicorn/httpx/pydantic + common_lib.
+      All heavy lifting (model loading, inference) happens in the sd-cli subprocess
+      which uses Vulkan for GPU compute and streams weights from disk.
+      Only MOSS-Image GGUF models currently use this path.
+    best_configs_ref: "backends.yaml#/profiles/image-sdcli"
+    runtime_requirements:
+      gpu_vram_mb: 3200
+      cpu_ram_gb: 8
+      vulkan: true
+      required_packages: ["fastapi", "uvicorn", "httpx", "pydantic", "gguf", "pillow"]
+    tags: ["image", "generation", "gguf", "vulkan", "sd-cli", "moss"]
+    tags_internal: ["no_torch", "uses_sdcli", "vulkan"]
+
+  # Utility Profiles
+  - profile_id: "echo-cuda"
+    toolchain: "echo"
+    environment: "${NEXUS_CONTROL_VENV}"
+    python: "${NEXUS_CONTROL_VENV}/bin/python"
+    adapter: "common_lib.nexus_workers.echo"
+    protocol: "local-http"
+    startup_timeout_seconds: 240
+    idle_timeout_seconds: 600
+    max_workers: 1
+    device: "cpu"
+    capabilities: ["echo"]
+    resource_class: "cpu_light"
+    vram_mb: 0
+    enabled: true
+    state: "enabled"
+    healthcheck_type: "worker_http"
+    healthcheck_path: "/health"
+    working_directory: "${NEXUS_WORKDIR}"
+    environment_vars: {}
+    model_families: ["echo"]
+    description: "Echo test worker (CPU only, no GPU)"
+    description_long: |
+      Simple echo worker for testing the fabric. Runs on CPU only, no GPU required.
+      Returns the input text prefixed with "echo: ".
+    best_configs: {}
+    runtime_requirements:
+      gpu_vram_mb: 0
+      cpu_ram_gb: 1
+    tags: ["test", "echo", "cpu"]
+    tags_internal: ["cpu_only", "test_worker"]

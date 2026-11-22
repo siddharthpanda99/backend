@@ -1,0 +1,687 @@
+"""
+agents/runtime/routes.py — Thin API layer delegating to common_lib services.
+
+Registered at: /api/v1/agents/runtime/
+"""
+
+from __future__ import annotations
+
+import json
+import asyncio
+import shutil
+import logging
+from typing import Any, Dict, List, Optional
+from pathlib import Path
+
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+
+from fabric.ai_routes.jobs_actor import (
+    capture_job_actor,
+    owned_job_service,
+)
+from fabric.ai_routes.agents.runtime_core import (
+    AGENT_TURN_KIND,
+    AGENT_TURN_TIMEOUT,
+    clear_checkpointer,
+    ensure_agent_executors_registered,
+    get_active_session,
+    get_engine_manager,
+    get_master_agent,
+    load_agent_generator,
+    set_human_feedback_mode,
+    stream_agent_generator,
+)
+
+
+class _LazyVllmManager:
+    """Lazy proxy over the common_lib fleet manager (fabric venv: no sqlmodel)."""
+
+    def __getattr__(self, name):
+        from common_lib.modules.ai_models.llm.vllm_fleet_manager import vllm_fleet
+
+        return getattr(vllm_fleet, name)
+
+
+vllm_manager = _LazyVllmManager()
+
+
+def _get_db_session():
+    # Lazy: the fabric control-plane venv has no sqlalchemy.
+    from common_lib.modules.data_storage.database.connection import get_session
+
+    return get_session
+
+
+def _job_dir(job_id: str):
+    from common_lib.modules.jobs.artifacts import job_dir
+
+    return job_dir(job_id)
+
+
+def _job_service():
+    from common_lib.modules.jobs.service import get_job_service
+
+    return get_job_service()
+
+
+def _builtin_tool_registry():
+    from common_lib.modules.orchestration.agents.agent.execution.tools.registry import (
+        BUILTIN_TOOL_REGISTRY,
+    )
+
+    return BUILTIN_TOOL_REGISTRY
+
+
+def _runtime_service():
+    # Lazy: the fabric control-plane venv has no sqlmodel.
+    from common_lib.modules.agents.runtime import service as _mod
+
+    return _mod
+
+
+def build_model_config(*args, **kwargs):
+    return _runtime_service().build_model_config(*args, **kwargs)
+
+
+def _list_tools(*args, **kwargs):
+    return _runtime_service().list_available_tools(*args, **kwargs)
+
+
+def _list_workflows(*args, **kwargs):
+    return _runtime_service().list_available_workflows(*args, **kwargs)
+
+
+def _list_loops(*args, **kwargs):
+    return _runtime_service().list_available_loops(*args, **kwargs)
+
+
+def _list_commands(*args, **kwargs):
+    return _runtime_service().list_commands(*args, **kwargs)
+
+
+def _list_gemini(*args, **kwargs):
+    return _runtime_service().list_gemini_models(*args, **kwargs)
+
+
+def _sync_commands(*args, **kwargs):
+    return _runtime_service().sync_commands(*args, **kwargs)
+
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(dependencies=[Depends(capture_job_actor)])
+
+
+class DeployRequest(BaseModel):
+    model_path: Optional[str] = None
+    provider: Optional[str] = None
+    agent_id: Optional[str] = "master_agent"
+    agent_display_name: Optional[str] = "Master Agent"
+    tool_ids: Optional[List[str]] = None
+    template_ids: Optional[List[str]] = None
+    system_prompt: Optional[str] = None
+    guardrails: Optional[List] = None
+    use_mcp_discovery: Optional[bool] = False
+    global_search_enabled: Optional[bool] = False
+    workflow_ids: Optional[List[str]] = None
+    engine_id: Optional[str] = None
+
+
+class FleetDeployRequest(BaseModel):
+    model_path: str
+    engine_id: Optional[str] = "main"
+    gpu_memory_utilization: Optional[float] = 0.85
+    max_model_len: Optional[int] = 4096
+    quantization: Optional[str] = "none"
+
+
+class AgentConnectRequest(BaseModel):
+    agent_id: str
+    engine_id: Optional[str] = "main"
+    tool_ids: Optional[List[str]] = None
+    system_prompt: Optional[str] = None
+    template_ids: Optional[List[str]] = None
+    use_mcp_discovery: Optional[bool] = False
+    global_search_enabled: Optional[bool] = False
+
+
+class StreamRequest(BaseModel):
+    message: str
+    session_id: str
+    provider: Optional[str] = None
+    attachments: Optional[List[str]] = None
+    decision: Optional[Dict[str, Any]] = None
+    agent_id: Optional[str] = None
+    system_prompt: Optional[str] = None
+    model_path: Optional[str] = None
+    loop_id: Optional[str] = None
+    # ── Reasoning Mode ──────────────────────────────────────────
+    reasoning_mode: Optional[bool] = False
+    reasoning_plan_id: Optional[str] = None
+    # ``brief`` (default) | ``final`` | ``detailed`` — verbosity of the
+    # per-step ``reasoning`` SSE events.
+    reasoning_level: Optional[str] = "brief"
+    # ── Comprehensive chat settings object ──────────────────────
+    # Optional inline settings object. When omitted, the persisted per-
+    # session chat settings are used (see GET/PUT /settings). Inline values
+    # win over persisted ones for this single turn.
+    settings: Optional[Dict[str, Any]] = None
+
+
+class StateUpdateRequest(BaseModel):
+    history: Optional[str] = None
+    intermediate_steps: Optional[list] = None
+    structured_state: Optional[dict] = None
+    hints: Optional[list] = None
+    operational_metadata: Optional[dict] = None
+
+
+class ClearSessionRequest(BaseModel):
+    hard_reset: bool = False
+
+
+class HITLModeRequest(BaseModel):
+    enabled: bool
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+
+@router.post("/set_human_feedback_mode")
+async def set_hitl_mode(req: HITLModeRequest):
+    set_human_feedback_mode(req.enabled)
+    return {"status": "success", "human_feedback_mode": req.enabled}
+
+
+# ── Comprehensive chat settings object ──────────────────────────────────────
+# GET/PUT/DELETE the full per-session chat settings object so the same
+# configuration is identically available via UI, API and CLI.
+
+
+@router.get("/settings/{session_id}")
+async def get_chat_settings(session_id: str):
+    """Get the full chat settings object for a session (or defaults)."""
+    from common_lib.modules.agents.chat_settings.service import (
+        get_chat_settings_service,
+    )
+
+    return get_chat_settings_service().get_settings(session_id)
+
+
+@router.put("/settings/{session_id}")
+async def put_chat_settings(session_id: str, req: Dict[str, Any]):
+    """Update (merge) the chat settings object for a session.
+
+    Body: a partial ChatSettings payload — only the provided fields change.
+    Returns the merged, persisted settings object.
+    """
+    from common_lib.modules.agents.chat_settings.schemas import ChatSettingsUpdate
+    from common_lib.modules.agents.chat_settings.service import (
+        get_chat_settings_service,
+    )
+
+    update = ChatSettingsUpdate(**dict(req or {}))
+    result = get_chat_settings_service().set_settings(session_id, update)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.delete("/settings/{session_id}")
+async def reset_chat_settings(session_id: str):
+    """Reset a session's chat settings object to the defaults."""
+    from common_lib.modules.agents.chat_settings.service import (
+        get_chat_settings_service,
+    )
+
+    return get_chat_settings_service().reset_settings(session_id)
+
+
+@router.post("/deploy")
+async def deploy(req: DeployRequest):
+    return StreamingResponse(
+        load_agent_generator(
+            model_path=req.model_path,
+            provider=req.provider,
+            agent_id=req.agent_id,
+            agent_display_name=req.agent_display_name,
+            tool_ids=req.tool_ids,
+            template_ids=req.template_ids,
+            system_prompt=req.system_prompt,
+            guardrails=req.guardrails,
+            use_mcp_discovery=req.use_mcp_discovery,
+            global_search_enabled=req.global_search_enabled,
+            workflow_ids=req.workflow_ids,
+            engine_id=req.engine_id or "main",
+        ),
+        media_type="text/event-stream",
+    )
+
+
+@router.post("/fleet/deploy")
+async def fleet_deploy(req: FleetDeployRequest):
+    from common_lib.modules.ai_models.container import AIModelsContainer
+
+    mirror = AIModelsContainer().mirror_service
+    return StreamingResponse(
+        vllm_manager.deploy_engine_node(
+            model_path=req.model_path,
+            engine_id=req.engine_id,
+            gpu_memory_utilization=req.gpu_memory_utilization,
+            max_model_len=req.max_model_len,
+            quantization=req.quantization,
+            compose_file="resources/vllm.compose.yml",
+            mirror_service=mirror,
+        ),
+        media_type="text/event-stream",
+    )
+
+
+@router.post("/agent/connect")
+async def agent_connect(req: AgentConnectRequest):
+    return StreamingResponse(
+        load_agent_generator(
+            agent_id=req.agent_id,
+            engine_id=req.engine_id,
+            tool_ids=req.tool_ids,
+            system_prompt=req.system_prompt,
+            template_ids=req.template_ids,
+            use_mcp_discovery=req.use_mcp_discovery,
+            global_search_enabled=req.global_search_enabled,
+            skip_engine_deploy=True,
+        ),
+        media_type="text/event-stream",
+    )
+
+
+@router.post("/fleet/sync")
+async def fleet_sync():
+    vllm_manager.sync_registry_with_docker()
+    vllm_manager.prune_ghost_containers()
+    return {
+        "status": "success",
+        "message": "Fleet synchronized and ghost containers pruned.",
+    }
+
+
+@router.post("/fleet/terminate/{engine_id}")
+async def fleet_terminate(engine_id: str):
+    return vllm_manager.terminate_engine_node(engine_id)
+
+
+@router.get("/fleet/logs/{engine_id}")
+async def fleet_logs(engine_id: str):
+    container_name = f"vllm-server-{engine_id}"
+    return StreamingResponse(
+        vllm_manager.stream_container_logs(container_name),
+        media_type="text/event-stream",
+    )
+
+
+@router.get("/fleet/status/stream")
+async def fleet_status_stream():
+    async def event_generator():
+        while True:
+            try:
+                payload = vllm_manager.get_cached_status()
+                yield f"data: {json.dumps(payload)}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            await asyncio.sleep(2)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.get("/config")
+async def get_config():
+    from common_lib.core.memory import memory_store as common_memory
+
+    try:
+        return build_model_config(
+            common_memory=common_memory,
+            vllm_manager=vllm_manager,
+        )
+    except Exception as exc:
+        logger.error("Failed to fetch runtime config: %s", exc)
+        return {
+            "models": [],
+            "agents": [],
+            "system_vram_gb": 8.0,
+            "available_provisioning_engines": [],
+        }
+
+
+@router.get("/session")
+async def get_session():
+    sess = get_active_session()
+    if sess.get("status") == "inactive":
+        return {"status": "inactive"}
+
+    agent = get_master_agent()
+    info = {**sess}
+    if agent and hasattr(agent, "model_provider") and agent.model_provider:
+        info.update(agent.model_provider.get_info())
+
+    if "full_definition" in sess:
+        info["agent_definition"] = sess["full_definition"]
+    if "system_prompt" in sess:
+        info["system_prompt"] = sess["system_prompt"]
+    if "session_id" in sess:
+        info["thread_id"] = sess["session_id"]
+
+    return info
+
+
+@router.post("/clear_session")
+async def clear_session(req: ClearSessionRequest):
+    try:
+        if req.hard_reset:
+            sess = get_active_session()
+            if sess.get("provider") == "vllm" and sess.get("model"):
+                logger.info("[Routes] Triggering Hard Reset for model: %s", sess["model"])
+                return StreamingResponse(
+                    load_agent_generator(model_path=sess["model"], provider="vllm"),
+                    media_type="text/event-stream",
+                )
+            else:
+                return {"status": "error", "message": "No active vLLM model to reset."}
+        else:
+            clear_checkpointer()
+            return {"status": "success", "message": "Session history cleared."}
+    except Exception as exc:
+        logger.error("Failed to clear session: %s", exc)
+        return {"status": "error", "message": str(exc)}
+
+
+@router.post("/stream")
+async def stream(req: StreamRequest):
+    # Merge the comprehensive chat settings object into this turn: persisted
+    # per-session settings first, then the inline (per-request) overrides.
+    from common_lib.modules.agents.chat_settings.service import (
+        apply_settings_to_request,
+        get_chat_settings_service,
+    )
+
+    svc = get_chat_settings_service()
+    persisted = svc.get_settings(req.session_id) if svc else {}
+    merged = apply_settings_to_request(persisted, req.settings or {})
+    # The explicit StreamRequest fields ALWAYS win over the settings object
+    # (both persisted and inline). ``is not None`` guards let callers turn a
+    # persisted ``true`` off or downgrade a persisted level explicitly.
+    if req.reasoning_mode is not None:
+        merged["reasoning_mode"] = bool(req.reasoning_mode)
+    if req.reasoning_plan_id is not None:
+        merged["reasoning_plan_id"] = req.reasoning_plan_id
+    if req.reasoning_level is not None:
+        merged["reasoning_level"] = req.reasoning_level
+
+    return StreamingResponse(
+        stream_agent_generator(
+            req.message,
+            req.session_id,
+            decision=req.decision,
+            # Explicit request fields take precedence over persisted settings
+            # (persisted defaults like ``agent_id="master_agent"`` must never
+            # silently override an explicit caller value).
+            agent_id=req.agent_id or merged.get("agent_id"),
+            system_prompt=req.system_prompt or merged.get("system_prompt"),
+            model_path=req.model_path,
+            provider=req.provider or merged.get("provider"),
+            loop_id=req.loop_id,
+            reasoning_mode=bool(merged.get("reasoning_mode", False)),
+            reasoning_plan_id=req.reasoning_plan_id,
+            reasoning_level=str(merged.get("reasoning_level") or "brief"),
+        ),
+        media_type="text/event-stream",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Job-backed agent turns (off the event loop)
+# ---------------------------------------------------------------------------
+# NOTE: ``POST /stream`` above stays inline on purpose: token-level SSE cannot
+# be precomputed into a job artifact, and the generator is async I/O (it does
+# not block the loop the way workflow graph execution did). The endpoints
+# below are the off-loop alternative: submit returns 202 {job_id} immediately,
+# execution runs on a jobs worker thread, and progress streams from job state.
+
+AGENT_JOB_TERMINAL = ("completed", "failed", "cancelled")
+
+
+def _merge_stream_settings(req: StreamRequest) -> Dict[str, Any]:
+    """Merge persisted chat settings with explicit request fields (fast, sync)."""
+    from common_lib.modules.agents.chat_settings.service import (
+        apply_settings_to_request,
+        get_chat_settings_service,
+    )
+
+    svc = get_chat_settings_service()
+    persisted = svc.get_settings(req.session_id) if svc else {}
+    merged = apply_settings_to_request(persisted, req.settings or {})
+    if req.reasoning_mode is not None:
+        merged["reasoning_mode"] = bool(req.reasoning_mode)
+    if req.reasoning_plan_id is not None:
+        merged["reasoning_plan_id"] = req.reasoning_plan_id
+    if req.reasoning_level is not None:
+        merged["reasoning_level"] = req.reasoning_level
+    return merged
+
+
+def _read_turn_transcript(job_id: str) -> Optional[Dict[str, Any]]:
+    """Read the persisted transcript.json artifact for an agent-turn job."""
+    candidate = _job_dir(job_id) / "transcript.json"
+    try:
+        if candidate.is_file():
+            raw: Any = json.loads(candidate.read_text(encoding="utf-8"))
+            return raw if isinstance(raw, dict) else {"value": raw}
+    except Exception as exc:  # noqa: BLE001
+        logger.error("agent turn: could not read transcript for %s: %s", job_id, exc)
+    return None
+
+
+def _turn_job_payload(record: JobRecord) -> Dict[str, Any]:
+    """Serialize an agent-turn job record plus transcript (when completed)."""
+    payload: Dict[str, Any] = record.to_dict()
+    if record.status == "completed":
+        transcript: Optional[Dict[str, Any]] = _read_turn_transcript(record.id)
+        if transcript is not None:
+            payload["transcript"] = transcript
+    return payload
+
+
+@router.post("/stream/job", status_code=202)
+async def submit_stream_job(req: StreamRequest):
+    """Submit an agent turn as a background job; 202 {job_id} immediately."""
+    merged: Dict[str, Any] = _merge_stream_settings(req)
+    ensure_agent_executors_registered()
+    record: JobRecord = owned_job_service().submit(
+        kind=AGENT_TURN_KIND,
+        params={
+            "message": req.message,
+            "session_id": req.session_id,
+            "decision": req.decision,
+            "agent_id": req.agent_id or merged.get("agent_id"),
+            "system_prompt": req.system_prompt or merged.get("system_prompt"),
+            "model_path": req.model_path,
+            "provider": req.provider or merged.get("provider"),
+            "loop_id": req.loop_id,
+            "reasoning_mode": bool(merged.get("reasoning_mode", False)),
+            "reasoning_plan_id": req.reasoning_plan_id,
+            "reasoning_level": str(merged.get("reasoning_level") or "brief"),
+        },
+        timeout=float(AGENT_TURN_TIMEOUT),
+    )
+    return {"job_id": record.id, "status": record.status}
+
+
+@router.get("/stream/job/{job_id}")
+async def stream_job_status(job_id: str):
+    """Return agent-turn job status, progress, and transcript (when done)."""
+    record: JobRecord | None = _job_service().get(job_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+    return {"data": _turn_job_payload(record)}
+
+
+@router.get("/stream/job/{job_id}/events")
+async def stream_job_events(job_id: str):
+    """Stream SSE progress events backed by agent-turn job progress."""
+
+    async def event_generator():
+        import time as _time
+
+        deadline: float = _time.time() + float(AGENT_TURN_TIMEOUT) + 30.0
+        last_progress: float = -1.0
+        yield f"data: {json.dumps({'event_type': 'turn.started', 'job_id': job_id})}\n\n"
+        while True:
+            record: JobRecord | None = _job_service().get(job_id)
+            if record is None:
+                yield f"data: {json.dumps({'event_type': 'error', 'job_id': job_id, 'content': 'job not found'})}\n\n"
+                return
+            if record.progress != last_progress:
+                last_progress = record.progress
+                yield f"data: {json.dumps({'event_type': 'progress', 'job_id': job_id, 'percent': record.progress, 'status': record.status})}\n\n"
+            if record.status in AGENT_JOB_TERMINAL:
+                if record.status == "completed":
+                    transcript: Optional[Dict[str, Any]] = _read_turn_transcript(job_id)
+                    final: Dict[str, Any] = {
+                        "event_type": "agent_complete",
+                        "job_id": job_id,
+                        "content": str((transcript or {}).get("final_answer", "")),
+                    }
+                    yield f"data: {json.dumps(final)}\n\n"
+                else:
+                    yield f"data: {json.dumps({'event_type': 'error', 'job_id': job_id, 'content': record.error or record.status})}\n\n"
+                return
+            if _time.time() > deadline:
+                yield f"data: {json.dumps({'event_type': 'error', 'job_id': job_id, 'content': 'progress poll timed out'})}\n\n"
+                return
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+def _read_session_state(*args, **kwargs):
+    # Lazy: the fabric control-plane venv has no sqlmodel.
+    from common_lib.modules.agents.runtime.service import read_session_state
+
+    return read_session_state(*args, **kwargs)
+
+
+def _update_session_state(*args, **kwargs):
+    from common_lib.modules.agents.runtime.service import update_session_state
+
+    return update_session_state(*args, **kwargs)
+
+
+@router.get("/session_state/{session_id}")
+async def read_session_state_endpoint(
+    session_id: str, thread_id: str = None, db: Session = Depends(_get_db_session)
+):
+    """Read the full LangGraph checkpoint state for a thread, plus DB messages."""
+    try:
+        return _read_session_state(db, session_id, thread_id)
+    except Exception as e:
+        import traceback
+
+        logger.error(f"session_state error: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    try:
+        upload_dir = Path("assets/uploads")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        file_path = upload_dir / file.filename
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "local_path": str(file_path.absolute()),
+            "url": f"/assets/uploads/{file.filename}",
+        }
+    except Exception as exc:
+        logger.error("Upload failed: %s", exc)
+        return {"status": "error", "message": str(exc)}
+
+
+@router.post("/session_state/{session_id}")
+async def update_session_state(session_id: str, req: StateUpdateRequest):
+    updates: Dict[str, Any] = {}
+    if req.history is not None:
+        updates["conversation_history"] = req.history
+    if req.intermediate_steps is not None:
+        updates["intermediate_steps"] = req.intermediate_steps
+    if req.structured_state is not None:
+        updates["structured_state"] = req.structured_state
+    if req.hints is not None:
+        updates["hints"] = req.hints
+    if req.operational_metadata is not None:
+        updates["operational_metadata"] = req.operational_metadata
+
+    res = _update_session_state(session_id, updates)
+    if "error" in res:
+        raise HTTPException(status_code=400, detail=res["error"])
+    return res
+
+
+@router.get("/available_tools")
+async def available_tools():
+    em = get_engine_manager()
+    return _list_tools(_builtin_tool_registry(), em)
+
+
+@router.get("/commands")
+async def list_commands():
+    from common_lib.core.memory import memory_store as common_memory
+
+    return _list_commands(common_memory)
+
+
+@router.post("/commands/sync")
+async def sync_commands():
+    from common_lib.core.memory import memory_store as common_memory
+
+    return _sync_commands(common_memory)
+
+
+@router.get("/available_workflows")
+async def available_workflows():
+    from common_lib.core.memory import memory_store as common_memory
+
+    return _list_workflows(common_memory)
+
+
+@router.get("/available_loops")
+async def available_loops():
+    from common_lib.core.memory import memory_store as common_memory
+
+    return _list_loops(common_memory)
+
+
+@router.get("/gemini_models")
+async def gemini_models():
+    em = get_engine_manager()
+    return _list_gemini(em)
+
+
+@router.post("/set_quota_tier")
+async def set_quota_tier(tier: str):
+    from common_lib.modules.ai_models.llm.quota import quota_manager
+
+    quota_manager.set_tier(tier)
+    return {"status": "success", "tier": tier}
+
+
+@router.post("/sync_quota")
+async def sync_quota(usage_data: Dict[str, Any]):
+    from common_lib.modules.ai_models.llm.quota import quota_manager
+
+    quota_manager.sync_from_client(usage_data)
+    return {"status": "success"}
