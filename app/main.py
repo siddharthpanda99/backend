@@ -239,7 +239,7 @@ def _spawn_background_tasks(app: FastAPI):
                 api_prefix, global_deps = ctx
                 register_routers_background(app, api_prefix, global_deps, deferred)
                 _startup_info(
-                    f"Mounted {len(deferred)} deferred routers (API complete)"
+                    f"Deferred routers registered for on-demand mount: {len(deferred)}"
                 )
             else:
                 _startup_debug("No deferred routers to mount")
@@ -262,16 +262,13 @@ def _spawn_background_tasks(app: FastAPI):
                 f"OpenAPI pre-warm failed (first /docs call will be slow): {e}"
             )
 
-        # ── Phase B: MCP @node warmup (the big import scan, runs in its own thread) ──
-        try:
-            from app.mcp.server import start_node_tool_warmup
-
-            if start_node_tool_warmup():
-                _startup_info("warming @node -> MCP tool registry in background")
-            else:
-                _startup_debug("@node MCP tool registration skipped/complete")
-        except Exception as e:
-            _startup_warn(f"dynamic @node MCP registration skipped: {e}")
+        # ── Phase B: MCP @node warmup is deferred ──
+        # The node scan imports the world and is what drags torch into the
+        # worker at startup. It now starts lazily on first use —
+        # `wait_for_node_tools()` (SSE gate / MCP routes) kicks it off.
+        logger.debug(
+            "MCP @node warmup deferred — starts on first wait_for_node_tools()"
+        )
 
         # ── Phase C: seeding / sync / wiring (parallel where safe) ──
         if os.getenv("NEXUS_SKIP_STARTUP_SEEDING", "0") == "1":
@@ -279,12 +276,15 @@ def _spawn_background_tasks(app: FastAPI):
             return
 
         # Group 1: Independent seeding tasks (can run in parallel)
+        # Node-registry sync is deferred: it used to import torch via
+        # image_processing node discovery at startup even when nothing ever
+        # called the /nodes surface. The /nodes/sync route calls
+        # sync_nodes_on_startup() on demand now.
         parallel_tasks = [
             _seed_rbac_and_themes,
             _seed_keys_and_hitl,
             _seed_connectors,
             _seed_connections_yaml,
-            _sync_nodes_registry,
         ]
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
@@ -420,19 +420,9 @@ def _spawn_background_tasks(app: FastAPI):
         except Exception as conn_se:
             _startup_warn(f"Connections seeding from YAML failed: {conn_se}")
 
-    def _sync_nodes_registry():
-        # ONCE-per-process seed (lifespan background orchestrator only — never
-        # per-request). Warm DB => served from node_definitions without an AST
-        # re-scan; cold DB or NODES_REFRESH=1 => one seed scan + persist.
-        try:
-            from common_lib.modules.image_processing.nodes_registry.startup import (
-                sync_nodes_on_startup,
-            )
-
-            synced = sync_nodes_on_startup()
-            _startup_debug(f"Node registry synced: {synced} nodes discovered")
-        except Exception as se:
-            _startup_warn(f"Node registry sync failed: {se}")
+    # _sync_nodes_registry() (node_definitions sync) used to run here at
+    # startup and was the largest startup-time torch import. It is deferred:
+    # the /nodes/sync route calls sync_nodes_on_startup() on demand now.
 
     def _seed_knowledge_hub():
         try:
@@ -1478,6 +1468,23 @@ def create_app() -> FastAPI:
     deferred = register_routers(app, settings.API_V1_STR, global_deps, sync_only=True)
     app.state._deferred_router_entries = deferred
     app.state.deferred_mount_complete = False
+
+    # ─── Lazy-mount: main APIs at startup, modules on demand ───
+    # Deferred routers hot-mount when a request first matches their
+    # prefix — see app/core/lazy_mount.py. Nothing beyond the always-on
+    # set loads at startup, so the backend boots with the main APIs and
+    # imports each module only when something actually calls it (ram +
+    # startup-time optimization).
+    if deferred:
+        from app.core.lazy_mount import LazyMountMiddleware
+
+        app.add_middleware(
+            LazyMountMiddleware,
+            api_prefix=settings.API_V1_STR,
+            global_deps=global_deps,
+            get_entries=lambda: app.state._deferred_router_entries or [],
+            target_app=app,
+        )
 
     # FastMCP SSE transport — enables opencode / MCP clients to connect directly
     from app.mcp.server import mcp_server, wait_for_node_tools

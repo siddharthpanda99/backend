@@ -401,14 +401,20 @@ def wait_for_node_tools(timeout: float | None = None) -> bool:
     The readiness event, not `_dynamic_nodes_registered`, is the thing to wait
     on: that flag is set *before* the scan begins so concurrent callers do not
     start a second scan, which means it is true while the server is still empty.
+
+    The scan itself is lazy: nothing starts at startup, the first
+    ``wait_for_node_tools()`` call kicks off the background scan via
+    ``start_node_tool_warmup()`` and then waits for it.
     """
     if _node_tools_ready.is_set():
         return True
     if _node_tools_warmup_thread is None and not _dynamic_nodes_registered:
-        # Nothing has kicked off registration: do it inline rather than return
-        # early with an empty tool list.
-        register_dynamic_node_tools_once()
-        return _node_tools_ready.is_set()
+        # Nothing has kicked off registration: start the background scan now
+        # (deferred from startup) rather than returning early with an empty
+        # tool list. With MCP_NODE_TOOLS_WARMUP=0/off,
+        # start_node_tool_warmup() runs the registration inline and returns
+        # False — ready is then set by the time wait() runs.
+        start_node_tool_warmup()
     return _node_tools_ready.wait(timeout)
 
 

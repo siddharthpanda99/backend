@@ -1541,6 +1541,67 @@ def register_routers(
         ]
 
     # ----------------------------------------------------------------
+    # Lazy factories for module routers that are heavy to import.
+    #
+    # ROUTER_DEFINITIONS previously embedded eager `__import__` calls
+    # (and eager factory-closure calls) for a handful of module routers.
+    # That imported the modules — torch, media stacks — at
+    # register_routers() time even though every one of these entries is
+    # deferred. Each factory below defers the import to mount time; all
+    # other entries use the same `def` + `from ... import router;
+    # return router` pattern via mount_router_entry's factory support.
+    # ----------------------------------------------------------------
+    def _image_processing_router():
+        from app.modules.image_processing.routes import router
+
+        return router
+
+    def _image_processing_creative_studio_router():
+        from app.modules.image_processing.routes import creative_studio_router
+
+        return creative_studio_router
+
+    def _image_processing_dev_mode_router():
+        from app.modules.image_processing.routes import dev_mode_router
+
+        return dev_mode_router
+
+    def _data_storage_router():
+        from app.modules.data_storage.routes.router import router
+
+        return router
+
+    def _education_router():
+        from app.modules.education.routes.router import router
+
+        return router
+
+    def _db_provisioning_router():
+        from app.modules.db_provisioning.routes.router import router
+
+        return router
+
+    def _file_system_router():
+        from app.modules.file_system.routes.router import router
+
+        return router
+
+    def _auto_ontology_router():
+        from app.modules.auto_ontology.routes import router
+
+        return router
+
+    def _assignments_router():
+        from app.modules.assignments.routes import router
+
+        return router
+
+    def _request_evaluator_router():
+        from app.modules.request_evaluator.routes import router
+
+        return router
+
+    # ----------------------------------------------------------------
     # Declarative registry
     # Each entry maps to a single app.include_router() call.
     # auth=False means the router manages its own security.
@@ -1898,7 +1959,7 @@ def register_routers(
         },
         # ── Vision & Media ─────────────────────────────────────────
         {
-            "router": _sam3_router(),
+            "router": _sam3_router,
             "prefix": "/sam3",
             "tags": ["SAM3 Segmentation"],
             "auth": True,
@@ -3092,9 +3153,7 @@ def register_routers(
         *_secrets_manager_routers(),
         # ── Image Intelligence Platform ───────────────────────────
         {
-            "router": __import__(
-                "app.modules.image_processing.routes", fromlist=["router"]
-            ).router,
+            "router": _image_processing_router,
             "prefix": "/image-processing",
             "tags": ["Image Intelligence Platform"],
             "auth": True,
@@ -3102,10 +3161,7 @@ def register_routers(
         },
         # ── Creative Studio (YAML Recipe Workflows) ───────────────────
         {
-            "router": __import__(
-                "app.modules.image_processing.routes",
-                fromlist=["creative_studio_router"],
-            ).creative_studio_router,
+            "router": _image_processing_creative_studio_router,
             "prefix": "/image-processing/creative-studio",
             "tags": ["Creative Studio"],
             "auth": True,
@@ -3113,10 +3169,7 @@ def register_routers(
         },
         # ── Dev Mode Image Generation (Direct Host CLI) ──────────────
         {
-            "router": __import__(
-                "app.modules.image_processing.routes",
-                fromlist=["dev_mode_router"],
-            ).dev_mode_router,
+            "router": _image_processing_dev_mode_router,
             "prefix": "/image-processing/dev-mode",
             "tags": ["Dev Mode Image Generation"],
             "auth": True,
@@ -3124,9 +3177,7 @@ def register_routers(
         },
         # ── Data Storage ──────────────────────────────────────────
         {
-            "router": __import__(
-                "app.modules.data_storage.routes.router", fromlist=["router"]
-            ).router,
+            "router": _data_storage_router,
             "prefix": "/data-storage",
             "tags": ["Data Storage"],
             "auth": True,
@@ -3134,9 +3185,7 @@ def register_routers(
         },
         # ── Education ────────────────────────────────────────────
         {
-            "router": __import__(
-                "app.modules.education.routes.router", fromlist=["router"]
-            ).router,
+            "router": _education_router,
             "prefix": "/education",
             "tags": ["Education"],
             "auth": True,
@@ -3144,9 +3193,7 @@ def register_routers(
         },
         # ── DB Provisioning ──────────────────────────────────────
         {
-            "router": __import__(
-                "app.modules.db_provisioning.routes.router", fromlist=["router"]
-            ).router,
+            "router": _db_provisioning_router,
             "prefix": "/db-provisioning",
             "tags": ["DB Provisioning"],
             "auth": True,
@@ -3154,9 +3201,7 @@ def register_routers(
         },
         # ── File System ──────────────────────────────────────────
         {
-            "router": __import__(
-                "app.modules.file_system.routes.router", fromlist=["router"]
-            ).router,
+            "router": _file_system_router,
             "prefix": "/file-system",
             "tags": ["File System"],
             "auth": True,
@@ -3253,7 +3298,7 @@ def register_routers(
         # common_lib/modules/orchestration/instruction_to_workflow/docs/08_api_contract.md
         # for the full contract.
         {
-            "router": _i2w_router(),
+            "router": _i2w_router,
             "prefix": "/i2w",
             "tags": ["Instruction-to-Workflow (I2W)"],
             "auth": False,  # per-endpoint auth via i2w_deps()
@@ -3277,9 +3322,7 @@ def register_routers(
         # Feature-flag gated: AUTO_ONTOLOGY_ENABLED (master) + sub-flags
         # AUTO_ONTOLOGY_INGESTION / AUTO_ONTOLOGY_QA / AUTO_ONTOLOGY_MCP / AUTO_ONTOLOGY_UI
         {
-            "router": __import__(
-                "app.modules.auto_ontology.routes", fromlist=["router"]
-            ).router,
+            "router": _auto_ontology_router,
             "prefix": "/auto-ontology",
             "tags": ["Auto-Ontology"],
             "auth": True,
@@ -3316,9 +3359,7 @@ def register_routers(
         },
         # Gate + Assessment → Mandate issuance (dsh-superagent Eval pattern)
         {
-            "router": __import__(
-                "app.modules.request_evaluator.routes", fromlist=["router"]
-            ).router,
+            "router": _request_evaluator_router,
             "prefix": "/request-evaluator",
             "tags": ["Request Evaluator"],
             "auth": True,
@@ -3327,9 +3368,7 @@ def register_routers(
         },
         # Worker slots, DshExecutor, background jobs (dsh-superagent Assignments)
         {
-            "router": __import__(
-                "app.modules.assignments.routes", fromlist=["router"]
-            ).router,
+            "router": _assignments_router,
             "prefix": "/assignments",
             "tags": ["Assignments"],
             "auth": True,
@@ -3415,40 +3454,24 @@ def register_routers_background(
     global_deps: List[Any],
     deferred_entries: list,
 ) -> None:
-    """Mount deferred router entries in background after startup.
+    """Register deferred routers for on-demand mounting.
 
-    This should be called from a background thread after the initial
-    synchronous startup completes.
+    This runs from the post-bind orchestrator. It no longer mounts
+    everything: ``LazyMountMiddleware`` (app/core/lazy_mount.py) hot-mounts
+    an entry the first time a request matches its prefix. Deferred routers
+    therefore stay unloaded unless something actually calls their routes —
+    main APIs load at startup, modules load when demanded (ram + startup
+    time optimization).
     """
     if not deferred_entries:
         logger.info("Background router registration: no deferred entries")
         return
 
-    logger.info("Background: Mounting %d deferred routers...", len(deferred_entries))
-
-    # Prune again in case feature flags changed during startup
-    try:
-        active_deferred = prune_router_definitions(deferred_entries)
-    except Exception:
-        logger.warning(
-            "Background router pruning failed — mounting all %d deferred routers (fail-open)",
-            len(deferred_entries),
-            exc_info=True,
-        )
-        active_deferred = deferred_entries
-
-    # Mount deferred entries
-    active_ids = {id(e) for e in active_deferred}
-    for position, entry in enumerate(deferred_entries):
-        if entry not in active_deferred:
-            continue
-        if id(entry) not in active_ids:
-            continue
-        mount_router_entry(
-            app, entry, api_prefix, global_deps, live=False, position=position
-        )
-
-    logger.info("Background: Registered %d deferred routers", len(active_deferred))
+    logger.info(
+        "Background: %d deferred routers registered for on-demand mount "
+        "(LazyMountMiddleware) — nothing mounts at startup",
+        len(deferred_entries),
+    )
 
 
 __all__ = ["register_routers", "ROUTER_DEFINITIONS", "prune_router_definitions"]
