@@ -48,6 +48,7 @@ from common_lib.modules.vision.runtime_service import (
     unload_model,
     generate_image,
 )
+from common_lib.modules.image_processing.native_stacks import get_all_native_stacks
 from common_lib.modules.image_processing.controllers.vision_task_controller import (
     VisionTaskController,
 )
@@ -162,7 +163,7 @@ async def list_swap_models():
 
 @router.get("/face-restore-models", response_model=List[str])
 async def list_face_restore_models():
-    from common_lib.modules.image_processing.nodes.reactor.base import (
+    from common_lib.modules.integration.ports.image_processing.image_processing import (
         get_facerestore_models,
     )
 
@@ -326,6 +327,16 @@ async def runtime_list_families():
     """List all supported model families with capabilities."""
     families = list_supported_families()
     return RuntimeFamiliesResponse(families=[RuntimeFamilyInfo(**f) for f in families])
+
+
+@router.get("/native-stacks")
+async def vision_native_stacks():
+    """Report file readiness for all native image stacks (zimage, ernie, qwen21, moss).
+
+    Returns per-stack readiness based on the native loaders' exact path constants
+    (checkpoints/<stack>/...), which differ from the registry's file_path layout.
+    """
+    return get_all_native_stacks()
 
 
 def _ensure_vision_jobs():
