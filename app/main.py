@@ -931,6 +931,19 @@ def _spawn_background_tasks(app: FastAPI):
                 print(f"Warning: Embedding registry sync failed: {ei}")
 
             report = sync_manager.sync_all_from_files()
+            
+            # Also sync @node tools from Python code to DB (for tool search via DB)
+            from common_lib.modules.common.feature_flags import is_enabled
+            if is_enabled('ORCHESTRATION_NODE_TOOL_SYNC'):
+                from common_lib.modules.orchestration.infrastructure.sync.generic_sync import (
+                    generic_sync_entity_type,
+                )
+                from common_lib.paths import COMMON_LIB_SRC
+                node_tool_imported, node_tool_skipped, node_tool_errors = generic_sync_entity_type(
+                    'node_tool', str(COMMON_LIB_SRC), common_memory, force=False
+                )
+                if node_tool_imported > 0:
+                    print(f"[Sync] @node tools: {node_tool_imported} imported, {node_tool_skipped} skipped")
 
             t_count = len(common_memory.list_tool_definitions())
             w_count = len(common_memory.list_workflow_definitions())

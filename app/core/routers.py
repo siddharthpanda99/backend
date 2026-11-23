@@ -587,6 +587,16 @@ def register_routers(
 
         return router
 
+    def _workflow_app_mode_router():
+        from app.modules.workflows.routes.app_mode_routes import router
+
+        return router
+
+    def _workflow_stepper_router():
+        from app.modules.workflows.routes.stepper_routes import router
+
+        return router
+
     def _tools_router():
         from app.modules.tools.routes.index import router
 
@@ -1812,6 +1822,20 @@ def register_routers(
             "router": _workflows_router,
             "prefix": "/workflows",
             "tags": ["Workflows"],
+            "auth": True,
+            "module": "workflows",
+        },
+        {
+            "router": _workflow_app_mode_router,
+            "prefix": "/workflows/app-mode",
+            "tags": ["Workflow App Mode"],
+            "auth": True,
+            "module": "workflows",
+        },
+        {
+            "router": _workflow_stepper_router,
+            "prefix": "/workflows/stepper",
+            "tags": ["Workflow Stepper"],
             "auth": True,
             "module": "workflows",
         },
