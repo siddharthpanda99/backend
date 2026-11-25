@@ -129,6 +129,7 @@ from app.mcp.tools.dataset_management import register_dataset_management_tools
 from app.mcp.tools.decision_engine import register_decision_engine_tools
 from app.mcp.tools.cognitive_runtime import register_cognitive_runtime_tools
 from app.mcp.tools.cli_investigation import register_cli_investigation_tools
+from app.mcp.tools.entity_studio import register_entity_studio_tools
 
 # Setup MCP-specific logging
 logging.basicConfig(level=logging.INFO)
@@ -261,6 +262,7 @@ register_i2w_tools(mcp_server)
 register_decision_engine_tools(mcp_server)
 register_cognitive_runtime_tools(mcp_server)
 register_cli_investigation_tools(mcp_server)
+register_entity_studio_tools(mcp_server)
 
 # 3. Register Modular Resources
 register_cognitive_resources(mcp_server)

@@ -223,3 +223,10 @@ def resolve_video_processing_service():
     )
 
     return get_video_processing_service()
+
+
+def resolve_entity_studio_service():
+    """Helper to get Entity Studio creation service."""
+    from entity_studio.api import EntityCreationService
+
+    return EntityCreationService()

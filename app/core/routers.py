@@ -941,6 +941,16 @@ def register_routers(
 
         return router
 
+    def _entity_studio_router():
+        from entity_studio.api import router
+
+        return router
+
+    def _ai_augmentation_router():
+        from entity_studio.ai_augmentation import router
+
+        return router
+
     def _runtime_fabric_generate_router():
         from app.modules.runtime_fabric.routes.generate_routes import router
 
@@ -1344,6 +1354,12 @@ def register_routers(
 
     def _behaviour_router():
         from common_lib.modules.orchestration.behaviour.api import router
+
+        return router
+
+    def _entity_studio_router():
+        """Lazy-load Entity Studio router (Atoms, Molecules, Organisms, AI-Assisted, Lineage, Evolution)."""
+        from app.modules.entity_studio.routes import router
 
         return router
 
@@ -2094,6 +2110,22 @@ def register_routers(
             "auth": True,
             "module": "skills_gateway",
             "feature_flag": "SKILLS_GATEWAY_ENABLED",
+        },
+        {
+            "router": _entity_studio_router,
+            "prefix": "/entity-studio",
+            "tags": ["Entity Studio"],
+            "auth": True,
+            "module": "entity_studio",
+            "feature_flag": "ENTITY_STUDIO_ENABLED",
+        },
+        {
+            "router": _ai_augmentation_router,
+            "prefix": "/ai-augmentation",
+            "tags": ["AI Augmentation"],
+            "auth": True,
+            "module": "entity_studio",
+            "feature_flag": "ENTITY_STUDIO_ENABLED",
         },
         {
             # Runtime Fabric admin surface (profiles/workers/GPU/jobs).
@@ -3259,6 +3291,15 @@ def register_routers(
             "tags": ["AutoResearch"],
             "auth": True,
             "module": "knowledge_engine",
+        },
+        # ── Entity Studio (Composable Entity Authoring) ───────────
+        {
+            "router": _entity_studio_router,
+            "prefix": "/entity-studio",
+            "tags": ["Entity Studio"],
+            "auth": True,
+            "module": "entity_studio",
+            "feature_flag": "ENTITY_STUDIO_ENABLED",
         },
         # ── Response Templates (CRUD for MD templates) ──────────
         {
