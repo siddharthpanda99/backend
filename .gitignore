@@ -114,3 +114,4 @@ app/resources/*
 scratch/external_wildcards/
 scratch/nul
 nul
+clean-start.sh
