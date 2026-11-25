@@ -24,13 +24,15 @@ async def get_slos():
     for ev in evaluations:
         if "error" in ev:
             continue
-        mapped_slos.append({
-            "name": ev["name"],
-            "target": ev["target"] * 100,  # e.g., 99.0 instead of 0.99
-            "current": ev["current_value"] * 100,  # e.g., 99.5 instead of 0.995
-            "budget": ev["error_budget_remaining_pct"],
-            "eval_window": "7d" if ev["window_seconds"] == 86400 * 7 else "24h"
-        })
+        mapped_slos.append(
+            {
+                "name": ev["name"],
+                "target": ev["target"] * 100,  # e.g., 99.0 instead of 0.99
+                "current": ev["current_value"] * 100,  # e.g., 99.5 instead of 0.995
+                "budget": ev["error_budget_remaining_pct"],
+                "eval_window": "7d" if ev["window_seconds"] == 86400 * 7 else "24h",
+            }
+        )
     return mapped_slos
 
 
@@ -42,18 +44,22 @@ async def get_traces():
     obs = get_observability()
     flat_traces = []
     for span in obs._spans:
-        flat_traces.append({
-            "id": span.context.trace_id,
-            "operation": span.name,
-            "module": span.attributes.get("module", "agentic_os"),
-            "duration_ms": round(span.duration_ms, 2),
-            "status": span.status,
-            "timestamp": datetime.fromtimestamp(span.start_time, timezone.utc).isoformat(),
-            "tags": [str(v) for v in span.attributes.get("tags", [])],
-            "cost": span.attributes.get("cost"),
-            "tokens": span.attributes.get("tokens"),
-            "metadata": span.attributes,
-        })
+        flat_traces.append(
+            {
+                "id": span.context.trace_id,
+                "operation": span.name,
+                "module": span.attributes.get("module", "agentic_os"),
+                "duration_ms": round(span.duration_ms, 2),
+                "status": span.status,
+                "timestamp": datetime.fromtimestamp(
+                    span.start_time, timezone.utc
+                ).isoformat(),
+                "tags": [str(v) for v in span.attributes.get("tags", [])],
+                "cost": span.attributes.get("cost"),
+                "tokens": span.attributes.get("tokens"),
+                "metadata": span.attributes,
+            }
+        )
     flat_traces.reverse()
     return flat_traces
 
@@ -66,23 +72,27 @@ async def get_metrics():
     obs = get_observability()
     metrics_data = obs.get_all_metrics()
     flat_metrics = []
-    
+
     # Map counters
     for name, val in metrics_data.get("counters", {}).items():
-        flat_metrics.append({
-            "name": name,
-            "value": val,
-            "unit": "count",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+        flat_metrics.append(
+            {
+                "name": name,
+                "value": val,
+                "unit": "count",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
     # Map gauges
     for name, val in metrics_data.get("gauges", {}).items():
-        flat_metrics.append({
-            "name": name,
-            "value": val,
-            "unit": "gauge",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+        flat_metrics.append(
+            {
+                "name": name,
+                "value": val,
+                "unit": "gauge",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
     return flat_metrics
 
 
@@ -94,14 +104,16 @@ async def get_alerts():
     alerts = obs.get_active_alerts()
     flat_alerts = []
     for alert in alerts:
-        flat_alerts.append({
-            "id": alert.rule_name,
-            "name": alert.rule_name.replace("_", " ").title(),
-            "severity": alert.severity,
-            "status": "firing",
-            "message": alert.message,
-            "timestamp": alert.triggered_at,
-        })
+        flat_alerts.append(
+            {
+                "id": alert.rule_name,
+                "name": alert.rule_name.replace("_", " ").title(),
+                "severity": alert.severity,
+                "status": "firing",
+                "message": alert.message,
+                "timestamp": alert.triggered_at,
+            }
+        )
     return flat_alerts
 
 
@@ -142,14 +154,101 @@ async def get_lineage(
 # ── Cost Summary (NEX-P1-003) ──────────────────────────────────────────────
 # Thin route: logic lives in common_lib.modules.observability.cost_tracker
 
+
 @router.get("/observability/cost/summary")
 async def get_cost_summary(
     tenant_id: str | None = None,
     group_by: str = "skill",
 ):
-    """Get cost aggregation grouped by skill/model/workflow/agent (NEX-P1-003)."""
+    """Get cost aggregation grouped by skill/model/workflow/agent (NEX-P1-003).
+
+    Returns the format expected by the frontend CostSummary interface:
+    {
+      tenant: string,
+      group_by: "skill" | "model" | "workflow",
+      current_cost_usd: number,
+      projected_cost_usd: number,
+      budget_usd: number | null,
+      budget_remaining_usd: number | null,
+      budget_consumed_percent: number | null,
+      warning_threshold_percent: number,
+      over_budget: boolean,
+      rows: CostSummaryRow[]
+    }
+    """
     try:
-        from common_lib.modules.observability.cost_tracker import get_cost_aggregation_service
+        from common_lib.modules.observability.cost_tracker import (
+            get_cost_aggregation_service,
+        )
+
+        svc = get_cost_aggregation_service()
+        if not svc.is_enabled():
+            # Return empty CostSummary structure when disabled
+            return {
+                "tenant": tenant_id or "default",
+                "group_by": group_by,
+                "current_cost_usd": 0.0,
+                "projected_cost_usd": 0.0,
+                "budget_usd": None,
+                "budget_remaining_usd": None,
+                "budget_consumed_percent": None,
+                "warning_threshold_percent": 80,
+                "over_budget": False,
+                "rows": [],
+            }
+
+        rows = svc.get_cost_summary(tenant_id=tenant_id, group_by=group_by)
+
+        # Compute summary fields from rows
+        total_cost = sum(r.get("total_cost_usd", 0) for r in rows)
+        total_runs = sum(r.get("event_count", 0) for r in rows)
+
+        return {
+            "tenant": tenant_id or "default",
+            "group_by": group_by,
+            "current_cost_usd": round(total_cost, 6),
+            "projected_cost_usd": round(total_cost * 1.1, 6),  # Simple projection
+            "budget_usd": None,
+            "budget_remaining_usd": None,
+            "budget_consumed_percent": None,
+            "warning_threshold_percent": 80,
+            "over_budget": False,
+            "rows": [
+                {
+                    "key": r.get(group_by, r.get("skill", "unknown")),
+                    "runs": r.get("event_count", 0),
+                    "successful_runs": r.get(
+                        "event_count", 0
+                    ),  # All events are successful by definition
+                    "tokens_in": r.get("total_input_tokens", 0),
+                    "tokens_out": r.get("total_output_tokens", 0),
+                    "total_cost_usd": r.get("total_cost_usd", 0),
+                    "cost_per_success_usd": r.get("avg_cost_usd", 0),
+                }
+                for r in rows
+            ],
+        }
+    except Exception as e:
+        from fastapi import HTTPException
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to get cost summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/observability/cost/events")
+async def get_cost_events(
+    tenant_id: str | None = None,
+    limit: int = 100,
+    since: str | None = None,
+    until: str | None = None,
+):
+    """Get raw cost events for debugging/drill-down (NEX-P1-003)."""
+    try:
+        from common_lib.modules.observability.cost_tracker import (
+            get_cost_aggregation_service,
+        )
 
         svc = get_cost_aggregation_service()
         if not svc.is_enabled():
@@ -158,13 +257,72 @@ async def get_cost_summary(
                 "message": "Cost ledger disabled. Set OBSERVABILITY_COST_LEDGER=1 to enable.",
                 "data": [],
             }
-        data = svc.get_cost_summary(tenant_id=tenant_id, group_by=group_by)
-        return {"enabled": True, "group_by": group_by, "data": data}
+
+        from common_lib.modules.integration.ports.data_storage.data_storage_port import (
+            get_data_storage_session,
+        )
+        from datetime import datetime
+        from sqlalchemy import select
+
+        get_session = get_data_storage_session()
+        if get_session is None:
+            return {"enabled": True, "data": []}
+
+        db_gen = get_session()
+        session = next(db_gen) if hasattr(db_gen, "__next__") else db_gen
+        try:
+            from common_lib.modules.observability.cost_tracker import CostEvent
+
+            query = select(CostEvent).where(
+                CostEvent.tenant_id == tenant_id if tenant_id else True
+            )
+            if since:
+                query = query.where(
+                    CostEvent.created_at >= datetime.fromisoformat(since)
+                )
+            if until:
+                query = query.where(
+                    CostEvent.created_at <= datetime.fromisoformat(until)
+                )
+            query = query.order_by(CostEvent.created_at.desc()).limit(limit)
+
+            results = session.exec(query).all()
+            return {
+                "enabled": True,
+                "data": [
+                    {
+                        "id": str(r.id),
+                        "tenant_id": r.tenant_id,
+                        "skill_id": r.skill_id,
+                        "model_id": r.model_id,
+                        "workflow_id": r.workflow_id,
+                        "agent_id": r.agent_id,
+                        "input_tokens": r.input_tokens,
+                        "output_tokens": r.output_tokens,
+                        "tool_calls": r.tool_calls,
+                        "input_cost_usd": r.input_cost_usd,
+                        "output_cost_usd": r.output_cost_usd,
+                        "total_cost_usd": r.total_cost_usd,
+                        "outcome": r.outcome,
+                        "fallback_cause": r.fallback_cause,
+                        "created_at": r.created_at.isoformat()
+                        if r.created_at
+                        else None,
+                    }
+                    for r in results
+                ],
+            }
+        finally:
+            try:
+                db_gen.close()
+            except Exception:
+                pass
     except Exception as e:
         from fastapi import HTTPException
         import logging
+
         logger = logging.getLogger(__name__)
-        logger.error(f"Failed to get cost summary: {e}")
+        logger.error(f"Failed to get cost events: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -174,7 +332,9 @@ async def get_cost_per_outcome(
 ):
     """Get cost per successful outcome grouped by outcome class (NEX-P1-003)."""
     try:
-        from common_lib.modules.observability.cost_tracker import get_cost_aggregation_service
+        from common_lib.modules.observability.cost_tracker import (
+            get_cost_aggregation_service,
+        )
 
         svc = get_cost_aggregation_service()
         if not svc.is_enabled():
@@ -188,12 +348,14 @@ async def get_cost_per_outcome(
     except Exception as e:
         from fastapi import HTTPException
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Failed to get cost per outcome: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Errors Breakdown ──────────────────────────────────────────────────────
+
 
 @router.get("/observability/errors/breakdown")
 async def get_errors_breakdown():
@@ -203,30 +365,30 @@ async def get_errors_breakdown():
 
         obs = get_observability()
         metrics_data = obs.get_all_metrics()
-        
+
         # Extract error-related metrics
         error_metrics = {}
         for name, val in metrics_data.get("counters", {}).items():
             if "error" in name.lower() or "failure" in name.lower():
                 error_metrics[name] = val
-        
+
         # Also check for error rates in gauges
         for name, val in metrics_data.get("gauges", {}).items():
             if "error" in name.lower() or "failure" in name.lower():
                 error_metrics[name] = val
-        
+
         # Group by module/operation from traces
         error_by_module = {}
         error_by_operation = {}
-        
+
         for span in obs._spans:
             if span.status in ("error", "failure"):
                 module = span.attributes.get("module", "unknown")
                 operation = span.name
-                
+
                 error_by_module[module] = error_by_module.get(module, 0) + 1
                 error_by_operation[operation] = error_by_operation.get(operation, 0) + 1
-        
+
         return {
             "error_counters": error_metrics,
             "by_module": error_by_module,
@@ -236,6 +398,7 @@ async def get_errors_breakdown():
     except Exception as e:
         from fastapi import HTTPException
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Failed to get errors breakdown: {e}")
         raise HTTPException(status_code=500, detail=str(e))

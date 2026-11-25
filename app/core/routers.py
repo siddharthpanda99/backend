@@ -936,6 +936,11 @@ def register_routers(
 
         return router
 
+    def _skills_gateway_router():
+        from app.modules.skills_gateway.routes import router
+
+        return router
+
     def _runtime_fabric_generate_router():
         from app.modules.runtime_fabric.routes.generate_routes import router
 
@@ -2081,6 +2086,14 @@ def register_routers(
             "tags": ["Audio & TTS"],
             "auth": True,
             "module": "audio",
+        },
+        {
+            "router": _skills_gateway_router,
+            "prefix": "/skills",
+            "tags": ["Skills Gateway"],
+            "auth": True,
+            "module": "skills_gateway",
+            "feature_flag": "SKILLS_GATEWAY_ENABLED",
         },
         {
             # Runtime Fabric admin surface (profiles/workers/GPU/jobs).

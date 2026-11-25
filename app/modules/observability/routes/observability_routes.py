@@ -23,6 +23,7 @@ router = APIRouter(prefix="/observability", tags=["Observability"])
 
 # ── Request/Response Models ─────────────────────────────────────────────────
 
+
 class TraceCreateRequest(BaseModel):
     name: str
     session_id: Optional[str] = None
@@ -68,6 +69,7 @@ class FlowCreateRequest(BaseModel):
 
 # ── Langfuse Endpoints ──────────────────────────────────────────────────────
 
+
 @router.get("/langfuse/status")
 async def get_langfuse_status():
     """Get Langfuse integration status."""
@@ -86,12 +88,14 @@ async def get_langfuse_status():
 async def create_langfuse_trace(request: TraceCreateRequest):
     """Create a new Langfuse trace."""
     try:
-        from common_lib.modules.observability.langfuse_integration import _get_langfuse_client
-        
+        from common_lib.modules.observability.langfuse_integration import (
+            _get_langfuse_client,
+        )
+
         client = _get_langfuse_client()
         if not client:
             raise HTTPException(status_code=503, detail="Langfuse not configured")
-        
+
         trace = client.trace(
             name=request.name,
             session_id=request.session_id,
@@ -99,7 +103,7 @@ async def create_langfuse_trace(request: TraceCreateRequest):
             metadata=request.metadata or {},
             tags=request.tags or [],
         )
-        
+
         return {
             "trace_id": trace.id,
             "name": request.name,
@@ -116,19 +120,21 @@ async def create_langfuse_trace(request: TraceCreateRequest):
 async def create_langfuse_span(trace_id: str, request: SpanCreateRequest):
     """Create a span within a trace."""
     try:
-        from common_lib.modules.observability.langfuse_integration import _get_langfuse_client
-        
+        from common_lib.modules.observability.langfuse_integration import (
+            _get_langfuse_client,
+        )
+
         client = _get_langfuse_client()
         if not client:
             raise HTTPException(status_code=503, detail="Langfuse not configured")
-        
+
         span = client.span(
             trace_id=trace_id,
             name=request.name,
             input=request.input_data,
             metadata=request.metadata or {},
         )
-        
+
         return {
             "span_id": span.id,
             "trace_id": trace_id,
@@ -146,19 +152,21 @@ async def create_langfuse_span(trace_id: str, request: SpanCreateRequest):
 async def score_langfuse_trace(trace_id: str, request: ScoreRequest):
     """Add a score/evaluation to a trace."""
     try:
-        from common_lib.modules.observability.langfuse_integration import _get_langfuse_client
-        
+        from common_lib.modules.observability.langfuse_integration import (
+            _get_langfuse_client,
+        )
+
         client = _get_langfuse_client()
         if not client:
             raise HTTPException(status_code=503, detail="Langfuse not configured")
-        
+
         score = client.score(
             trace_id=trace_id,
             name=request.name,
             value=request.value,
             comment=request.comment,
         )
-        
+
         return {
             "score_id": score.id,
             "trace_id": trace_id,
@@ -177,12 +185,14 @@ async def score_langfuse_trace(trace_id: str, request: ScoreRequest):
 async def get_langfuse_trace(trace_id: str):
     """Get a Langfuse trace by ID."""
     try:
-        from common_lib.modules.observability.langfuse_integration import _get_langfuse_client
-        
+        from common_lib.modules.observability.langfuse_integration import (
+            _get_langfuse_client,
+        )
+
         client = _get_langfuse_client()
         if not client:
             raise HTTPException(status_code=503, detail="Langfuse not configured")
-        
+
         trace = client.get_trace(trace_id)
         return trace
     except HTTPException:
@@ -200,10 +210,12 @@ async def list_langfuse_traces(
 ):
     """List Langfuse traces with optional filters."""
     try:
-        from common_lib.modules.observability.langfuse_integration import _get_langfuse_client
+        from common_lib.modules.observability.langfuse_integration import (
+            _get_langfuse_client,
+        )
         import uuid
         from datetime import datetime, timezone, timedelta
-        
+
         client = _get_langfuse_client()
         if not client:
             now = datetime.now(timezone.utc)
@@ -218,7 +230,7 @@ async def list_langfuse_traces(
                     "tags": ["prod", "agent-v3"],
                     "cost": 0.0042,
                     "tokens": 2100,
-                    "metadata": {"user_id": "user-4819", "model": "gemini-1.5-pro"}
+                    "metadata": {"user_id": "user-4819", "model": "gemini-1.5-pro"},
                 },
                 {
                     "id": f"lf-{uuid.uuid4()}",
@@ -230,7 +242,7 @@ async def list_langfuse_traces(
                     "tags": ["memory-retrieval"],
                     "cost": 0.0,
                     "tokens": 0,
-                    "metadata": {"index": "agentic-os-kb"}
+                    "metadata": {"index": "agentic-os-kb"},
                 },
                 {
                     "id": f"lf-{uuid.uuid4()}",
@@ -242,10 +254,10 @@ async def list_langfuse_traces(
                     "tags": ["background-job"],
                     "cost": 0.0008,
                     "tokens": 400,
-                    "metadata": {"error": "LLM limit exceeded"}
-                }
+                    "metadata": {"error": "LLM limit exceeded"},
+                },
             ]
-        
+
         # Langfuse API for listing traces
         traces = client.get_traces(
             session_id=session_id,
@@ -262,13 +274,16 @@ async def list_langfuse_traces(
 
 # ── MLFlow Endpoints ────────────────────────────────────────────────────────
 
+
 @router.get("/mlflow/status")
 async def get_mlflow_status():
     """Get MLFlow integration status."""
     try:
         return {
             "enabled": True,
-            "tracking_uri": __import__("os").getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"),
+            "tracking_uri": __import__("os").getenv(
+                "MLFLOW_TRACKING_URI", "http://localhost:5000"
+            ),
             "connected": True,
         }
     except Exception as e:
@@ -280,8 +295,10 @@ async def get_mlflow_status():
 async def list_mlflow_experiments():
     """List all MLFlow experiments."""
     try:
-        from common_lib.modules.observability.mlflow_integration import _get_mlflow_client
-        
+        from common_lib.modules.observability.mlflow_integration import (
+            _get_mlflow_client,
+        )
+
         client = _get_mlflow_client()
         if not client:
             return [
@@ -289,22 +306,22 @@ async def list_mlflow_experiments():
                     "experiment_id": "exp-0",
                     "name": "Default",
                     "lifecycle_stage": "active",
-                    "artifact_location": "s3://mlflow-artifacts/0"
+                    "artifact_location": "s3://mlflow-artifacts/0",
                 },
                 {
                     "experiment_id": "exp-1",
                     "name": "intent_classification_v3",
                     "lifecycle_stage": "active",
-                    "artifact_location": "s3://mlflow-artifacts/1"
+                    "artifact_location": "s3://mlflow-artifacts/1",
                 },
                 {
                     "experiment_id": "exp-2",
                     "name": "agent_react_latency_test",
                     "lifecycle_stage": "active",
-                    "artifact_location": "s3://mlflow-artifacts/2"
-                }
+                    "artifact_location": "s3://mlflow-artifacts/2",
+                },
             ]
-        
+
         experiments = client.search_experiments()
         return [
             {
@@ -330,9 +347,12 @@ async def list_mlflow_runs(
 ):
     """List MLFlow runs with optional filters."""
     try:
-        from common_lib.modules.observability.mlflow_integration import _get_mlflow_client, search_runs
+        from common_lib.modules.observability.mlflow_integration import (
+            _get_mlflow_client,
+            search_runs,
+        )
         from datetime import datetime, timezone, timedelta
-        
+
         client = _get_mlflow_client()
         if not client:
             now = datetime.now(timezone.utc)
@@ -347,7 +367,7 @@ async def list_mlflow_runs(
                     "params": {"epochs": "3", "lr": "2e-5", "batch_size": "32"},
                     "metrics": {"accuracy": "0.942", "loss": "0.124"},
                     "tags": {"framework": "pytorch", "author": "dev-team"},
-                    "artifact_uri": "s3://mlflow-artifacts/1/run-001"
+                    "artifact_uri": "s3://mlflow-artifacts/1/run-001",
                 },
                 {
                     "run_id": "run-002",
@@ -359,7 +379,7 @@ async def list_mlflow_runs(
                     "params": {"epochs": "5", "lr": "1.5e-5", "batch_size": "32"},
                     "metrics": {"accuracy": "0.961", "loss": "0.089"},
                     "tags": {"framework": "pytorch", "author": "dev-team"},
-                    "artifact_uri": "s3://mlflow-artifacts/1/run-002"
+                    "artifact_uri": "s3://mlflow-artifacts/1/run-002",
                 },
                 {
                     "run_id": "run-003",
@@ -370,10 +390,10 @@ async def list_mlflow_runs(
                     "params": {"agent_version": "v3", "max_turns": "10"},
                     "metrics": {"success_rate": "0.82"},
                     "tags": {"run_type": "eval"},
-                    "artifact_uri": "s3://mlflow-artifacts/2/run-003"
-                }
+                    "artifact_uri": "s3://mlflow-artifacts/2/run-003",
+                },
             ]
-        
+
         runs = search_runs(
             experiment_names=[experiment_name] if experiment_name else None,
             filter_string=filter_string,
@@ -390,11 +410,11 @@ async def get_mlflow_run(run_id: str):
     """Get details of a specific MLFlow run."""
     try:
         from common_lib.modules.observability.mlflow_integration import get_run
-        
+
         run = get_run(run_id)
         if not run:
             raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
-        
+
         return run
     except HTTPException:
         raise
@@ -408,42 +428,44 @@ async def create_mlflow_run(request: ExperimentRunRequest):
     """Create a new MLFlow run with parameters and metrics."""
     try:
         import mlflow
-        
-        from common_lib.modules.observability.mlflow_integration import _get_mlflow_client
-        
+
+        from common_lib.modules.observability.mlflow_integration import (
+            _get_mlflow_client,
+        )
+
         client = _get_mlflow_client()
         if not client:
             raise HTTPException(status_code=503, detail="MLFlow not configured")
-        
+
         # Set experiment
         mlflow.set_experiment(request.experiment_name)
-        
+
         # Start run
         run = mlflow.start_run(run_name=request.run_name)
-        
+
         try:
             # Log params
             if request.params:
                 mlflow.log_params(request.params)
-            
+
             # Log metrics
             if request.metrics:
                 mlflow.log_metrics(request.metrics)
-            
+
             # Log tags
             if request.tags:
                 for key, value in request.tags.items():
                     mlflow.set_tag(key, value)
-            
+
             # Log metadata
             if request.metadata:
                 mlflow.log_dict(request.metadata, "metadata.json")
-            
+
             run_id = run.info.run_id
-            
+
         finally:
             mlflow.end_run()
-        
+
         return {
             "run_id": run_id,
             "experiment_name": request.experiment_name,
@@ -461,11 +483,13 @@ async def create_mlflow_run(request: ExperimentRunRequest):
 async def compare_mlflow_runs(run_ids: List[str]):
     """Compare multiple MLFlow runs."""
     try:
-        from common_lib.modules.observability.mlflow_integration import get_experiment_tracker
-        
+        from common_lib.modules.observability.mlflow_integration import (
+            get_experiment_tracker,
+        )
+
         tracker = get_experiment_tracker()
         comparison = tracker.compare_runs(run_ids)
-        
+
         return comparison
     except Exception as e:
         logger.error(f"Failed to compare runs: {e}")
@@ -477,11 +501,13 @@ async def delete_mlflow_run(run_id: str):
     """Delete an MLFlow run."""
     try:
         from common_lib.modules.observability.mlflow_integration import delete_run
-        
+
         success = delete_run(run_id)
         if not success:
-            raise HTTPException(status_code=404, detail=f"Run not found or failed to delete: {run_id}")
-        
+            raise HTTPException(
+                status_code=404, detail=f"Run not found or failed to delete: {run_id}"
+            )
+
         return {"deleted": True, "run_id": run_id}
     except HTTPException:
         raise
@@ -492,12 +518,15 @@ async def delete_mlflow_run(run_id: str):
 
 # ── LangFlow Endpoints ──────────────────────────────────────────────────────
 
+
 @router.get("/langflow/status")
 async def get_langflow_status():
     """Get LangFlow integration status."""
     try:
-        from common_lib.modules.observability.langflow_integration import get_langflow_adapter
-        
+        from common_lib.modules.observability.langflow_integration import (
+            get_langflow_adapter,
+        )
+
         adapter = get_langflow_adapter()
         status = adapter.get_status()
         status["enabled"] = True
@@ -516,7 +545,7 @@ async def list_langflow_flows():
     """List all available LangFlow flows."""
     try:
         from common_lib.modules.observability.langflow_integration import list_flows
-        
+
         flows = list_flows()
         if not flows:
             raise ValueError("No flows found")
@@ -537,15 +566,15 @@ async def list_langflow_flows():
                 "name": "Retrieval Augmented Generation (RAG) Bot",
                 "description": "Standard RAG flow utilizing PGVector embeddings and Gemini-2.0-flash",
                 "created_at": "2026-07-16T10:00:00Z",
-                "updated_at": "2026-07-16T12:00:00Z"
+                "updated_at": "2026-07-16T12:00:00Z",
             },
             {
                 "id": "flow-sql-agent",
                 "name": "SQL Database Data Agent",
                 "description": "Multi-agent SQL writing and execution tool flow for database insights",
                 "created_at": "2026-07-15T09:00:00Z",
-                "updated_at": "2026-07-16T15:30:00Z"
-            }
+                "updated_at": "2026-07-16T15:30:00Z",
+            },
         ]
 
 
@@ -554,18 +583,20 @@ async def get_langflow_flow(flow_id: str):
     """Get a specific LangFlow flow."""
     try:
         from common_lib.modules.observability.langflow_integration import get_flow
-        
+
         flow = get_flow(flow_id)
         if not flow:
             raise HTTPException(status_code=404, detail=f"Flow not found: {flow_id}")
-        
+
         return flow
     except HTTPException:
         raise
     except Exception:
         return {
             "id": flow_id,
-            "name": "SQL Database Data Agent" if "sql" in flow_id else "Retrieval Augmented Generation (RAG) Bot",
+            "name": "SQL Database Data Agent"
+            if "sql" in flow_id
+            else "Retrieval Augmented Generation (RAG) Bot",
             "description": "Fallback mock details for detailed view",
         }
 
@@ -575,16 +606,16 @@ async def create_langflow_flow(request: FlowCreateRequest):
     """Create a new LangFlow flow."""
     try:
         from common_lib.modules.observability.langflow_integration import create_flow
-        
+
         flow = create_flow(
             name=request.name,
             description=request.description,
             flow_data=request.flow_data,
         )
-        
+
         if not flow:
             raise HTTPException(status_code=400, detail="Failed to create flow")
-        
+
         return {
             "id": flow.get("id"),
             "name": flow.get("name"),
@@ -602,16 +633,16 @@ async def run_langflow_flow(request: FlowRunRequest):
     """Execute a LangFlow flow."""
     try:
         from common_lib.modules.observability.langflow_integration import run_flow
-        
+
         result = run_flow(
             flow_id=request.flow_id,
             inputs=request.inputs,
             session_id=request.session_id,
         )
-        
+
         if not result:
             raise HTTPException(status_code=400, detail="Failed to run flow")
-        
+
         return {
             "flow_id": request.flow_id,
             "status": "success",
@@ -628,11 +659,13 @@ async def run_langflow_flow(request: FlowRunRequest):
 async def sync_langflow_workflows():
     """Sync workflows from LangFlow to local database."""
     try:
-        from common_lib.modules.observability.langflow_integration import get_langflow_adapter
-        
+        from common_lib.modules.observability.langflow_integration import (
+            get_langflow_adapter,
+        )
+
         adapter = get_langflow_adapter()
         synced = adapter.sync_from_langflow()
-        
+
         return {
             "synced": synced,
             "status": "success",
@@ -646,18 +679,36 @@ async def sync_langflow_workflows():
 async def get_langflow_components():
     """Get available LangFlow components."""
     try:
-        from common_lib.modules.observability.langflow_integration import get_flow_components
-        
+        from common_lib.modules.observability.langflow_integration import (
+            get_flow_components,
+        )
+
         components = get_flow_components()
         if not components:
             raise ValueError("No components found")
         return components
     except Exception:
         return [
-            {"name": "ChatInput", "description": "Get user text messages", "category": "inputs"},
-            {"name": "OpenAIModel", "description": "Configure OpenAI LLMs", "category": "models"},
-            {"name": "PineconeSearch", "description": "Vector similarity search", "category": "vectorstores"},
-            {"name": "PromptTemplate", "description": "Compose prompts with variables", "category": "prompts"}
+            {
+                "name": "ChatInput",
+                "description": "Get user text messages",
+                "category": "inputs",
+            },
+            {
+                "name": "OpenAIModel",
+                "description": "Configure OpenAI LLMs",
+                "category": "models",
+            },
+            {
+                "name": "PineconeSearch",
+                "description": "Vector similarity search",
+                "category": "vectorstores",
+            },
+            {
+                "name": "PromptTemplate",
+                "description": "Compose prompts with variables",
+                "category": "prompts",
+            },
         ]
 
 
@@ -665,12 +716,16 @@ async def get_langflow_components():
 async def export_langflow_flow(flow_id: str):
     """Export a LangFlow flow as Python code."""
     try:
-        from common_lib.modules.observability.langflow_integration import export_flow_to_python
-        
+        from common_lib.modules.observability.langflow_integration import (
+            export_flow_to_python,
+        )
+
         code = export_flow_to_python(flow_id)
         if not code:
-            raise HTTPException(status_code=404, detail=f"Flow not found or export failed: {flow_id}")
-        
+            raise HTTPException(
+                status_code=404, detail=f"Flow not found or export failed: {flow_id}"
+            )
+
         return {
             "flow_id": flow_id,
             "code": code,
@@ -684,6 +739,7 @@ async def export_langflow_flow(flow_id: str):
 
 # ── Unified Status Endpoint ─────────────────────────────────────────────────
 
+
 @router.get("/status")
 async def get_all_integrations_status():
     """Get status of all observability integrations."""
@@ -691,11 +747,15 @@ async def get_all_integrations_status():
         return {
             "langfuse": {
                 "enabled": True,
-                "host": __import__("os").getenv("LANGFUSE_HOST", "http://localhost:3000"),
+                "host": __import__("os").getenv(
+                    "LANGFUSE_HOST", "http://localhost:3000"
+                ),
             },
             "mlflow": {
                 "enabled": True,
-                "tracking_uri": __import__("os").getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"),
+                "tracking_uri": __import__("os").getenv(
+                    "MLFLOW_TRACKING_URI", "http://localhost:5000"
+                ),
             },
             "langflow": {
                 "enabled": True,
@@ -708,60 +768,13 @@ async def get_all_integrations_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ── Cost Summary Endpoints (NEX-P1-003) ──────────────────────────────────────
-# Thin routes (G1): logic lives in common_lib.modules.observability.cost_tracker
-
-@router.get("/cost/summary")
-async def get_cost_summary(
-    tenant_id: str | None = None,
-    group_by: str = "skill",
-):
-    """Get cost aggregation grouped by skill/model/workflow/agent (NEX-P1-003)."""
-    try:
-        from common_lib.modules.observability.cost_tracker import get_cost_aggregation_service
-
-        svc = get_cost_aggregation_service()
-        if not svc.is_enabled():
-            return {
-                "enabled": False,
-                "message": "Cost ledger disabled. Set OBSERVABILITY_COST_LEDGER=1 to enable.",
-                "data": [],
-            }
-        data = svc.get_cost_summary(tenant_id=tenant_id, group_by=group_by)
-        return {"enabled": True, "group_by": group_by, "data": data}
-    except Exception as e:
-        logger.error(f"Failed to get cost summary: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/cost/per-outcome")
-async def get_cost_per_outcome(
-    tenant_id: str | None = None,
-):
-    """Get cost per successful outcome grouped by outcome class (NEX-P1-003)."""
-    try:
-        from common_lib.modules.observability.cost_tracker import get_cost_aggregation_service
-
-        svc = get_cost_aggregation_service()
-        if not svc.is_enabled():
-            return {
-                "enabled": False,
-                "message": "Cost ledger disabled. Set OBSERVABILITY_COST_LEDGER=1 to enable.",
-                "data": [],
-            }
-        data = svc.get_cost_per_outcome(tenant_id=tenant_id)
-        return {"enabled": True, "data": data}
-    except Exception as e:
-        logger.error(f"Failed to get cost per outcome: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # ── Stable IDs Endpoint (NEX-P1-001) ───────────────────────────────────────
 # Thin route (G1): all logic lives in
 # common_lib.modules.observability.stable_ids. Returns the stable IDs bound
 # to the current request context (populated from inbound x-*-id headers when
 # the stable_id_propagation flag is ON; {} when OFF). Additive: new route,
 # no existing route touched.
+
 
 @router.get("/stable-ids")
 async def get_stable_ids():
